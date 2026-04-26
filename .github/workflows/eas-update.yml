@@ -1,10 +1,28 @@
 name: EAS Update (OTA)
 
 on:
+  workflow_dispatch:
+  # JS-only pushes ship as OTA. Native/build/config changes are handled
+  # by eas-build.yml instead (which embeds the new JS in the new APK).
   push:
     branches:
       - claude/endless-escape-game-android-gRlFH
       - main
+    paths-ignore:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'app.json'
+      - 'eas.json'
+      - 'babel.config.js'
+      - 'metro.config.js'
+      - 'android/**'
+      - 'ios/**'
+      - 'assets/icon.png'
+      - 'assets/adaptive-icon.png'
+      - 'assets/splash-icon.png'
+      - '.github/workflows/**'
+      - 'README.md'
+      - '.gitignore'
 
 concurrency:
   group: eas-update-${{ github.ref }}

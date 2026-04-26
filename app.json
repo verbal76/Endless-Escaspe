@@ -32,11 +32,11 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/REPLACE_ME"
+      "url": "https://u.expo.dev/702308e3-1350-4db7-b41c-b6d73f3d4e69"
     },
     "extra": {
       "eas": {
-        "projectId": "REPLACE_ME"
+        "projectId": "702308e3-1350-4db7-b41c-b6d73f3d4e69"
       }
     }
   }

@@ -70,7 +70,7 @@ jobs:
         env:
           EXPO_TOKEN: ${{ secrets.EAS }}
         run: |
-          npx eas build \
+          eas build \
             --platform android \
             --profile "${{ steps.profile.outputs.name }}" \
             --non-interactive \

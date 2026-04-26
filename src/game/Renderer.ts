@@ -1,4 +1,3 @@
-import { Renderer as ExpoTHREERenderer } from 'expo-three';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
 import * as THREE from 'three';
 
@@ -6,13 +5,33 @@ export type GameRenderer = {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
   gl: ExpoWebGLRenderingContext;
-  renderer: ExpoTHREERenderer;
+  renderer: THREE.WebGLRenderer;
   worldRoot: THREE.Group;
   draw: () => void;
 };
 
+// three's WebGLRenderer expects a DOM canvas; expo-gl gives us a raw GL
+// context, so we hand it a minimal shim with the methods three actually
+// touches during construction (size, style, no-op listeners).
+function makeCanvasShim(gl: ExpoWebGLRenderingContext) {
+  return {
+    width: gl.drawingBufferWidth,
+    height: gl.drawingBufferHeight,
+    clientWidth: gl.drawingBufferWidth,
+    clientHeight: gl.drawingBufferHeight,
+    style: {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    getContext: () => gl,
+  } as unknown as HTMLCanvasElement;
+}
+
 export function createRenderer(gl: ExpoWebGLRenderingContext): GameRenderer {
-  const renderer = new ExpoTHREERenderer({ gl });
+  const renderer = new THREE.WebGLRenderer({
+    canvas: makeCanvasShim(gl),
+    context: gl as unknown as WebGLRenderingContext,
+    antialias: false,
+  });
   renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
   renderer.setClearColor(0x0b0d12, 1);
 

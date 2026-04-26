@@ -57,7 +57,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EAS }}
         run: |
           MSG=$(git log -1 --pretty=%s | head -c 200)
-          npx eas update \
+          eas update \
             --branch preview \
             --message "$MSG" \
             --non-interactive

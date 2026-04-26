@@ -1,0 +1,53 @@
+name: EAS Update (OTA)
+
+on:
+  push:
+    branches:
+      - claude/endless-escape-game-android-gRlFH
+      - main
+
+concurrency:
+  group: eas-update-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Publish OTA bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Set up EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EAS }}
+
+      - name: Choose update branch
+        id: branch
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then
+            echo "name=production" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=preview" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish update
+        env:
+          EXPO_TOKEN: ${{ secrets.EAS }}
+        run: |
+          MSG=$(git log -1 --pretty=%s | head -c 200)
+          npx eas update \
+            --branch "${{ steps.branch.outputs.name }}" \
+            --message "$MSG" \
+            --non-interactive

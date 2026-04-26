@@ -10,6 +10,7 @@ export function createPlayer(): Player {
     vz: 0,
     isCrouched: false,
     isRunning: false,
+    isProne: false,
     isHidden: false,
   };
 }

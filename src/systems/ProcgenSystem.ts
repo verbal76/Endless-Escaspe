@@ -109,7 +109,10 @@ function isSolvable(obstacles: Obstacle[], startZ: number, endZ: number): boolea
 function generateChunkContents(rng: Rng, startZ: number): Obstacle[] {
   const obstacles: Obstacle[] = [];
 
-  const obstacleCount = randInt(rng, 5, 10);
+  // Scaled to the wider playfield (PLAY_HALF_W = 9 -> 18m across).
+  // Density target: visibly populated edge-to-edge without strangling
+  // the player's path. Solvability sweep guarantees corridors.
+  const obstacleCount = randInt(rng, 10, 16);
   placeScatter(
     rng,
     obstacles,
@@ -120,7 +123,7 @@ function generateChunkContents(rng: Rng, startZ: number): Obstacle[] {
     OBSTACLE_RADIUS,
   );
 
-  const coverCount = randInt(rng, 1, 3);
+  const coverCount = randInt(rng, 2, 5);
   placeScatter(rng, obstacles, startZ, coverCount, () => 'cover', true, COVER_RADIUS);
 
   return obstacles;

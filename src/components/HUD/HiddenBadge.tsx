@@ -7,7 +7,7 @@ export function HiddenBadge() {
   if (!isHidden) return null;
   return (
     <View pointerEvents="none" style={styles.wrap}>
-      <Text style={styles.label}>HIDDEN</Text>
+      <Text style={styles.label}>PRONE</Text>
     </View>
   );
 }

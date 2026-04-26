@@ -12,7 +12,6 @@ import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { updatePlayer } from '../systems/PlayerController';
 import { updateGuard } from '../systems/GuardAI';
 import { updateDetection } from '../systems/DetectionSystem';
-import { updateHide } from '../systems/HideSystem';
 import {
   createFacingMarker,
   createGround,
@@ -79,7 +78,9 @@ export function Game() {
       // Soft restart inside the segment.
       player.x = 0;
       player.z = 1;
+      player.isProne = false;
       player.isHidden = false;
+      player.isCrouched = false;
       st.setHidden(false);
       guard.x = guard.waypoints[0].x;
       guard.z = guard.waypoints[0].z;
@@ -96,8 +97,9 @@ export function Game() {
       }
 
       updatePlayer(player, procgen.obstacles(), dt, segmentEndZ);
-      updateHide(player, procgen.obstacles());
-      if (player.isHidden !== st.isHidden) st.setHidden(player.isHidden);
+      // Mirror prone state into the store so the HUD's PRONE pill stays
+      // in sync without re-rendering each frame.
+      if (player.isProne !== st.isHidden) st.setHidden(player.isProne);
 
       const prev = st.detection[guard.id] ?? 0;
       const next = updateDetection(guard, player, procgen.obstacles(), prev, dt);
@@ -138,8 +140,9 @@ export function Game() {
     const render = (_alpha: number) => {
       playerMesh.position.x = player.x;
       playerMesh.position.z = player.z;
-      playerMesh.scale.y = player.isCrouched ? 0.55 : 1;
-      playerMat.opacity = player.isHidden ? 0.35 : 1;
+      // Standing 1.0 / Crouched 0.55 / Prone 0.30 (lay flat).
+      playerMesh.scale.y = player.isProne ? 0.30 : player.isCrouched ? 0.55 : 1;
+      playerMat.opacity = 1;
 
       if (guard.mesh) {
         guard.mesh.position.x = guard.x;

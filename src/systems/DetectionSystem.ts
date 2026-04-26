@@ -26,10 +26,9 @@ export function updateDetection(
   prev: number,
   dt: number,
 ): number {
-  // While hidden in cover, force decay only.
-  if (player.isHidden) {
-    return clamp(prev - DETECTION_DECAY * dt, 0, 1);
-  }
+  // Stance scales how visible / loud the player is. Prone is the
+  // hardest to spot; standing is the easiest. Crouched sits in between.
+  const visionScale = player.isProne ? 0.25 : player.isCrouched ? 0.55 : 1.0;
 
   // LOS contribution
   let visionAdd = 0;
@@ -41,16 +40,16 @@ export function updateDetection(
         .filter((o) => o.isCover)
         .map((o) => ({ x: o.x, z: o.z, r: o.r * 0.85 }));
       if (lineOfSightClear(guard.x, guard.z, player.x, player.z, blockers)) {
-        // Closer & more centered = faster fill (~1.0/s near, ~0.3/s at edge).
         const proximity = 1 - d / VISION_RANGE;
-        visionAdd = (0.5 + 0.6 * proximity) * dt;
+        visionAdd = (0.5 + 0.6 * proximity) * visionScale * dt;
       }
     }
   }
 
-  // Noise contribution: only if running and within noise range.
+  // Noise contribution: only if standing upright. Crouching and prone
+  // are silent regardless of horizontal speed.
   let noiseAdd = 0;
-  if (!player.isCrouched) {
+  if (!player.isCrouched && !player.isProne) {
     const range = player.isRunning ? NOISE_RANGE_RUN : NOISE_RANGE_WALK;
     if (d <= range) {
       const proximity = 1 - d / range;

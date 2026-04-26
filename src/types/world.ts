@@ -42,6 +42,8 @@ export type Player = {
   vz: number;
   isCrouched: boolean;
   isRunning: boolean;
+  isProne: boolean;
+  // Retained so existing references compile; mirrors isProne for now.
   isHidden: boolean;
 };
 

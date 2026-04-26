@@ -7,16 +7,20 @@
 export const LANES = [-2, 0, 2];
 export const LANE_WIDTH = 2;
 
-export const PLAY_HALF_W = 7;
+export const PLAY_HALF_W = 9;
 export const CHUNK_LEN = 24; // world units along Z per chunk
 export const CHUNKS_AHEAD = 5;
 export const PLAYER_RADIUS = 0.45;
 export const OBSTACLE_RADIUS = 0.6;
 export const COVER_RADIUS = 0.9;
 
-export const PLAYER_RUN_SPEED = 7.5; // m/s baseline
+// Walk is the baseline. Run doubles it. Crouch and prone are slower.
 export const PLAYER_WALK_SPEED = 3.5;
-export const PLAYER_LATERAL_SPEED = 6;
+export const PLAYER_RUN_SPEED = PLAYER_WALK_SPEED * 2;
+export const PLAYER_CROUCH_SPEED = PLAYER_WALK_SPEED * 0.65;
+export const PLAYER_PRONE_SPEED = PLAYER_WALK_SPEED * 0.4;
+// Legacy export kept so older modules that imported it still compile.
+export const PLAYER_LATERAL_SPEED = PLAYER_WALK_SPEED;
 
 export const GUARD_PATROL_SPEED = 2.0;
 export const GUARD_CHASE_SPEED = 6.5;

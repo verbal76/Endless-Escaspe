@@ -5,9 +5,10 @@
 // change).
 //
 // OTA_VERSION reflects the JavaScript bundle: bumped on every push
-// that ships as an OTA update via eas-update.yml. If you reopen the
-// app and the OTA number here doesn't match what the on-device About
-// shows, the bundle didn't apply.
+// that ships as an OTA update via eas-update.yml. After the kitchen-
+// sink rebuild lands and you install build #2, this string is what
+// proves OTA flow finally works end-to-end: any push that bumps it
+// should be visible in About after a force-quit + reopen, no install.
 
-export const BUILD_VERSION = 'build f045276 · renderer-rewrite';
-export const OTA_VERSION = 'OTA #2 · settings-screen';
+export const BUILD_VERSION = 'build #2 · kitchen-sink';
+export const OTA_VERSION = 'OTA #0 · embedded-with-build-#2';

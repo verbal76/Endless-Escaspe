@@ -12,9 +12,26 @@ on:
           - development
           - preview
           - production
+  # Auto-trigger when something changed that requires a native rebuild:
+  # deps, native config, build config, platform code, or app icons.
+  # JS-only changes do NOT match these paths and ship via eas-update.yml.
   push:
-    tags:
-      - 'v*'
+    branches:
+      - claude/endless-escape-game-android-gRlFH
+      - main
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'app.json'
+      - 'eas.json'
+      - 'babel.config.js'
+      - 'metro.config.js'
+      - 'android/**'
+      - 'ios/**'
+      - 'assets/icon.png'
+      - 'assets/adaptive-icon.png'
+      - 'assets/splash-icon.png'
+      - '.github/workflows/eas-build.yml'
 
 jobs:
   build:
@@ -45,7 +62,7 @@ jobs:
           if [ -n "${{ github.event.inputs.profile }}" ]; then
             echo "name=${{ github.event.inputs.profile }}" >> "$GITHUB_OUTPUT"
           else
-            echo "name=production" >> "$GITHUB_OUTPUT"
+            echo "name=preview" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Trigger Android build

@@ -22,11 +22,7 @@
       "predictiveBackGestureEnabled": false
     },
     "plugins": [
-      "expo-dev-client",
-      [
-        "expo-gl",
-        {}
-      ]
+      "expo-dev-client"
     ],
     "runtimeVersion": {
       "policy": "appVersion"

@@ -5,9 +5,10 @@ on:
   # JS-only pushes ship as OTA. Native/build/config changes are handled
   # by eas-build.yml instead (which embeds the new JS in the new APK).
   push:
+    # main holds only the workflow files (no source). Pushes there must
+    # not trigger this workflow; the dev branch is where real code lives.
     branches:
       - claude/endless-escape-game-android-gRlFH
-      - main
     paths-ignore:
       - 'package.json'
       - 'package-lock.json'
@@ -51,21 +52,12 @@ jobs:
           eas-version: latest
           token: ${{ secrets.EAS }}
 
-      - name: Choose update branch
-        id: branch
-        run: |
-          if [ "${GITHUB_REF_NAME}" = "main" ]; then
-            echo "name=production" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=preview" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Publish update
         env:
           EXPO_TOKEN: ${{ secrets.EAS }}
         run: |
           MSG=$(git log -1 --pretty=%s | head -c 200)
           npx eas update \
-            --branch "${{ steps.branch.outputs.name }}" \
+            --branch preview \
             --message "$MSG" \
             --non-interactive

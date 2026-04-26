@@ -5,8 +5,9 @@ import {
   CHUNK_LEN,
   CHUNKS_AHEAD,
   COVER_RADIUS,
-  LANES,
   OBSTACLE_RADIUS,
+  PLAYER_RADIUS,
+  PLAY_HALF_W,
 } from '../util/geometry';
 
 let nextObstacleId = 1;
@@ -19,6 +20,13 @@ const coverGeo = new THREE.BoxGeometry(2.0, 1.4, 1.0);
 const crateMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3d, roughness: 0.85 });
 const wallMat = new THREE.MeshStandardMaterial({ color: 0x4a4f55, roughness: 0.95 });
 const coverMat = new THREE.MeshStandardMaterial({ color: 0x2c3a4d, roughness: 0.9 });
+
+const SPAWN_X_MIN = -PLAY_HALF_W + 0.7;
+const SPAWN_X_MAX = PLAY_HALF_W - 0.7;
+const MIN_OBSTACLE_GAP = 1.6;
+const SLAB_STEP = 1.0;
+const SLAB_HALF_DEPTH = 1.2;
+const REQUIRED_GAP_W = PLAYER_RADIUS * 4; // ~1.8m walkable corridor at every Z slab
 
 function buildObstacleMesh(o: Obstacle): THREE.Mesh {
   if (o.kind === 'crate') {
@@ -36,65 +44,85 @@ function buildObstacleMesh(o: Obstacle): THREE.Mesh {
   return m;
 }
 
-// Solver: simulate a "ghost runner" greedily picking least-blocked lane along the chunk.
-// Returns true if the runner can traverse without hitting a non-cover obstacle.
-function isSolvable(obstacles: Obstacle[], startZ: number, endZ: number): boolean {
-  const stepZ = 1.0;
-  let lane = 1; // start middle
-  for (let z = startZ; z < endZ; z += stepZ) {
-    // Find best lane: prefer current, switch only if blocked.
-    const blocked = (l: number) =>
-      obstacles.some(
-        (o) =>
-          !o.isCover &&
-          o.lane === l &&
-          o.z >= z - 1.2 &&
-          o.z <= z + 1.2,
-      );
-    if (blocked(lane)) {
-      const candidates = [lane - 1, lane + 1].filter(
-        (l) => l >= 0 && l < LANES.length && !blocked(l),
-      );
-      if (candidates.length === 0) return false;
-      lane = candidates[0];
+function tooClose(obstacles: Obstacle[], x: number, z: number): boolean {
+  for (const o of obstacles) {
+    const dx = o.x - x;
+    const dz = o.z - z;
+    if (dx * dx + dz * dz < MIN_OBSTACLE_GAP * MIN_OBSTACLE_GAP) return true;
+  }
+  return false;
+}
+
+function placeScatter(
+  rng: Rng,
+  obstacles: Obstacle[],
+  startZ: number,
+  count: number,
+  kindFn: () => Obstacle['kind'],
+  isCover: boolean,
+  radius: number,
+) {
+  for (let i = 0; i < count; i++) {
+    let placed = false;
+    for (let attempt = 0; attempt < 12 && !placed; attempt++) {
+      const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
+      const z = startZ + 1.5 + rng() * (CHUNK_LEN - 3);
+      if (tooClose(obstacles, x, z)) continue;
+      obstacles.push({
+        id: nextObstacleId++,
+        kind: kindFn(),
+        x,
+        z,
+        r: radius,
+        isCover,
+        mesh: null,
+      });
+      placed = true;
     }
+  }
+}
+
+// Sweep across Z slabs; require at least one X-window of width REQUIRED_GAP_W
+// that is free of non-cover obstacles. Cover blocks are pass-through, so they
+// don't count as obstructions.
+function isSolvable(obstacles: Obstacle[], startZ: number, endZ: number): boolean {
+  for (let z = startZ; z <= endZ; z += SLAB_STEP) {
+    const blockers: Array<{ lo: number; hi: number }> = [];
+    for (const o of obstacles) {
+      if (o.isCover) continue;
+      if (o.z < z - SLAB_HALF_DEPTH || o.z > z + SLAB_HALF_DEPTH) continue;
+      blockers.push({ lo: o.x - o.r - PLAYER_RADIUS, hi: o.x + o.r + PLAYER_RADIUS });
+    }
+    blockers.sort((a, b) => a.lo - b.lo);
+    let cursor = -PLAY_HALF_W;
+    let widest = 0;
+    for (const b of blockers) {
+      if (b.lo > cursor) widest = Math.max(widest, b.lo - cursor);
+      cursor = Math.max(cursor, b.hi);
+    }
+    if (cursor < PLAY_HALF_W) widest = Math.max(widest, PLAY_HALF_W - cursor);
+    if (widest < REQUIRED_GAP_W) return false;
   }
   return true;
 }
 
 function generateChunkContents(rng: Rng, startZ: number): Obstacle[] {
   const obstacles: Obstacle[] = [];
-  // ~3 obstacles per chunk + 0–1 cover.
-  const obstacleCount = randInt(rng, 2, 5);
-  for (let i = 0; i < obstacleCount; i++) {
-    const lane = randInt(rng, 0, LANES.length);
-    const z = startZ + 4 + (i * (CHUNK_LEN - 8)) / Math.max(1, obstacleCount - 1) + (rng() - 0.5) * 2;
-    const kind = pick(rng, ['crate', 'lowwall'] as const);
-    obstacles.push({
-      id: nextObstacleId++,
-      kind,
-      lane,
-      x: LANES[lane],
-      z,
-      r: OBSTACLE_RADIUS,
-      isCover: false,
-      mesh: null,
-    });
-  }
-  if (rng() < 0.7) {
-    const lane = randInt(rng, 0, LANES.length);
-    const z = startZ + CHUNK_LEN * (0.4 + rng() * 0.4);
-    obstacles.push({
-      id: nextObstacleId++,
-      kind: 'cover',
-      lane,
-      x: LANES[lane],
-      z,
-      r: COVER_RADIUS,
-      isCover: true,
-      mesh: null,
-    });
-  }
+
+  const obstacleCount = randInt(rng, 5, 10);
+  placeScatter(
+    rng,
+    obstacles,
+    startZ,
+    obstacleCount,
+    () => pick(rng, ['crate', 'lowwall'] as const),
+    false,
+    OBSTACLE_RADIUS,
+  );
+
+  const coverCount = randInt(rng, 1, 3);
+  placeScatter(rng, obstacles, startZ, coverCount, () => 'cover', true, COVER_RADIUS);
+
   return obstacles;
 }
 
@@ -110,7 +138,6 @@ export function generateChunk(rng: Rng, startZ: number): Chunk {
       };
     }
   }
-  // Last resort: empty chunk.
   return {
     id: nextChunkId++,
     startZ,

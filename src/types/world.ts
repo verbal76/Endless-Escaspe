@@ -7,13 +7,24 @@ export type ObstacleKind = 'crate' | 'lowwall' | 'cover';
 export type Obstacle = {
   id: number;
   kind: ObstacleKind;
-  lane: number; // index into LANES
-  x: number; // resolved world X from lane
+  // Legacy lane index; unused by the continuous-X procgen but kept
+  // optional so older modules and saved data don't break.
+  lane?: number;
+  x: number;
   z: number;
-  // Cached collision radius from geometry constants
   r: number;
-  // Whether this acts as cover (blocks LOS, hideable)
   isCover: boolean;
+  mesh: Object3D | null;
+};
+
+export type Projectile = {
+  id: number;
+  x: number;
+  z: number;
+  vx: number;
+  vz: number;
+  // Seconds remaining before despawn even if it never hits anything.
+  life: number;
   mesh: Object3D | null;
 };
 
@@ -45,6 +56,8 @@ export type Guard = {
   state: GuardState;
   waypoints: Array<{ x: number; z: number }>;
   waypointIndex: number;
+  // Seconds remaining until the guard can fire its next projectile.
+  fireCooldown: number;
   mesh: Object3D | null;
   visionMesh: Object3D | null;
 };

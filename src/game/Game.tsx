@@ -8,6 +8,7 @@ import { createRenderer } from './Renderer';
 import { startLoop, type LoopHandle } from './Loop';
 import { updateCameraRig } from './CameraRig';
 import { ProcgenSystem } from '../systems/ProcgenSystem';
+import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { updatePlayer } from '../systems/PlayerController';
 import { updateGuard } from '../systems/GuardAI';
 import { updateDetection } from '../systems/DetectionSystem';
@@ -30,6 +31,8 @@ import { ActionButtons } from '../components/HUD/ActionButtons';
 import { Hearts } from '../components/HUD/Hearts';
 import { DetectionMarker } from '../components/HUD/DetectionMarker';
 import { Banner } from '../components/HUD/Banner';
+import { AlarmOverlay } from '../components/HUD/AlarmOverlay';
+import { HiddenBadge } from '../components/HUD/HiddenBadge';
 
 export function Game() {
   const loopRef = useRef<LoopHandle | null>(null);
@@ -45,6 +48,7 @@ export function Game() {
 
     const player = createPlayer();
     const playerMesh = createPlayerMesh();
+    const playerMat = playerMesh.material as THREE.MeshStandardMaterial;
     r.worldRoot.add(playerMesh);
 
     const guard = createGuard();
@@ -52,35 +56,73 @@ export function Game() {
     guard.mesh.position.set(guard.x, 0.7, guard.z);
     r.worldRoot.add(guard.mesh);
     guard.visionMesh = createFacingMarker();
-    // Anchor as child of guard so it inherits position+rotation; offset forward 2m.
     guard.visionMesh.position.set(0, 0.05, 2);
     guard.mesh.add(guard.visionMesh);
 
     const procgen = new ProcgenSystem(useStore.getState().segmentSeed, r.worldRoot);
     procgen.init();
 
+    const projectiles = new ProjectileSystem(r.worldRoot);
+
     const segmentEndZ = CHUNK_LEN * CHUNKS_AHEAD;
+
+    const handleCatch = () => {
+      const st = useStore.getState();
+      const remaining = st.hearts - 1;
+      st.setHearts(remaining);
+      projectiles.clear();
+      if (remaining <= 0) {
+        st.setRunState('caught');
+        return;
+      }
+      // Soft restart inside the segment.
+      player.x = 0;
+      player.z = 1;
+      player.isHidden = false;
+      st.setHidden(false);
+      guard.x = guard.waypoints[0].x;
+      guard.z = guard.waypoints[0].z;
+      guard.waypointIndex = 0;
+      guard.fireCooldown = 0;
+      st.setDetection(guard.id, 0);
+    };
 
     const update = (dt: number) => {
       const st = useStore.getState();
-      if (st.runState !== 'playing') return;
+      if (st.runState !== 'playing') {
+        projectiles.clear();
+        return;
+      }
 
-      updatePlayer(player, procgen.obstacles(), dt);
+      updatePlayer(player, procgen.obstacles(), dt, segmentEndZ);
       updateHide(player, procgen.obstacles());
+      if (player.isHidden !== st.isHidden) st.setHidden(player.isHidden);
+
       const prev = st.detection[guard.id] ?? 0;
       const next = updateDetection(guard, player, procgen.obstacles(), prev, dt);
       st.setDetection(guard.id, next);
-      updateGuard(guard, player, next, dt);
+
+      updateGuard(guard, player, next, dt, (g, tx, tz) => {
+        projectiles.spawn(g.x, g.z, tx, tz);
+      });
+
       procgen.update(player.z);
 
-      // Win condition
+      // Win condition.
       if (player.z >= segmentEndZ) {
+        projectiles.clear();
         st.setRunState('cleared');
         st.setHearts(3);
         return;
       }
 
-      // Catch condition: chase + contact
+      // Projectile-driven catch.
+      if (projectiles.update(dt, player)) {
+        handleCatch();
+        return;
+      }
+
+      // Direct-contact catch (chase + body collision) stays as a backup.
       if (
         guard.state === 'chase' &&
         circleHit(
@@ -88,20 +130,7 @@ export function Game() {
           { x: guard.x, z: guard.z, r: 0.6 },
         )
       ) {
-        const remaining = st.hearts - 1;
-        st.setHearts(remaining);
-        if (remaining <= 0) {
-          st.setRunState('caught');
-        } else {
-          // Soft restart: zero player + detection, keep segment seed.
-          player.x = 0;
-          player.z = 1;
-          player.isHidden = false;
-          guard.x = guard.waypoints[0].x;
-          guard.z = guard.waypoints[0].z;
-          guard.waypointIndex = 0;
-          st.setDetection(guard.id, 0);
-        }
+        handleCatch();
       }
     };
 
@@ -109,7 +138,7 @@ export function Game() {
       playerMesh.position.x = player.x;
       playerMesh.position.z = player.z;
       playerMesh.scale.y = player.isCrouched ? 0.55 : 1;
-      playerMesh.visible = !player.isHidden;
+      playerMat.opacity = player.isHidden ? 0.35 : 1;
 
       if (guard.mesh) {
         guard.mesh.position.x = guard.x;
@@ -127,9 +156,11 @@ export function Game() {
   return (
     <View style={styles.root}>
       <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
+      <AlarmOverlay />
       <Joystick />
       <ActionButtons />
       <Hearts />
+      <HiddenBadge />
       <DetectionMarker />
       <Banner />
     </View>

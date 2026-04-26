@@ -16,7 +16,14 @@ export function createPlayer(): Player {
 
 export function createPlayerMesh(): THREE.Mesh {
   const geo = new THREE.CapsuleGeometry(0.4, 0.8, 4, 8);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xe5cc7d, roughness: 0.6 });
+  // transparent + writable opacity so Game.tsx can dim the player when
+  // hidden (instead of vanishing them, which read as a bug on phone).
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xe5cc7d,
+    roughness: 0.6,
+    transparent: true,
+    opacity: 1,
+  });
   const m = new THREE.Mesh(geo, mat);
   m.position.set(0, 0.7, 0);
   return m;
@@ -36,6 +43,7 @@ export function createGuard(): Guard {
       { x: 2, z: segMid + 4 },
     ],
     waypointIndex: 0,
+    fireCooldown: 0,
     mesh: null,
     visionMesh: null,
   };

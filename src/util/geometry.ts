@@ -1,8 +1,13 @@
 // Shared geometry constants: world is on the XZ plane, +Z is forward (away from camera).
 // Lanes are evenly spaced on X.
 
+// Legacy 3-lane layout. Procgen has moved to continuous-X scatter
+// inside [-PLAY_HALF_W, +PLAY_HALF_W]; LANES is kept only so older
+// modules that referenced it still compile.
 export const LANES = [-2, 0, 2];
 export const LANE_WIDTH = 2;
+
+export const PLAY_HALF_W = 7;
 export const CHUNK_LEN = 24; // world units along Z per chunk
 export const CHUNKS_AHEAD = 5;
 export const PLAYER_RADIUS = 0.45;

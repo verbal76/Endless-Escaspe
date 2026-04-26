@@ -3,7 +3,7 @@
     "name": "Endless Escaspe",
     "slug": "endless-escaspe",
     "version": "0.1.0",
-    "orientation": "portrait",
+    "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,

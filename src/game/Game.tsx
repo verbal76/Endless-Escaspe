@@ -33,6 +33,7 @@ import { DetectionMarker } from '../components/HUD/DetectionMarker';
 import { Banner } from '../components/HUD/Banner';
 import { AlarmOverlay } from '../components/HUD/AlarmOverlay';
 import { HiddenBadge } from '../components/HUD/HiddenBadge';
+import { SettingsScreen } from '../components/HUD/SettingsScreen';
 
 export function Game() {
   const loopRef = useRef<LoopHandle | null>(null);
@@ -163,6 +164,7 @@ export function Game() {
       <HiddenBadge />
       <DetectionMarker />
       <Banner />
+      <SettingsScreen />
     </View>
   );
 }

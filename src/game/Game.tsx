@@ -140,8 +140,23 @@ export function Game() {
     const render = (_alpha: number) => {
       playerMesh.position.x = player.x;
       playerMesh.position.z = player.z;
-      // Standing 1.0 / Crouched 0.55 / Prone 0.30 (lay flat).
-      playerMesh.scale.y = player.isProne ? 0.30 : player.isCrouched ? 0.55 : 1;
+      if (player.isProne) {
+        // Lay the capsule flat along its forward axis. The base
+        // capsule's long axis is Y; rotating PI/2 around X tips it
+        // onto Z so it reads as a person lying face-down. The Y is
+        // pinned low so it sits on the ground.
+        playerMesh.rotation.x = Math.PI / 2;
+        playerMesh.scale.set(1, 1, 1);
+        playerMesh.position.y = 0.25;
+      } else if (player.isCrouched) {
+        playerMesh.rotation.x = 0;
+        playerMesh.scale.set(1, 0.55, 1);
+        playerMesh.position.y = 0.5;
+      } else {
+        playerMesh.rotation.x = 0;
+        playerMesh.scale.set(1, 1, 1);
+        playerMesh.position.y = 0.7;
+      }
       playerMat.opacity = 1;
 
       if (guard.mesh) {

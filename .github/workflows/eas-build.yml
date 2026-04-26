@@ -16,9 +16,10 @@ on:
   # deps, native config, build config, platform code, or app icons.
   # JS-only changes do NOT match these paths and ship via eas-update.yml.
   push:
+    # main holds only the workflow files (no source). Pushes there must
+    # not trigger this workflow; the dev branch is where real code lives.
     branches:
       - claude/endless-escape-game-android-gRlFH
-      - main
     paths:
       - 'package.json'
       - 'package-lock.json'

@@ -85,7 +85,7 @@ export const useStore = create<Store>((set) => ({
   setDetection: (id, v) =>
     set((st) => {
       const cur = st.detection[id];
-      if (cur !== undefined && Math.abs(cur - v) < 0.01) return st;
+      if (cur === v) return st;
       return { detection: { ...st.detection, [id]: v } };
     }),
   setStance: (s) =>

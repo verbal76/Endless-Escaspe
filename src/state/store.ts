@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { RunState, Stance } from '../types/world';
 import type { WeatherKind } from '../scenes/Weather';
+import type { Save, SavesMap } from '../util/storage';
 
 export type PlayerSkin = 'beige' | 'brown';
 
@@ -41,8 +42,19 @@ type Store = {
   // Master audio volume 0..1, applied on top of the siren's
   // detection-driven volume curve. Persisted via AsyncStorage.
   masterVolume: number;
-  // Player head skin tone. Selected from the start screen; persisted.
+  // Player head skin tone. Mirrors the active save's skin while a
+  // run is underway so the rest of the codebase can keep reading
+  // playerSkin without caring about save plumbing.
   playerSkin: PlayerSkin;
+  // Display name typed at character creation. Empty until the player
+  // either creates a new save or loads an existing one.
+  playerName: string;
+  // All known character saves, keyed by lowercased name. Hydrated
+  // from AsyncStorage on boot.
+  saves: SavesMap;
+  // Lookup key (lowercased name) of the save the current run belongs
+  // to. Null between runs / before any save is selected.
+  activeSaveName: string | null;
   lastStats: RunStats | null;
   // Best star score (1..3) ever achieved per stage. Hydrated from
   // AsyncStorage on app boot; persisted whenever a new high is set.
@@ -59,6 +71,11 @@ type Store = {
   setWeatherEnabled: (b: boolean) => void;
   setMasterVolume: (v: number) => void;
   setPlayerSkin: (s: PlayerSkin) => void;
+  setPlayerName: (n: string) => void;
+  setSaves: (m: SavesMap) => void;
+  upsertSave: (save: Save) => void;
+  removeSave: (key: string) => void;
+  setActiveSave: (key: string | null) => void;
   recordSegmentStars: (stage: number, stars: number) => boolean;
   requestRestart: () => void;
   resetForSegment: (seed: number) => void;
@@ -78,6 +95,9 @@ export const useStore = create<Store>((set) => ({
   weatherEnabled: true,
   masterVolume: 0.7,
   playerSkin: 'beige',
+  playerName: '',
+  saves: {},
+  activeSaveName: null,
   lastStats: null,
   bestStars: {},
   setRunState: (s) => set({ runState: s }),
@@ -106,6 +126,30 @@ export const useStore = create<Store>((set) => ({
     }),
   setPlayerSkin: (s) =>
     set((st) => (st.playerSkin === s ? st : { playerSkin: s })),
+  setPlayerName: (n) =>
+    set((st) => (st.playerName === n ? st : { playerName: n })),
+  setSaves: (m) => set({ saves: m }),
+  upsertSave: (save) =>
+    set((st) => ({
+      saves: {
+        ...st.saves,
+        [save.name.trim().toLowerCase()]: save,
+      },
+    })),
+  removeSave: (key) =>
+    set((st) => {
+      if (!(key in st.saves)) return st;
+      const next: SavesMap = {};
+      for (const k of Object.keys(st.saves)) {
+        if (k !== key) next[k] = st.saves[k];
+      }
+      return {
+        saves: next,
+        activeSaveName: st.activeSaveName === key ? null : st.activeSaveName,
+      };
+    }),
+  setActiveSave: (key) =>
+    set((st) => (st.activeSaveName === key ? st : { activeSaveName: key })),
   setBestStars: (b) => set({ bestStars: b }),
   // Returns true iff this is a new high score for the stage. Caller
   // can then persist to AsyncStorage (Game.tsx handles that).

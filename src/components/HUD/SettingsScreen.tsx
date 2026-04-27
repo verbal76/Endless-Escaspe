@@ -80,7 +80,6 @@ export function SettingsScreen() {
     saveSettings({
       masterVolume: st.masterVolume,
       weatherEnabled: st.weatherEnabled,
-      playerSkin: st.playerSkin,
     });
   };
 

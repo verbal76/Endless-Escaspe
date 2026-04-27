@@ -64,7 +64,7 @@ import {
 import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
 import { applyStageLighting } from '../scenes/Lighting';
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
-import { saveBestStars } from '../util/storage';
+import { saveBestStars, writeSaves, type Save } from '../util/storage';
 
 // Stats thresholds. Higher = lenient; lower = stingy.
 const STAT_DETECTED_3 = 3;   // <= seconds detected for 3 stars on this metric
@@ -262,6 +262,24 @@ export function Game() {
       // Advance to the next stage so the next run is harder (longer
       // vision, dimmer light, etc.).
       st.setStage(st.stage + 1);
+
+      // Mirror stage progress onto the active character save so
+      // "Continue" picks up at the new stage on the next launch.
+      const after = useStore.getState();
+      const key = after.activeSaveName;
+      if (key) {
+        const existing = after.saves[key];
+        if (existing) {
+          const updated: Save = {
+            ...existing,
+            stage: after.stage,
+            updatedAt: Date.now(),
+          };
+          after.upsertSave(updated);
+          writeSaves({ ...after.saves, [key]: updated });
+        }
+      }
+
       st.setRunState('cleared');
       st.setHearts(3);
       projectiles.clear();

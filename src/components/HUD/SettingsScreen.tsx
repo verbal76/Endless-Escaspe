@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  runOnJS,
-  useAnimatedStyle,
-  useSharedValue,
-} from 'react-native-reanimated';
+import {
+  GestureResponderEvent,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
 import { BUILD_VERSION, OTA_VERSION } from '../../version';
@@ -20,50 +21,30 @@ function VolumeSlider({
   value: number;
   onChange: (v: number) => void;
 }) {
-  // Track the live position via a shared value driven by Pan; commit
-  // back to the store onChange so the siren module sees updates.
-  const x = useSharedValue(value * SLIDER_TRACK_W);
-  const startX = useSharedValue(0);
+  // Use React Native's responder system rather than gesture-handler
+  // so the slider works inside the Modal (gesture-handler gestures
+  // need extra setup to fire from Modal contents on Android).
+  const handle = (e: GestureResponderEvent) => {
+    const x = Math.max(0, Math.min(SLIDER_TRACK_W, e.nativeEvent.locationX));
+    onChange(x / SLIDER_TRACK_W);
+  };
 
-  const pan = Gesture.Pan()
-    .onBegin(() => {
-      'worklet';
-      startX.value = x.value;
-    })
-    .onUpdate((e) => {
-      'worklet';
-      const next = Math.max(0, Math.min(SLIDER_TRACK_W, startX.value + e.translationX));
-      x.value = next;
-      runOnJS(onChange)(next / SLIDER_TRACK_W);
-    });
-
-  // Allow tap-to-set as well: when user taps the track without
-  // dragging, jump to that x position.
-  const tap = Gesture.Tap()
-    .onEnd((e) => {
-      'worklet';
-      const localX = Math.max(0, Math.min(SLIDER_TRACK_W, e.x));
-      x.value = localX;
-      runOnJS(onChange)(localX / SLIDER_TRACK_W);
-    });
-
-  const composed = Gesture.Race(pan, tap);
-
-  const knobStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: x.value - SLIDER_KNOB_R }],
-  }));
-  const fillStyle = useAnimatedStyle(() => ({
-    width: x.value,
-  }));
+  const knobLeft = value * SLIDER_TRACK_W - SLIDER_KNOB_R;
+  const fillW = value * SLIDER_TRACK_W;
 
   return (
-    <GestureDetector gesture={composed}>
-      <View style={styles.sliderHit}>
-        <View style={styles.sliderTrack} />
-        <Animated.View style={[styles.sliderFill, fillStyle]} />
-        <Animated.View style={[styles.sliderKnob, knobStyle]} />
-      </View>
-    </GestureDetector>
+    <View
+      style={styles.sliderHit}
+      onStartShouldSetResponder={() => true}
+      onMoveShouldSetResponder={() => true}
+      onResponderGrant={handle}
+      onResponderMove={handle}
+      onResponderRelease={handle}
+    >
+      <View style={styles.sliderTrack} />
+      <View style={[styles.sliderFill, { width: fillW }]} />
+      <View style={[styles.sliderKnob, { transform: [{ translateX: knobLeft }] }]} />
+    </View>
   );
 }
 

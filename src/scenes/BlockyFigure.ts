@@ -152,15 +152,12 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
   const swing = Math.min(1, speed / 4) * (isRunning ? 0.9 : 0.55);
 
   if (stance === 'crawl') {
-    // Baby crawl: on hands and knees with the body horizontal,
-    // supported by extended arms in front and bent legs underneath.
-    // Limbs cycle in opposite-pair phase (left arm + right leg
-    // forward, then right arm + left leg forward).
-    //
-    // Reaching arm: extends forward AND swings inward toward the
-    // centreline so the hand ends up over/in front of the head, not
-    // out at the shoulder line. Tucked arm stays at the body's
-    // side. Same for the legs to keep the silhouette consistent.
+    // Baby crawl: hands and knees, body horizontal, ALWAYS opposite-
+    // pair extended (left arm + right leg reaching while the right
+    // arm + left leg are tucked under). When stationary the figure
+    // sits in a ready-to-crawl pose with arms propping the chest;
+    // when moving, the reach/tuck contrast is amped up so the
+    // alternation reads clearly.
 
     fig.torso.rotation.x = Math.PI / 2.4;
     fig.torso.position.set(0, 0.6, 0);
@@ -168,45 +165,48 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
     fig.head.position.set(0, 0.7, 0.55);
     fig.head.rotation.x = -Math.PI / 5;
 
-    // Shoulders pulled inboard a touch from the standing pose so
-    // the inward arm swing puts the hand cleanly in front of the
-    // head, not too far across the body.
     const shoulderHalf = TORSO_W / 2 - 0.04;
     const shoulderY = 0.65;
     const handForward = 0.18;
-    fig.armL.position.set(-shoulderHalf, shoulderY, handForward);
-    fig.armR.position.set(shoulderHalf, shoulderY, handForward);
-
     const hipY = 0.55;
     const hipBack = -0.2;
+
+    // Per-limb reach amount: 0 = tucked, 1 = fully extended. cos(phase)
+    // alternates left/right by definition. Multiply by `swing` so a
+    // stationary figure stays in its tucked baseline rather than
+    // animating in place.
+    const cycle = Math.cos(phase);
+    const reachAmtL = Math.max(0, cycle) * Math.max(0.4, swing * 1.6);
+    const reachAmtR = Math.max(0, -cycle) * Math.max(0.4, swing * 1.6);
+    // Clamp to 0..1 so the lerp targets stay sane.
+    const rL = Math.min(1, reachAmtL);
+    const rR = Math.min(1, reachAmtR);
+
+    // ARMS - tucked vs reach pose. Tucked: arm forward but pulled
+    // back toward chest. Reach: arm fully extended, hand swept across
+    // the centreline so it lands over/in front of the head.
+    const ARM_TUCK_X = Math.PI / 2 - 0.20;
+    const ARM_REACH_X = Math.PI / 2 + 0.40;
+    const ARM_REACH_Y = 0.95; // strong inward yaw on the reaching side
+    fig.armL.position.set(-shoulderHalf, shoulderY, handForward + rL * 0.18);
+    fig.armR.position.set(shoulderHalf, shoulderY, handForward + rR * 0.18);
+    fig.armL.rotation.x = ARM_TUCK_X + rL * (ARM_REACH_X - ARM_TUCK_X);
+    fig.armR.rotation.x = ARM_TUCK_X + rR * (ARM_REACH_X - ARM_TUCK_X);
+    // Inward yaw applies only on the reaching side (rotation.y = 0
+    // on the tucked side keeps it at the body's edge).
+    fig.armL.rotation.y = rL * ARM_REACH_Y;
+    fig.armR.rotation.y = -rR * ARM_REACH_Y;
+
+    // LEGS - opposite-side syncing: right leg with left arm,
+    // left leg with right arm.
+    const LEG_TUCK_X = Math.PI / 2 - 0.25;
+    const LEG_REACH_X = Math.PI / 2 + 0.20;
     fig.legL.position.set(-(LEG_W / 2 + 0.02), hipY, hipBack);
     fig.legR.position.set(LEG_W / 2 + 0.02, hipY, hipBack);
-
-    // Forwardness factors per limb (cosine cycle, opposites alternate).
-    const armForwardL = Math.cos(phase);
-    const armForwardR = -armForwardL;
-    const legForwardR = armForwardL; // right leg syncs with left arm
-    const legForwardL = -armForwardL;
-
-    const armBase = Math.PI / 2 + 0.05;
-    const legBase = Math.PI / 2 + 0.05;
-    // Bigger forward swing on the reaching half so the hand sweeps
-    // out past the head, then tucks back toward the body.
-    const armSwing = 0.5 * swing;
-    const legSwing = 0.4 * swing;
-
-    fig.armL.rotation.x = armBase + armForwardL * armSwing;
-    fig.armR.rotation.x = armBase + armForwardR * armSwing;
-    fig.legR.rotation.x = legBase + legForwardR * legSwing;
-    fig.legL.rotation.x = legBase + legForwardL * legSwing;
-
-    // Inward yaw: only the REACHING arm angles toward centreline
-    // (the tucked arm stays at the body side). 0.95 rad (~54 deg)
-    // pulls the hand cleanly across centre so it ends up over /
-    // in front of the head, not at the shoulder line.
-    const inwardYaw = 0.95;
-    fig.armL.rotation.y = inwardYaw * Math.max(0, armForwardL);
-    fig.armR.rotation.y = -inwardYaw * Math.max(0, armForwardR);
+    // Right leg reaches when left arm reaches (rL); left leg reaches
+    // when right arm reaches (rR).
+    fig.legR.rotation.x = LEG_TUCK_X + rL * (LEG_REACH_X - LEG_TUCK_X);
+    fig.legL.rotation.x = LEG_TUCK_X + rR * (LEG_REACH_X - LEG_TUCK_X);
   } else if (stance === 'crouch') {
     fig.group.position.y = -0.35;
     fig.torso.rotation.x = 0.25;

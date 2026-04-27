@@ -6,7 +6,9 @@ import { input } from '../systems/InputSystem';
 const FOLLOW_BACK = 8;
 const FOLLOW_HEIGHT = 7;
 const SMOOTH = 6;
-const YAW_SMOOTH = 8; // how fast the camera snaps back when look button releases
+// Doubled per user feedback - the snap back to centre felt sluggish
+// at 8. Higher = closer to instant.
+const YAW_SMOOTH = 16;
 
 // Persisted yaw across frames; module-level so the rig keeps state.
 let currentYaw = 0;

@@ -8,8 +8,9 @@ import {
 } from '../util/geometry';
 import { createBlockyFigure, type BlockyFigure } from './BlockyFigure';
 
-// Department-of-Corrections jumpsuit orange.
-export const PLAYER_COLOR = 0xff7a1f;
+// Muted, brownish DOC jumpsuit orange (the bright safety-cone version
+// reads as cosplay; this sits closer to washed-out coverall fabric).
+export const PLAYER_COLOR = 0xa05423;
 // Police-blue uniform.
 export const GUARD_COLOR = 0x2b4f8e;
 

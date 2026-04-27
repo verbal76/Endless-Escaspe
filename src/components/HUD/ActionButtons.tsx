@@ -38,11 +38,11 @@ export function ActionButtons() {
 const styles = StyleSheet.create({
   col: {
     position: 'absolute',
-    // Shifted left half a button width (button = 78px wide so +39px
-    // of right-offset) per user feedback - the cluster was hugging
-    // the right edge and felt cramped.
+    // Shifted left half a button width (right:24 -> 63) plus pushed
+    // up to bottom:100 to make room for the look-arrow row that
+    // sits directly underneath the stack at bottom:30.
     right: 63,
-    bottom: 30,
+    bottom: 100,
     flexDirection: 'column',
     gap: 8,
   },

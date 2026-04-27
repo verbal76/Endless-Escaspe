@@ -3,10 +3,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { input } from '../../systems/InputSystem';
 import type { Stance } from '../../types/world';
 
-// Four buttons total. CRAWL / CROUCH / WALK are mutually exclusive
-// stance radios; RUN is an independent speed-toggle that doubles
-// whatever stance speed is active. RUN works in every stance ("you
-// can crawl-run, it's just crawling faster").
+// Stance picker only. RUN is its own component (RunButton) sitting
+// near the joystick on the left side of the screen.
 
 const STANCES: Array<{ label: string; value: Stance }> = [
   { label: 'CRAWL', value: 'crawl' },
@@ -16,17 +14,10 @@ const STANCES: Array<{ label: string; value: Stance }> = [
 
 export function ActionButtons() {
   const [stance, setStance] = useState<Stance>('walk');
-  const [running, setRunning] = useState(false);
 
   const pickStance = (s: Stance) => {
     input.stance = s;
     setStance(s);
-  };
-
-  const toggleRun = () => {
-    const next = !running;
-    input.run = next;
-    setRunning(next);
   };
 
   return (
@@ -40,12 +31,6 @@ export function ActionButtons() {
           <Text style={styles.label}>{s.label}</Text>
         </Pressable>
       ))}
-      <Pressable
-        onPress={toggleRun}
-        style={[styles.btn, styles.runBtn, running && styles.runBtnActive]}
-      >
-        <Text style={[styles.label, running && styles.runLabelActive]}>RUN</Text>
-      </Pressable>
     </View>
   );
 }
@@ -72,23 +57,10 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,210,90,0.35)',
     borderColor: 'rgba(255,210,90,0.65)',
   },
-  // Visually separated so it reads as "speed", not "another stance".
-  runBtn: {
-    marginTop: 6,
-    backgroundColor: 'rgba(120,200,255,0.10)',
-    borderColor: 'rgba(120,200,255,0.30)',
-  },
-  runBtnActive: {
-    backgroundColor: 'rgba(120,200,255,0.45)',
-    borderColor: 'rgba(140,220,255,0.85)',
-  },
   label: {
     color: 'rgba(255,255,255,0.92)',
     fontWeight: '700',
     letterSpacing: 0.5,
     fontSize: 13,
-  },
-  runLabelActive: {
-    color: '#dff4ff',
   },
 });

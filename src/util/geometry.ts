@@ -27,7 +27,7 @@ export const GUARD_CHASE_SPEED = 6.5;
 
 // Detection model
 export const VISION_CONE_DEG = 60;
-export const VISION_RANGE = 14;
+export const VISION_RANGE = 9;
 export const NOISE_RANGE_RUN = 7;
 export const NOISE_RANGE_WALK = 3;
 export const DETECTION_DECAY = 0.15; // per second when no contribution

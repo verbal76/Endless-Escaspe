@@ -30,12 +30,14 @@ import { circleHit } from '../util/collision';
 
 import { Joystick } from '../components/HUD/Joystick';
 import { ActionButtons } from '../components/HUD/ActionButtons';
+import { RunButton } from '../components/HUD/RunButton';
 import { Hearts } from '../components/HUD/Hearts';
-import { DetectionMarker } from '../components/HUD/DetectionMarker';
 import { Banner } from '../components/HUD/Banner';
 import { AlarmOverlay } from '../components/HUD/AlarmOverlay';
 import { HiddenBadge } from '../components/HUD/HiddenBadge';
 import { SettingsScreen } from '../components/HUD/SettingsScreen';
+import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
+import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
 
 export function Game() {
   const loopRef = useRef<LoopHandle | null>(null);
@@ -70,6 +72,18 @@ export function Game() {
     procgen.init();
 
     const projectiles = new ProjectileSystem(r.worldRoot);
+
+    // 3D radial detection meter parented to the world root and moved
+    // to the player each frame.
+    const radialMeter = createRadialMeter();
+    r.worldRoot.add(radialMeter.group);
+
+    // One threat arrow per guard.
+    const threatArrows: ThreatArrow[] = guards.map(() => {
+      const a = createThreatArrow();
+      r.worldRoot.add(a.mesh);
+      return a;
+    });
 
     const segmentEndZ = CHUNK_LEN * CHUNKS_AHEAD;
 
@@ -177,6 +191,24 @@ export function Game() {
         g.mesh.rotation.y = -g.facing + Math.PI / 2;
       }
 
+      // Radial meter follows the player; lit by the highest detection.
+      radialMeter.group.position.set(player.x, 0, player.z);
+      const detectionMap = useStore.getState().detection;
+      let maxDetection = 0;
+      for (let i = 0; i < guards.length; i++) {
+        const v = detectionMap[guards[i].id] ?? 0;
+        if (v > maxDetection) maxDetection = v;
+      }
+      updateRadialMeter(radialMeter, maxDetection);
+
+      // Threat arrows: one per guard, only visible while that guard
+      // contributes detection; aimed FROM player TOWARD that guard.
+      for (let i = 0; i < guards.length; i++) {
+        const g = guards[i];
+        const v = detectionMap[g.id] ?? 0;
+        updateThreatArrow(threatArrows[i], player.x, player.z, g.x, g.z, v);
+      }
+
       updateCameraRig(r.camera, player, 1 / 60);
       r.draw();
     };
@@ -189,10 +221,10 @@ export function Game() {
       <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
       <AlarmOverlay />
       <Joystick />
+      <RunButton />
       <ActionButtons />
       <Hearts />
       <HiddenBadge />
-      <DetectionMarker />
       <Banner />
       <SettingsScreen />
     </View>

@@ -26,9 +26,9 @@ const GUARD_COLLISION_R = 0.6;
 
 // Detection thresholds drive transitions.
 const TH_ALERT = 0.18;     // even small noise triggers a pause + scan
-const TH_INVESTIGATE = 0.35;
+const TH_INVESTIGATE = 0.40;
 const TH_CHASE = 1.0;
-const TH_LOSE = 0.55;      // if detection drops below this in chase, fall back
+const TH_LOSE = 0.50;      // if detection drops below 50%, fall back to investigate
 
 export type GuardFireFn = (g: Guard, targetX: number, targetZ: number) => void;
 

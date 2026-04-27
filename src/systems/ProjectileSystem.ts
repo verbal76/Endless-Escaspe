@@ -3,10 +3,10 @@ import type { Player, Projectile } from '../types/world';
 import { circleHit } from '../util/collision';
 import { PLAYER_RADIUS, PLAY_HALF_W } from '../util/geometry';
 
-const PROJECTILE_SPEED = 12;
-const PROJECTILE_LIFE = 1.5;
+const PROJECTILE_SPEED = 15;
+const PROJECTILE_LIFE = 2.4;
 const PROJECTILE_R = 0.18;
-const HIT_RADIUS = 0.4;
+const HIT_RADIUS = 0.55;
 
 let nextProjectileId = 1;
 

@@ -60,6 +60,27 @@ export function updatePlayer(
     }
   }
 
+  // Anti-stick push-out. If the resolved position still penetrates an
+  // obstacle (e.g. soft-wall + obstacle pinch from the previous frame
+  // wedged us inside), eject along the surface normal. Two passes
+  // catches the case of being inside two overlapping obstacles.
+  for (let pass = 0; pass < 2; pass++) {
+    let pushed = false;
+    for (const o of obstacles) {
+      const dx = nx - o.x;
+      const dz = nz - o.z;
+      const minD = PLAYER_RADIUS + o.r;
+      const distSq = dx * dx + dz * dz;
+      if (distSq < minD * minD && distSq > 0.0001) {
+        const d = Math.sqrt(distSq);
+        nx = o.x + (dx / d) * minD;
+        nz = o.z + (dz / d) * minD;
+        pushed = true;
+      }
+    }
+    if (!pushed) break;
+  }
+
   // Soft playfield walls. PLAY_HALF_W is the half-width of the
   // playfield; the player can roam its full width (the camera now
   // tracks them at 1:1, no lateral dampening).

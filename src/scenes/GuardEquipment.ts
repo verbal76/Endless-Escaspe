@@ -64,21 +64,26 @@ export function attachGuardEquipment(
   figure: BlockyFigure,
   visionRange: number,
 ): GuardEquipment {
-  // Right arm: flashlight mounted at the hand, pointing forward.
+  // Right arm: flashlight body mounted at the hand, pointing forward
+  // (visual prop only; the actual beam is parented to the figure
+  // root - see below).
   const flashlight = new THREE.Mesh(
     new THREE.BoxGeometry(FLASHLIGHT_BODY_W, FLASHLIGHT_BODY_H, FLASHLIGHT_BODY_L),
     FLASHLIGHT_MAT,
   );
-  // Hand is at local (0, -ARM_H, 0) in the arm's frame. Position the
-  // flashlight just ahead of the hand so its base sits at the palm.
   flashlight.position.set(0, -ARM_H, FLASHLIGHT_BODY_L / 2 + 0.02);
   figure.armR.add(flashlight);
 
-  // The visible beam sits at the front of the flashlight body and
-  // extends forward.
+  // BEAM: parented to the figure GROUP root, not the arm, so it
+  // doesn't wobble with arm pose. Apex sits at the figure centre
+  // (slight forward offset so it doesn't intersect the torso) and
+  // the cone extends along +Z (the figure's local forward), exactly
+  // matching the DetectionSystem's vision cone (which originates
+  // from guard.x/z along guard.facing). The figure's group is rotated
+  // to face guard.facing each frame, so the beam aligns automatically.
   const beam = buildBeam(visionRange);
-  beam.position.set(0, -ARM_H, FLASHLIGHT_BODY_L);
-  figure.armR.add(beam);
+  beam.position.set(0, 1.0, 0.35);
+  figure.group.add(beam);
 
   // Left arm: pistol at the hand.
   const pistol = new THREE.Mesh(

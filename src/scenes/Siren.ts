@@ -11,7 +11,9 @@ import { getSirenDataUri } from '../util/siren';
 // all guards. Sub-threshold => silent and paused (so the speaker
 // idles). Above threshold => looping with volume tracking the meter.
 
-const PLAY_THRESHOLD = 0.10;
+// Tightened to 0.20 alongside the alarm overlay so brief decay
+// frames don't blare the siren when no real threat is present.
+const PLAY_THRESHOLD = 0.20;
 const MAX_VOLUME = 0.85;
 
 export type SirenHandle = {

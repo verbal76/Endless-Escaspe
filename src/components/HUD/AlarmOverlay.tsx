@@ -26,7 +26,7 @@ export function AlarmOverlay() {
   const pulse = useSharedValue(0);
 
   useEffect(() => {
-    if (v <= 0.05) {
+    if (v <= 0.20) {
       cancelAnimation(pulse);
       pulse.value = 0;
       return;

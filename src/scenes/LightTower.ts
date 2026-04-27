@@ -10,9 +10,19 @@ import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
 const TOWER_HEIGHT = 4.5;
 const POLE_RADIUS = 0.12;
 const HEAD_RADIUS = 0.35;
-const BEAM_BASE_R = 2.2;
-const BEAM_FOOTPRINT_OFFSET = 3.0;
-export const LIGHT_FOOTPRINT_R = 2.4;
+// Bigger lit footprint + matching beam so the floodlight reads as
+// an actual flashlight throw, not a small spotlight dot. The lit
+// footprint and the visible beam share the same dimensions so the
+// gameplay (player illuminated when inside the footprint) matches
+// what they see on screen.
+const BEAM_BASE_R = 4.0;
+const BEAM_FOOTPRINT_OFFSET = 5.0;
+export const LIGHT_FOOTPRINT_R = 4.0;
+// Quarter-circle sector behind the current scan position showing
+// recent sweep history - communicates "this tower scans this region".
+const ARC_INNER_R = 0.5;
+const ARC_OUTER_R = 7.5;
+const ARC_SWEEP_RAD = Math.PI / 3; // 60 deg trailing arc
 
 const POLE_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.7 });
 const HEAD_MAT = new THREE.MeshStandardMaterial({
@@ -32,6 +42,13 @@ const FOOT_MAT = new THREE.MeshBasicMaterial({
   color: 0xfff0a0,
   transparent: true,
   opacity: 0.22,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
+const ARC_MAT = new THREE.MeshBasicMaterial({
+  color: 0xfff0a0,
+  transparent: true,
+  opacity: 0.08,
   side: THREE.DoubleSide,
   depthWrite: false,
 });
@@ -85,6 +102,30 @@ function buildTower(
   foot.rotation.x = -Math.PI / 2;
   foot.position.set(0, 0.04, BEAM_FOOTPRINT_OFFSET);
   pivot.add(foot);
+
+  // Trailing sector arc on the ground showing recent sweep history.
+  // RingGeometry takes (innerR, outerR, segs, phiSegs, thetaStart,
+  // thetaLength). It's drawn in the XY plane by default; rotated to
+  // lay flat on the ground. The arc is OUTSIDE the pivot so it
+  // doesn't sweep with the head - we attach it to worldRoot and
+  // rotate it manually each frame to stay BEHIND the current scan.
+  // For simplicity here, attach to pivot but offset its theta so
+  // it trails - the swept ring rotates with the pivot which keeps
+  // the trail aligned with the recent past.
+  const arc = new THREE.Mesh(
+    new THREE.RingGeometry(
+      ARC_INNER_R,
+      ARC_OUTER_R,
+      32,
+      1,
+      -ARC_SWEEP_RAD,
+      ARC_SWEEP_RAD,
+    ),
+    ARC_MAT,
+  );
+  arc.rotation.x = -Math.PI / 2;
+  arc.position.set(0, 0.03, 0);
+  pivot.add(arc);
 
   return { x, z, scanAngle: 0, scanSpeed, pivot };
 }

@@ -104,11 +104,14 @@ export function createFacingMarker(visionRange: number): THREE.Mesh {
 }
 
 export function createGround(): THREE.Mesh {
-  // Grass-covered yard: you're outside the prison complex now,
-  // making for the property-line fence at the far end of the
-  // segment. Wide enough to cover the playfield with margin in
-  // landscape FOV.
-  const geo = new THREE.PlaneGeometry(PLAY_HALF_W * 2 + 10, CHUNK_LEN * (CHUNKS_AHEAD + 2));
+  // Grass-covered yard. Plane is intentionally enormous (800m wide,
+  // 100m+ longer than the playfield in either direction) so the
+  // grass always reaches the screen edge regardless of camera yaw,
+  // resolution, or how far the player has traversed within the
+  // segment. The fence + tree line still mark the playable boundary
+  // visually; everything past that is just open field draped to the
+  // horizon.
+  const geo = new THREE.PlaneGeometry(800, CHUNK_LEN * (CHUNKS_AHEAD + 4) + 200);
   const mat = new THREE.MeshStandardMaterial({
     color: 0x3f6a2c,
     roughness: 1,

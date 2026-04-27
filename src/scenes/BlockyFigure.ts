@@ -5,7 +5,7 @@ import type { Stance } from '../types/world';
 // parented to a Group so callers can position/rotate the whole
 // figure. Limb meshes are exposed so the render loop can drive a
 // simple walk/run/crouch/crawl cycle by setting rotations + positions
-// each frame. No external assets, no rigging.
+// each frame.
 
 export type BlockyFigure = {
   group: THREE.Group;
@@ -15,10 +15,6 @@ export type BlockyFigure = {
   armR: THREE.Mesh;
   legL: THREE.Mesh;
   legR: THREE.Mesh;
-  // Snapshot of each part's initial (standing) position so
-  // updateFigurePose can reset before applying a stance override.
-  // Without this, transient crawl-pose positions would leak into
-  // walk/crouch frames after a stance change.
   rest: {
     head: THREE.Vector3;
     torso: THREE.Vector3;
@@ -139,10 +135,25 @@ function resetPose(fig: BlockyFigure) {
   fig.group.position.y = 0;
 }
 
+// Square-wave-with-fast-transition. Returns 1 for ~half the cycle
+// (Pose A locked), 0 for the other half (Pose B locked), with a
+// quick smooth ramp at each swap. This avoids the "halfway between"
+// frame where both limbs look ambiguous - the user wants to see
+// either left-side reaching OR right-side reaching, never a blend.
+function poseA_amount(phase: number): number {
+  const TRANSITION = 0.12;
+  const t = ((phase % (2 * Math.PI)) / (2 * Math.PI) + 1) % 1;
+  if (t < 0.5 - TRANSITION) return 1;
+  if (t < 0.5 + TRANSITION) {
+    return 1 - (t - (0.5 - TRANSITION)) / (2 * TRANSITION);
+  }
+  if (t < 1 - TRANSITION) return 0;
+  return (t - (1 - TRANSITION)) / (2 * TRANSITION);
+}
+
 export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
   const { stance, speed, isRunning, facing, time, hidden } = input;
 
-  // Whole-figure yaw: face the movement direction.
   fig.group.rotation.y = -facing + Math.PI / 2;
 
   resetPose(fig);
@@ -152,12 +163,13 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
   const swing = Math.min(1, speed / 4) * (isRunning ? 0.9 : 0.55);
 
   if (stance === 'crawl') {
-    // Baby crawl: hands and knees, body horizontal, ALWAYS opposite-
-    // pair extended (left arm + right leg reaching while the right
-    // arm + left leg are tucked under). When stationary the figure
-    // sits in a ready-to-crawl pose with arms propping the chest;
-    // when moving, the reach/tuck contrast is amped up so the
-    // alternation reads clearly.
+    // Baby crawl per the user's hand-drawn reference: same-side
+    // reach pair (left arm + left leg, then right arm + right leg).
+    // The reaching arm extends forward-and-OUTWARD (not inward
+    // across the body); the reaching leg trails BACKWARD-and-
+    // OUTWARD, like pushing off the ground. Tucked limbs hang
+    // straight down at their pivot, reading from the camera as a
+    // short stub at the body side - exactly like the drawing.
 
     fig.torso.rotation.x = Math.PI / 2.4;
     fig.torso.position.set(0, 0.6, 0);
@@ -165,48 +177,47 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
     fig.head.position.set(0, 0.7, 0.55);
     fig.head.rotation.x = -Math.PI / 5;
 
-    const shoulderHalf = TORSO_W / 2 - 0.04;
-    const shoulderY = 0.65;
-    const handForward = 0.18;
+    // Pivots: shoulders sit slightly out from the torso side and
+    // forward of centre; hips behind torso, narrower stance.
+    const shoulderHalf = TORSO_W / 2 + ARM_W / 2 + 0.02;
+    const shoulderY = 0.75;
     const hipY = 0.55;
     const hipBack = -0.2;
 
-    // Per-limb reach amount: 0 = tucked, 1 = fully extended. cos(phase)
-    // alternates left/right by definition. Multiply by `swing` so a
-    // stationary figure stays in its tucked baseline rather than
-    // animating in place.
-    const cycle = Math.cos(phase);
-    const reachAmtL = Math.max(0, cycle) * Math.max(0.4, swing * 1.6);
-    const reachAmtR = Math.max(0, -cycle) * Math.max(0.4, swing * 1.6);
-    // Clamp to 0..1 so the lerp targets stay sane.
-    const rL = Math.min(1, reachAmtL);
-    const rR = Math.min(1, reachAmtR);
+    // Pose A = left side reaching, Pose B = right side reaching.
+    // When stationary, lock to Pose A so the static figure reads
+    // as a clear "ready to crawl" pose, not a frozen ambiguous
+    // mid-cycle.
+    const aRaw = poseA_amount(phase);
+    const a = swing > 0.05 ? aRaw : 1; // freeze on Pose A when still
+    const b = 1 - a;
 
-    // ARMS - tucked vs reach pose. Tucked: arm forward but pulled
-    // back toward chest. Reach: arm fully extended, hand swept across
-    // the centreline so it lands over/in front of the head.
-    const ARM_TUCK_X = Math.PI / 2 - 0.20;
-    const ARM_REACH_X = Math.PI / 2 + 0.40;
-    const ARM_REACH_Y = 0.95; // strong inward yaw on the reaching side
-    fig.armL.position.set(-shoulderHalf, shoulderY, handForward + rL * 0.18);
-    fig.armR.position.set(shoulderHalf, shoulderY, handForward + rR * 0.18);
-    fig.armL.rotation.x = ARM_TUCK_X + rL * (ARM_REACH_X - ARM_TUCK_X);
-    fig.armR.rotation.x = ARM_TUCK_X + rR * (ARM_REACH_X - ARM_TUCK_X);
-    // Inward yaw applies only on the reaching side (rotation.y = 0
-    // on the tucked side keeps it at the body's edge).
-    fig.armL.rotation.y = rL * ARM_REACH_Y;
-    fig.armR.rotation.y = -rR * ARM_REACH_Y;
+    // ARMS - reach pose: rotation.x = ~80deg forward and slightly
+    // up, rotation.y outward (left arm rotation.y < 0 swings hand
+    // toward -X / left side; right arm rotation.y > 0 toward +X).
+    // Tucked: rotation = 0 (arm hangs straight down at the body side).
+    const ARM_REACH_X = Math.PI / 2 - 0.20;     // forward, slight up
+    const ARM_REACH_OUTWARD_Y = 0.55;            // ~31deg outward
+    fig.armL.position.set(-shoulderHalf, shoulderY, 0.18);
+    fig.armR.position.set(shoulderHalf, shoulderY, 0.18);
+    fig.armL.rotation.x = a * ARM_REACH_X;
+    fig.armR.rotation.x = b * ARM_REACH_X;
+    fig.armL.rotation.y = -a * ARM_REACH_OUTWARD_Y; // outward to -X
+    fig.armR.rotation.y = b * ARM_REACH_OUTWARD_Y;  // outward to +X
 
-    // LEGS - opposite-side syncing: right leg with left arm,
-    // left leg with right arm.
-    const LEG_TUCK_X = Math.PI / 2 - 0.25;
-    const LEG_REACH_X = Math.PI / 2 + 0.20;
+    // LEGS - same-side syncing: when LEFT arm reaches (a=1), LEFT
+    // leg trails BACKWARD. rotation.x = -PI/2 + 0.2 (slightly back
+    // and up - foot kicked behind). Outward yaw: positive rotation
+    // around Y rotates -Z (back) toward -X (outward to the left
+    // for the left leg, see the math comment in the plan).
+    const LEG_REACH_X = -Math.PI / 2 + 0.20;     // backward, slight lift
+    const LEG_REACH_OUTWARD_Y = 0.40;             // ~23deg outward
     fig.legL.position.set(-(LEG_W / 2 + 0.02), hipY, hipBack);
     fig.legR.position.set(LEG_W / 2 + 0.02, hipY, hipBack);
-    // Right leg reaches when left arm reaches (rL); left leg reaches
-    // when right arm reaches (rR).
-    fig.legR.rotation.x = LEG_TUCK_X + rL * (LEG_REACH_X - LEG_TUCK_X);
-    fig.legL.rotation.x = LEG_TUCK_X + rR * (LEG_REACH_X - LEG_TUCK_X);
+    fig.legL.rotation.x = a * LEG_REACH_X;
+    fig.legR.rotation.x = b * LEG_REACH_X;
+    fig.legL.rotation.y = a * LEG_REACH_OUTWARD_Y;   // outward to -X
+    fig.legR.rotation.y = -b * LEG_REACH_OUTWARD_Y;  // outward to +X
   } else if (stance === 'crouch') {
     fig.group.position.y = -0.35;
     fig.torso.rotation.x = 0.25;
@@ -215,7 +226,6 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
     fig.armL.rotation.x = Math.sin(phase + Math.PI) * 0.4 * swing;
     fig.armR.rotation.x = Math.sin(phase) * 0.4 * swing;
   } else {
-    // Walk / run.
     if (isRunning) fig.torso.rotation.x = 0.18;
     fig.legL.rotation.x = Math.sin(phase) * 0.7 * swing;
     fig.legR.rotation.x = Math.sin(phase + Math.PI) * 0.7 * swing;

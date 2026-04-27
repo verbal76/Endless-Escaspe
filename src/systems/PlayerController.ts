@@ -60,11 +60,14 @@ export function updatePlayer(
     }
   }
 
-  // Anti-stick push-out. If the resolved position still penetrates an
-  // obstacle (e.g. soft-wall + obstacle pinch from the previous frame
-  // wedged us inside), eject along the surface normal. Two passes
-  // catches the case of being inside two overlapping obstacles.
-  for (let pass = 0; pass < 2; pass++) {
+  // Anti-stick push-out. If the resolved position still penetrates
+  // an obstacle (e.g. soft-wall + obstacle pinch from the previous
+  // frame wedged us inside), eject along the surface normal. Four
+  // passes catches cases where multiple obstacles overlap. Final
+  // fallback: if we're still inside something after that, hard-snap
+  // the player out of the deepest penetration along the obstacle->
+  // player direction with no per-axis revert.
+  for (let pass = 0; pass < 4; pass++) {
     let pushed = false;
     for (const o of obstacles) {
       const dx = nx - o.x;
@@ -79,6 +82,28 @@ export function updatePlayer(
       }
     }
     if (!pushed) break;
+  }
+  // Final fallback: if anything is still penetrating, find the
+  // worst offender and snap clear.
+  let worst: { o: Obstacle; over: number } | null = null;
+  for (const o of obstacles) {
+    const dx = nx - o.x;
+    const dz = nz - o.z;
+    const minD = PLAYER_RADIUS + o.r;
+    const distSq = dx * dx + dz * dz;
+    if (distSq < minD * minD) {
+      const over = minD * minD - distSq;
+      if (!worst || over > worst.over) worst = { o, over };
+    }
+  }
+  if (worst) {
+    const { o } = worst;
+    const dx = nx - o.x;
+    const dz = nz - o.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const minD = PLAYER_RADIUS + o.r + 0.01;
+    nx = o.x + (dx / len) * minD;
+    nz = o.z + (dz / len) * minD;
   }
 
   // Soft playfield walls. PLAY_HALF_W is the half-width of the

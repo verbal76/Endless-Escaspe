@@ -11,6 +11,14 @@ export function Banner() {
   const resetForSegment = useStore((s) => s.resetForSegment);
   const segmentSeed = useStore((s) => s.segmentSeed);
   const stats = useStore((s) => s.lastStats);
+  const stage = useStore((s) => s.stage);
+  // Look up the best for whichever stage the user JUST finished:
+  // setStage was already advanced in handleWin, so the just-cleared
+  // stage is one less than the current.
+  const justClearedStage = Math.max(1, stage - 1);
+  const bestForJustClearedStage = useStore(
+    (s) => s.bestStars[justClearedStage] ?? 0,
+  );
 
   if (runState === 'playing') return null;
 
@@ -30,6 +38,13 @@ export function Banner() {
           <>
             <Text style={styles.stars}>
               {STAR_FILLED.repeat(stars) + STAR_EMPTY.repeat(3 - stars)}
+            </Text>
+            <Text style={styles.bestLine}>
+              Stage {justClearedStage} best:{' '}
+              {bestForJustClearedStage > 0
+                ? STAR_FILLED.repeat(bestForJustClearedStage) +
+                  STAR_EMPTY.repeat(3 - bestForJustClearedStage)
+                : '—'}
             </Text>
             {stats && (
               <View style={styles.statBlock}>
@@ -98,6 +113,13 @@ const styles = StyleSheet.create({
     color: '#ffd14a',
     fontSize: 40,
     letterSpacing: 6,
+    marginBottom: 4,
+  },
+  bestLine: {
+    color: 'rgba(255, 255, 255, 0.55)',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.5,
     marginBottom: 14,
   },
   statBlock: {

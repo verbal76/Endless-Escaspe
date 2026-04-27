@@ -33,6 +33,9 @@ type Store = {
   // pickWeather(seed); HUD subscribes if it ever needs to surface it.
   weather: WeatherKind;
   lastStats: RunStats | null;
+  // Best star score (1..3) ever achieved per stage. Hydrated from
+  // AsyncStorage on app boot; persisted whenever a new high is set.
+  bestStars: Record<number, number>;
   setRunState: (s: RunState) => void;
   setHearts: (n: number) => void;
   setDetection: (id: number, v: number) => void;
@@ -41,6 +44,8 @@ type Store = {
   setPaused: (b: boolean) => void;
   setLastStats: (s: RunStats | null) => void;
   setWeather: (w: WeatherKind) => void;
+  setBestStars: (b: Record<number, number>) => void;
+  recordSegmentStars: (stage: number, stars: number) => boolean;
   requestRestart: () => void;
   resetForSegment: (seed: number) => void;
   startRun: () => void;
@@ -57,6 +62,7 @@ export const useStore = create<Store>((set) => ({
   restartCounter: 0,
   weather: 'clear',
   lastStats: null,
+  bestStars: {},
   setRunState: (s) => set({ runState: s }),
   setHearts: (n) => set({ hearts: n }),
   setDetection: (id, v) =>
@@ -72,6 +78,19 @@ export const useStore = create<Store>((set) => ({
   setPaused: (b) => set((st) => (st.paused === b ? st : { paused: b })),
   setLastStats: (s) => set({ lastStats: s }),
   setWeather: (w) => set((st) => (st.weather === w ? st : { weather: w })),
+  setBestStars: (b) => set({ bestStars: b }),
+  // Returns true iff this is a new high score for the stage. Caller
+  // can then persist to AsyncStorage (Game.tsx handles that).
+  recordSegmentStars: (stage, stars) => {
+    let isNewHigh = false;
+    set((st) => {
+      const current = st.bestStars[stage] ?? 0;
+      if (stars <= current) return st;
+      isNewHigh = true;
+      return { bestStars: { ...st.bestStars, [stage]: stars } };
+    });
+    return isNewHigh;
+  },
   requestRestart: () =>
     set((st) => ({
       restartCounter: st.restartCounter + 1,

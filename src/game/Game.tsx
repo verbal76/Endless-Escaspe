@@ -61,6 +61,10 @@ import {
   visionMultiplier,
   type Weather,
 } from '../scenes/Weather';
+import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
+import { applyStageLighting } from '../scenes/Lighting';
+import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
+import { saveBestStars } from '../util/storage';
 
 // Stats thresholds. Higher = lenient; lower = stingy.
 const STAT_DETECTED_3 = 3;   // <= seconds detected for 3 stars on this metric
@@ -142,6 +146,19 @@ export function Game() {
 
     const procgen = new ProcgenSystem(useStore.getState().segmentSeed, r.worldRoot);
     procgen.init();
+
+    // Snow weather: dust the top of every obstacle with a thin
+    // white cap so the world reads as blanketed.
+    if (weatherKind === 'snow') {
+      dustObstaclesWithSnow(procgen.obstacles());
+    }
+
+    // Per-stage scene lighting (day -> dusk -> night).
+    applyStageLighting(r.renderer, r.scene, useStore.getState().stage);
+
+    // Real siren: synthesised WAV played by expo-audio when detection
+    // is above PLAY_THRESHOLD; volume tracks the meter.
+    const siren: SirenHandle = createSiren();
 
     const projectiles = new ProjectileSystem(r.worldRoot);
 
@@ -232,6 +249,15 @@ export function Game() {
       };
       const stars = scoreStars(stats);
       st.setLastStats({ ...stats, stars });
+      const isNewHigh = st.recordSegmentStars(st.stage, stars);
+      if (isNewHigh) {
+        // Persist out of band; failure to save is non-fatal (storage
+        // helper swallows errors).
+        saveBestStars(useStore.getState().bestStars);
+      }
+      // Advance to the next stage so the next run is harder (longer
+      // vision, dimmer light, etc.).
+      st.setStage(st.stage + 1);
       st.setRunState('cleared');
       st.setHearts(3);
       projectiles.clear();
@@ -256,6 +282,9 @@ export function Game() {
 
       if (st.runState !== 'playing' || st.paused) {
         projectiles.clear();
+        // Silence the siren on pause / non-playing states so the
+        // speaker doesn't keep wailing while the player is in menus.
+        updateSiren(siren, 0);
         return;
       }
 
@@ -319,6 +348,9 @@ export function Game() {
       if (anyDetected) timeDetectedAcc += dt;
       if (maxDetection > SEEN_THRESHOLD && !prevAnyDetected) timesSeenAcc++;
       prevAnyDetected = maxDetection > SEEN_THRESHOLD;
+
+      // Live siren volume tracks the highest detection across guards.
+      updateSiren(siren, maxDetection);
 
       procgen.update(player.z);
 

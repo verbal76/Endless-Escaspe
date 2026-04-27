@@ -75,15 +75,29 @@ export function attachGuardEquipment(
   figure.armR.add(flashlight);
 
   // BEAM: parented to the figure GROUP root (not the swinging arm)
-  // so it stays aimed reliably along the guard's facing direction.
-  // Apex sits at HEAD level and just FORWARD of the head so the
-  // beam visibly emanates from the front of the figure - where the
-  // user expects it to come from. The figure's group is rotated to
-  // face guard.facing each frame so the beam direction matches the
-  // DetectionSystem cone (which originates from guard.x/z along
-  // guard.facing) 1:1.
+  // so it stays aimed reliably along the guard's facing direction
+  // even though the flashlight hand-pose is fixed by poseGuardArms.
+  // Apex sits at the FLASHLIGHT tip so the cone visually pours out
+  // of the device the guard is holding.
+  //
+  // With armR forced into rotation.x = -PI/2 (extended forward) by
+  // poseGuardArms, the flashlight ends up at roughly:
+  //   armR.position(x = TORSO_W/2 + ARM_W/2 + 0.02 ~= 0.4)
+  // and after the rotation, the hand sits at +Z = ARM_H ~= 0.62
+  // in front of the shoulder, with the flashlight body extending
+  // FLASHLIGHT_BODY_L further forward. So the flashlight tip is
+  // around (0.4, 1.5 + something small, ARM_H + FLASHLIGHT_BODY_L).
+  // Anchor the beam apex there in figure-local space.
+  // Numbers below are the resolved figure pivots from BlockyFigure
+  // constants (TORSO_W=0.62, ARM_W=0.18, ARM_H=0.62, SHOULDER_Y=1.5);
+  // hardcoding rather than re-importing keeps this module self-
+  // contained.
   const beam = buildBeam(visionRange);
-  beam.position.set(0, 1.6, 0.55);
+  beam.position.set(
+    0.42,                          // shoulder X (right side)
+    1.55,                          // hand height after extending arm
+    ARM_H + FLASHLIGHT_BODY_L,    // forward of shoulder by arm length + flashlight tip
+  );
   figure.group.add(beam);
 
   // Left arm: pistol at the hand.

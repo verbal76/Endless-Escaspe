@@ -92,7 +92,12 @@ export function updateDetection(
     }
   }
 
-  const add = visionAdd + noiseAdd;
+  // Per user feedback: discovery ring was filling much too fast for
+  // the player to react. 3x slower across the board (vision + noise
+  // both contribute at one third their previous rate) so the player
+  // has reasonable time to break line of sight or change stance
+  // before the meter peaks.
+  const add = (visionAdd + noiseAdd) / 3;
   if (add > 0) {
     return clamp(prev + add, 0, 1);
   }

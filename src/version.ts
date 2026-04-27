@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #18 · arm-overhead + beam-from-head + opaque-player';
+export const OTA_VERSION = 'OTA #19 · beam-from-flashlight + slower-detection';

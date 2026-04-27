@@ -192,18 +192,18 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
     const a = swing > 0.05 ? aRaw : 1; // freeze on Pose A when still
     const b = 1 - a;
 
-    // ARMS - reach pose: rotation.x = ~80deg forward and slightly
-    // up, rotation.y outward (left arm rotation.y < 0 swings hand
-    // toward -X / left side; right arm rotation.y > 0 toward +X).
-    // Tucked: rotation = 0 (arm hangs straight down at the body side).
-    const ARM_REACH_X = Math.PI / 2 - 0.20;     // forward, slight up
-    const ARM_REACH_OUTWARD_Y = 0.55;            // ~31deg outward
+    // ARMS - reach pose: rotation.x = ~60deg above horizontal so the
+    // reaching hand sweeps UP and FORWARD past the head, like in the
+    // hand-drawn reference. Outward yaw spreads the arm laterally so
+    // it's visible from the third-person camera.
+    const ARM_REACH_X = Math.PI / 3;             // 60deg up-and-forward
+    const ARM_REACH_OUTWARD_Y = 0.55;
     fig.armL.position.set(-shoulderHalf, shoulderY, 0.18);
     fig.armR.position.set(shoulderHalf, shoulderY, 0.18);
     fig.armL.rotation.x = a * ARM_REACH_X;
     fig.armR.rotation.x = b * ARM_REACH_X;
-    fig.armL.rotation.y = -a * ARM_REACH_OUTWARD_Y; // outward to -X
-    fig.armR.rotation.y = b * ARM_REACH_OUTWARD_Y;  // outward to +X
+    fig.armL.rotation.y = -a * ARM_REACH_OUTWARD_Y;
+    fig.armR.rotation.y = b * ARM_REACH_OUTWARD_Y;
 
     // LEGS - same-side syncing: when LEFT arm reaches (a=1), LEFT
     // leg trails BACKWARD. rotation.x = -PI/2 + 0.2 (slightly back
@@ -233,12 +233,16 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
     fig.armR.rotation.x = Math.sin(phase) * 0.7 * swing;
   }
 
-  const targetOpacity = hidden ? 0.35 : 1;
+  // Hidden state used to dim the figure to 35% opacity for "you're
+  // hidden by cover" feedback, but the user found it confusing
+  // (player thought they were broken). Detection meter already
+  // communicates concealment, so the figure stays fully opaque.
   for (const key of PARTS) {
     const part = fig[key] as THREE.Mesh;
     const mat = part.material as THREE.MeshStandardMaterial;
-    if (mat.opacity !== targetOpacity) mat.opacity = targetOpacity;
+    if (mat.opacity !== 1) mat.opacity = 1;
   }
+  void hidden;
 }
 
 export function setFigurePosition(fig: BlockyFigure, x: number, z: number) {

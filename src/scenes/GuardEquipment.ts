@@ -74,15 +74,16 @@ export function attachGuardEquipment(
   flashlight.position.set(0, -ARM_H, FLASHLIGHT_BODY_L / 2 + 0.02);
   figure.armR.add(flashlight);
 
-  // BEAM: parented to the figure GROUP root, not the arm, so it
-  // doesn't wobble with arm pose. Apex sits at the figure centre
-  // (slight forward offset so it doesn't intersect the torso) and
-  // the cone extends along +Z (the figure's local forward), exactly
-  // matching the DetectionSystem's vision cone (which originates
-  // from guard.x/z along guard.facing). The figure's group is rotated
-  // to face guard.facing each frame, so the beam aligns automatically.
+  // BEAM: parented to the figure GROUP root (not the swinging arm)
+  // so it stays aimed reliably along the guard's facing direction.
+  // Apex sits at HEAD level and just FORWARD of the head so the
+  // beam visibly emanates from the front of the figure - where the
+  // user expects it to come from. The figure's group is rotated to
+  // face guard.facing each frame so the beam direction matches the
+  // DetectionSystem cone (which originates from guard.x/z along
+  // guard.facing) 1:1.
   const beam = buildBeam(visionRange);
-  beam.position.set(0, 1.0, 0.35);
+  beam.position.set(0, 1.6, 0.55);
   figure.group.add(beam);
 
   // Left arm: pistol at the hand.

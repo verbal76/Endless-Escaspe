@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #2 · run-toggle + prone-flat';
+export const OTA_VERSION = 'OTA #3 · 2-guard-AI + 4-button-stance';

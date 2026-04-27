@@ -10,14 +10,19 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
 
-const GUARD_ID = 1;
-
-// Visual stand-in for a siren until expo-audio lands. The screen-edge
-// red border pulses with detection: low detection = subtle, slow throb;
-// peak detection = aggressive flashing red border. Pure RN/Reanimated
-// so it ships as an OTA bundle.
+// Visual stand-in for a siren until expo-audio is wired. The screen-
+// edge red border pulses with the *most alarmed* guard's detection so
+// the player gets a single, unambiguous threat reading regardless of
+// how many guards are on the field.
 export function AlarmOverlay() {
-  const v = useStore((s) => s.detection[GUARD_ID] ?? 0);
+  const v = useStore((s) => {
+    let max = 0;
+    for (const k in s.detection) {
+      const x = s.detection[k];
+      if (x > max) max = x;
+    }
+    return max;
+  });
   const pulse = useSharedValue(0);
 
   useEffect(() => {

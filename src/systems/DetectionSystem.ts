@@ -1,16 +1,40 @@
 import type { Guard, Obstacle, Player } from '../types/world';
-import { dist2 } from '../util/math';
-import { clamp } from '../util/math';
+import { clamp, dist2 } from '../util/math';
 import { lineOfSightClear, type Circle } from '../util/collision';
 import {
   DETECTION_DECAY,
-  NOISE_RANGE_RUN,
-  NOISE_RANGE_WALK,
   VISION_CONE_DEG,
   VISION_RANGE,
 } from '../util/geometry';
 
 const VISION_HALF = (VISION_CONE_DEG * Math.PI) / 180 / 2;
+const VISION_RANGE_SQ = VISION_RANGE * VISION_RANGE;
+
+// How far guards can hear, by how loudly the player is moving.
+// Squared distances; compared against dist2() output directly.
+const NOISE_RANGE_WALK_SQ = 9 * 9;
+const NOISE_RANGE_CROUCH_SQ = 5 * 5;
+const NOISE_RANGE_CRAWL_SQ = 2 * 2;
+
+// Per-second detection contribution at zero distance for each
+// stance and movement state. Falls off linearly with distance.
+function baseNoisePerSecond(p: Player): number {
+  if (!p.isCrouched && !p.isProne) {
+    // walk
+    return p.isRunning ? 0.8 : 0.4;
+  }
+  if (p.isCrouched) {
+    return p.isRunning ? 0.30 : 0.15;
+  }
+  // prone / crawl
+  return p.isRunning ? 0.10 : 0.04;
+}
+
+function noiseRangeSq(p: Player): number {
+  if (!p.isCrouched && !p.isProne) return NOISE_RANGE_WALK_SQ;
+  if (p.isCrouched) return NOISE_RANGE_CROUCH_SQ;
+  return NOISE_RANGE_CRAWL_SQ;
+}
 
 function angleDelta(a: number, b: number): number {
   let d = b - a;
@@ -26,34 +50,37 @@ export function updateDetection(
   prev: number,
   dt: number,
 ): number {
-  // Stance scales how visible / loud the player is. Prone is the
-  // hardest to spot; standing is the easiest. Crouched sits in between.
-  const visionScale = player.isProne ? 0.25 : player.isCrouched ? 0.55 : 1.0;
+  const dSq = dist2(guard.x, guard.z, player.x, player.z);
 
-  // LOS contribution
+  // Stance scales how visible the player is when in the cone.
+  const visionScale = player.isProne ? 0.25 : player.isCrouched ? 0.55 : 1.0;
+  const hiddenScale = player.isHidden ? 0 : 1; // crawl + cover masks them
+
   let visionAdd = 0;
-  const d = dist2(guard.x, guard.z, player.x, player.z);
-  if (d <= VISION_RANGE) {
+  if (dSq <= VISION_RANGE_SQ && hiddenScale > 0) {
     const angleToPlayer = Math.atan2(player.z - guard.z, player.x - guard.x);
     if (angleDelta(guard.facing, angleToPlayer) <= VISION_HALF) {
       const blockers: Circle[] = obstacles
         .filter((o) => o.isCover)
         .map((o) => ({ x: o.x, z: o.z, r: o.r * 0.85 }));
       if (lineOfSightClear(guard.x, guard.z, player.x, player.z, blockers)) {
-        const proximity = 1 - d / VISION_RANGE;
+        const proximity = 1 - dSq / VISION_RANGE_SQ;
         visionAdd = (0.5 + 0.6 * proximity) * visionScale * dt;
       }
     }
   }
 
-  // Noise contribution: only if standing upright. Crouching and prone
-  // are silent regardless of horizontal speed.
+  // Noise. Only contributes when the player is actually moving.
+  // Volume depends on stance + run; range likewise. Cover does NOT
+  // dampen noise (footfalls carry around boxes), but hiding behind
+  // cover while prone is so quiet the contribution is tiny anyway.
   let noiseAdd = 0;
-  if (!player.isCrouched && !player.isProne) {
-    const range = player.isRunning ? NOISE_RANGE_RUN : NOISE_RANGE_WALK;
-    if (d <= range) {
-      const proximity = 1 - d / range;
-      noiseAdd = (player.isRunning ? 0.35 : 0.1) * proximity * dt;
+  const movingFast = Math.abs(player.vx) > 0.05 || Math.abs(player.vz) > 0.05;
+  if (movingFast) {
+    const rangeSq = noiseRangeSq(player);
+    if (dSq <= rangeSq) {
+      const proximity = 1 - dSq / rangeSq;
+      noiseAdd = baseNoisePerSecond(player) * proximity * dt;
     }
   }
 

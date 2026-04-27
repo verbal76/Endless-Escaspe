@@ -1,16 +1,21 @@
-import type { Player, Obstacle } from '../types/world';
+import type { Obstacle, Player } from '../types/world';
 import { input } from './InputSystem';
 import {
-  PLAYER_RUN_SPEED,
-  PLAYER_WALK_SPEED,
   PLAYER_CROUCH_SPEED,
   PLAYER_PRONE_SPEED,
   PLAYER_RADIUS,
+  PLAYER_WALK_SPEED,
   PLAY_HALF_W,
 } from '../util/geometry';
 import { circleHit } from '../util/collision';
 
 const PLAYFIELD_BACK_Z = -2;
+
+function baseSpeedFor(stance: Player['stance']): number {
+  if (stance === 'crawl') return PLAYER_PRONE_SPEED;
+  if (stance === 'crouch') return PLAYER_CROUCH_SPEED;
+  return PLAYER_WALK_SPEED;
+}
 
 export function updatePlayer(
   p: Player,
@@ -18,31 +23,28 @@ export function updatePlayer(
   dt: number,
   segmentEndZ: number,
 ) {
-  // Stance flags. Crouch and Prone are toggles managed by ActionButtons;
-  // Run is a held-press button. Run is suppressed while crouched or prone.
-  p.isCrouched = input.crouch && !input.hide;
-  p.isProne = input.hide;
-  p.isRunning = input.run && !p.isCrouched && !p.isProne;
-  // Mirror isProne onto isHidden so any legacy reads continue to work.
-  p.isHidden = p.isProne;
+  // Stance and run come straight from the HUD radio/toggle. Visual /
+  // gameplay flags derive from stance only.
+  p.stance = input.stance;
+  p.isProne = p.stance === 'crawl';
+  p.isCrouched = p.stance === 'crouch';
+  p.isRunning = input.run;
 
-  const speed = p.isProne
-    ? PLAYER_PRONE_SPEED
-    : p.isCrouched
-      ? PLAYER_CROUCH_SPEED
-      : p.isRunning
-        ? PLAYER_RUN_SPEED
-        : PLAYER_WALK_SPEED;
+  const base = baseSpeedFor(p.stance);
+  // RUN doubles whatever the stance speed is. Even crawling can "run"
+  // (faster crawl); standing run is the fastest movement in the game.
+  const speed = p.isRunning ? base * 2 : base;
 
-  // Joystick UP = +Z (deeper into the yard). RIGHT on the joystick must
-  // map to +X on screen, but the camera looks down +Z so screen-right
-  // in landscape ends up as -X in world coordinates - hence the X flip.
+  // Joystick UP = +Z (deeper into the yard). Joystick RIGHT must map
+  // to player-right on screen, but the camera looks down +Z so
+  // screen-right in landscape is -X in world coordinates - hence the
+  // X flip.
   p.vx = -input.axisX * speed;
   p.vz = input.axisY * speed;
 
-  // Sequential X-then-Z collision resolution. Cover obstacles are now
-  // SOLID (the player can no longer walk through the large dark blocks);
-  // they still block guard line-of-sight via DetectionSystem's filter.
+  // Sequential X-then-Z collision resolution. ALL obstacles (including
+  // cover) block the player; cover only matters for guard line of
+  // sight and the prone-hide check.
   let nx = p.x + p.vx * dt;
   for (const o of obstacles) {
     if (circleHit({ x: nx, z: p.z, r: PLAYER_RADIUS }, { x: o.x, z: o.z, r: o.r })) {
@@ -58,7 +60,9 @@ export function updatePlayer(
     }
   }
 
-  // Soft playfield walls.
+  // Soft playfield walls. PLAY_HALF_W is the half-width of the
+  // playfield; the player can roam its full width (the camera now
+  // tracks them at 1:1, no lateral dampening).
   const xLimit = PLAY_HALF_W - PLAYER_RADIUS;
   if (nx > xLimit) nx = xLimit;
   if (nx < -xLimit) nx = -xLimit;

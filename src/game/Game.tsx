@@ -12,16 +12,19 @@ import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { updatePlayer } from '../systems/PlayerController';
 import { updateGuard } from '../systems/GuardAI';
 import { updateDetection } from '../systems/DetectionSystem';
+import { updateHide } from '../systems/HideSystem';
 import {
   createFacingMarker,
   createGround,
   createGuard,
+  createGuardConfigs,
   createGuardMesh,
   createPlayer,
   createPlayerMesh,
   createWinLine,
 } from '../scenes/PrisonYard1';
 import { useStore } from '../state/store';
+import type { Guard } from '../types/world';
 import { CHUNK_LEN, CHUNKS_AHEAD, PLAYER_RADIUS } from '../util/geometry';
 import { circleHit } from '../util/collision';
 
@@ -51,13 +54,17 @@ export function Game() {
     const playerMat = playerMesh.material as THREE.MeshStandardMaterial;
     r.worldRoot.add(playerMesh);
 
-    const guard = createGuard();
-    guard.mesh = createGuardMesh();
-    guard.mesh.position.set(guard.x, 0.7, guard.z);
-    r.worldRoot.add(guard.mesh);
-    guard.visionMesh = createFacingMarker();
-    guard.visionMesh.position.set(0, 0.05, 2);
-    guard.mesh.add(guard.visionMesh);
+    // Two guards, separate home zones (see createGuardConfigs).
+    const guards: Guard[] = createGuardConfigs().map((cfg) => {
+      const g = createGuard(cfg);
+      g.mesh = createGuardMesh();
+      g.mesh.position.set(g.x, 0.7, g.z);
+      r.worldRoot.add(g.mesh);
+      g.visionMesh = createFacingMarker();
+      g.visionMesh.position.set(0, 0.05, 2);
+      g.mesh.add(g.visionMesh);
+      return g;
+    });
 
     const procgen = new ProcgenSystem(useStore.getState().segmentSeed, r.worldRoot);
     procgen.init();
@@ -78,15 +85,19 @@ export function Game() {
       // Soft restart inside the segment.
       player.x = 0;
       player.z = 1;
-      player.isProne = false;
       player.isHidden = false;
-      player.isCrouched = false;
-      st.setHidden(false);
-      guard.x = guard.waypoints[0].x;
-      guard.z = guard.waypoints[0].z;
-      guard.waypointIndex = 0;
-      guard.fireCooldown = 0;
-      st.setDetection(guard.id, 0);
+      player.stance = 'walk';
+      st.setStance('walk');
+      for (const g of guards) {
+        g.x = g.homeX;
+        g.z = g.homeZ;
+        g.state = 'wander';
+        g.behaviorTimer = 0;
+        g.wanderTimer = 0;
+        g.investigationTarget = null;
+        g.fireCooldown = 0;
+        st.setDetection(g.id, 0);
+      }
     };
 
     const update = (dt: number) => {
@@ -97,17 +108,17 @@ export function Game() {
       }
 
       updatePlayer(player, procgen.obstacles(), dt, segmentEndZ);
-      // Mirror prone state into the store so the HUD's PRONE pill stays
-      // in sync without re-rendering each frame.
-      if (player.isProne !== st.isHidden) st.setHidden(player.isProne);
+      updateHide(player, procgen.obstacles());
+      if (player.stance !== st.stance) st.setStance(player.stance);
 
-      const prev = st.detection[guard.id] ?? 0;
-      const next = updateDetection(guard, player, procgen.obstacles(), prev, dt);
-      st.setDetection(guard.id, next);
-
-      updateGuard(guard, player, next, dt, (g, tx, tz) => {
-        projectiles.spawn(g.x, g.z, tx, tz);
-      });
+      for (const g of guards) {
+        const prev = st.detection[g.id] ?? 0;
+        const next = updateDetection(g, player, procgen.obstacles(), prev, dt);
+        st.setDetection(g.id, next);
+        updateGuard(g, player, next, dt, procgen.obstacles(), (gFiring, tx, tz) => {
+          projectiles.spawn(gFiring.x, gFiring.z, tx, tz);
+        });
+      }
 
       procgen.update(player.z);
 
@@ -119,21 +130,24 @@ export function Game() {
         return;
       }
 
-      // Projectile-driven catch.
+      // Projectile-driven catch (any projectile from any guard).
       if (projectiles.update(dt, player)) {
         handleCatch();
         return;
       }
 
-      // Direct-contact catch (chase + body collision) stays as a backup.
-      if (
-        guard.state === 'chase' &&
-        circleHit(
-          { x: player.x, z: player.z, r: PLAYER_RADIUS },
-          { x: guard.x, z: guard.z, r: 0.6 },
-        )
-      ) {
-        handleCatch();
+      // Direct-contact catch from any chasing guard.
+      for (const g of guards) {
+        if (
+          g.state === 'chase' &&
+          circleHit(
+            { x: player.x, z: player.z, r: PLAYER_RADIUS },
+            { x: g.x, z: g.z, r: 0.6 },
+          )
+        ) {
+          handleCatch();
+          break;
+        }
       }
     };
 
@@ -141,10 +155,7 @@ export function Game() {
       playerMesh.position.x = player.x;
       playerMesh.position.z = player.z;
       if (player.isProne) {
-        // Lay the capsule flat along its forward axis. The base
-        // capsule's long axis is Y; rotating PI/2 around X tips it
-        // onto Z so it reads as a person lying face-down. The Y is
-        // pinned low so it sits on the ground.
+        // Lay flat along Z; sit low on the ground.
         playerMesh.rotation.x = Math.PI / 2;
         playerMesh.scale.set(1, 1, 1);
         playerMesh.position.y = 0.25;
@@ -159,10 +170,11 @@ export function Game() {
       }
       playerMat.opacity = 1;
 
-      if (guard.mesh) {
-        guard.mesh.position.x = guard.x;
-        guard.mesh.position.z = guard.z;
-        guard.mesh.rotation.y = -guard.facing + Math.PI / 2;
+      for (const g of guards) {
+        if (!g.mesh) continue;
+        g.mesh.position.x = g.x;
+        g.mesh.position.z = g.z;
+        g.mesh.rotation.y = -g.facing + Math.PI / 2;
       }
 
       updateCameraRig(r.camera, player, 1 / 60);

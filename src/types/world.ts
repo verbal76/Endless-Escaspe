@@ -35,30 +35,59 @@ export type Chunk = {
   obstacles: Obstacle[];
 };
 
+// Player movement mode. RUN is a separate, orthogonal speed multiplier
+// (input.run) that doubles movement speed for any of these stances.
+export type Stance = 'crawl' | 'crouch' | 'walk';
+
 export type Player = {
   x: number;
   z: number;
   vx: number;
   vz: number;
-  isCrouched: boolean;
+  stance: Stance;
   isRunning: boolean;
+  // Derived flags - true iff stance equals the corresponding value.
+  // Kept on the type so render code and DetectionSystem don't have to
+  // re-derive each frame, but they're written from `stance` only.
+  isCrouched: boolean;
   isProne: boolean;
-  // Retained so existing references compile; mirrors isProne for now.
+  // Hidden-from-guards: prone AND within HIDE_RANGE of a cover obstacle.
   isHidden: boolean;
 };
 
-export type GuardState = 'patrol' | 'suspicious' | 'alert' | 'chase';
+// Guard behaviour state machine.
+//   wander      - drifting around home zone toward random target points
+//   alert       - heard / saw something, stopped, scanning toward source
+//   investigate - moving toward last suspected player position
+//   chase       - confirmed visual; sprint at player and fire shots
+//   return      - lost the trail, walking back toward home zone
+export type GuardState =
+  | 'wander'
+  | 'alert'
+  | 'investigate'
+  | 'chase'
+  | 'return';
 
 export type Guard = {
   id: number;
   x: number;
   z: number;
-  // Facing angle in radians (0 = +X). Vision cone centered on this.
   facing: number;
   state: GuardState;
-  waypoints: Array<{ x: number; z: number }>;
-  waypointIndex: number;
-  // Seconds remaining until the guard can fire its next projectile.
+  // Home territory - center + radius. Guards drift around inside this
+  // and return to it when they lose interest. Two guards therefore
+  // cover different parts of the playfield instead of overlapping.
+  homeX: number;
+  homeZ: number;
+  homeRadius: number;
+  wanderTarget: { x: number; z: number };
+  wanderTimer: number;
+  // Time spent in the current non-wander state. Used to time out alert
+  // pauses, give up investigations, etc.
+  behaviorTimer: number;
+  // Last position the guard suspects the player is at (set when
+  // detection contributes mass). Cleared on transition back to wander.
+  investigationTarget: { x: number; z: number } | null;
   fireCooldown: number;
   mesh: Object3D | null;
   visionMesh: Object3D | null;

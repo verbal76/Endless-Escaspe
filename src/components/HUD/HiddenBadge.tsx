@@ -2,9 +2,11 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useStore } from '../../state/store';
 
+// Shown whenever the player is in the crawl/prone stance, irrespective
+// of cover. Communicates posture, not stealth-state.
 export function HiddenBadge() {
-  const isHidden = useStore((s) => s.isHidden);
-  if (!isHidden) return null;
+  const stance = useStore((s) => s.stance);
+  if (stance !== 'crawl') return null;
   return (
     <View pointerEvents="none" style={styles.wrap}>
       <Text style={styles.label}>PRONE</Text>

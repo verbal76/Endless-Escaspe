@@ -2,10 +2,18 @@ import React from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useStore } from '../../state/store';
 
-const GUARD_ID = 1;
-
+// One bar showing the highest detection across all guards. Multi-guard
+// scenarios use the max so the player gets a single, unambiguous
+// "how alarmed is the most alarmed guard" reading.
 export function DetectionMarker() {
-  const v = useStore((s) => s.detection[GUARD_ID] ?? 0);
+  const v = useStore((s) => {
+    let max = 0;
+    for (const k in s.detection) {
+      const x = s.detection[k];
+      if (x > max) max = x;
+    }
+    return max;
+  });
   const pct = Math.round(v * 100);
   const color = v > 0.85 ? '#ff4444' : v > 0.5 ? '#ffaa33' : '#ffd14a';
 

@@ -156,44 +156,57 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
     // supported by extended arms in front and bent legs underneath.
     // Limbs cycle in opposite-pair phase (left arm + right leg
     // forward, then right arm + left leg forward).
+    //
+    // Reaching arm: extends forward AND swings inward toward the
+    // centreline so the hand ends up over/in front of the head, not
+    // out at the shoulder line. Tucked arm stays at the body's
+    // side. Same for the legs to keep the silhouette consistent.
 
-    // Torso tipped face-down, lowered to roughly knee height. Pivot
-    // is the torso centre so we re-position to keep it in frame.
-    fig.torso.rotation.x = Math.PI / 2.4; // ~75deg forward tip
+    fig.torso.rotation.x = Math.PI / 2.4;
     fig.torso.position.set(0, 0.6, 0);
 
-    // Head extends forward of the (now horizontal) torso, looking
-    // slightly up so the eyes face the direction of travel.
     fig.head.position.set(0, 0.7, 0.55);
     fig.head.rotation.x = -Math.PI / 5;
 
-    // Arms reach forward and down (palms on the ground ahead).
-    // Re-anchor the shoulder pivots low and slightly forward so the
-    // limb fans look natural with the new torso pose.
+    // Shoulders pulled inboard a touch from the standing pose so
+    // the inward arm swing puts the hand cleanly in front of the
+    // head, not too far across the body.
+    const shoulderHalf = TORSO_W / 2 - 0.04;
     const shoulderY = 0.65;
-    const handForward = 0.25;
-    fig.armL.position.set(-(TORSO_W / 2 + ARM_W / 2 + 0.02), shoulderY, handForward);
-    fig.armR.position.set(TORSO_W / 2 + ARM_W / 2 + 0.02, shoulderY, handForward);
+    const handForward = 0.18;
+    fig.armL.position.set(-shoulderHalf, shoulderY, handForward);
+    fig.armR.position.set(shoulderHalf, shoulderY, handForward);
 
-    // Knees on the ground, hips slightly behind torso centre.
     const hipY = 0.55;
     const hipBack = -0.2;
     fig.legL.position.set(-(LEG_W / 2 + 0.02), hipY, hipBack);
     fig.legR.position.set(LEG_W / 2 + 0.02, hipY, hipBack);
 
-    // Crawl cycle: arms and legs both rotate ~PI/2 forward (extended
-    // ahead). On top of that base, oscillate so opposite-side limbs
-    // alternate. Use cos(phase) for clear "left forward, right back"
-    // alternation rather than slow sin start.
-    const armBase = Math.PI / 2 + 0.15;
+    // Forwardness factors per limb (cosine cycle, opposites alternate).
+    const armForwardL = Math.cos(phase);
+    const armForwardR = -armForwardL;
+    const legForwardR = armForwardL; // right leg syncs with left arm
+    const legForwardL = -armForwardL;
+
+    const armBase = Math.PI / 2 + 0.05;
     const legBase = Math.PI / 2 + 0.05;
-    const armSwing = 0.45 * swing;
-    const legSwing = 0.40 * swing;
-    fig.armL.rotation.x = armBase + Math.cos(phase) * armSwing;
-    fig.armR.rotation.x = armBase - Math.cos(phase) * armSwing;
-    // Right leg synced with left arm; left leg synced with right arm.
-    fig.legR.rotation.x = legBase + Math.cos(phase) * legSwing;
-    fig.legL.rotation.x = legBase - Math.cos(phase) * legSwing;
+    const armSwing = 0.35 * swing;
+    const legSwing = 0.35 * swing;
+
+    // Forward extension (around X axis, swings the limb +Z).
+    fig.armL.rotation.x = armBase + armForwardL * armSwing;
+    fig.armR.rotation.x = armBase + armForwardR * armSwing;
+    fig.legR.rotation.x = legBase + legForwardR * legSwing;
+    fig.legL.rotation.x = legBase + legForwardL * legSwing;
+
+    // Inward yaw: only the REACHING arm angles toward centreline
+    // (the tucked arm stays at the body side). Left arm rotates +Y
+    // to swing its hand toward +X (centre); right arm rotates -Y.
+    // Math.max gates the swing to the positive (extending) half of
+    // the cycle so the tucked side stays out at the shoulder line.
+    const inwardYaw = 0.65;
+    fig.armL.rotation.y = inwardYaw * Math.max(0, armForwardL);
+    fig.armR.rotation.y = -inwardYaw * Math.max(0, armForwardR);
   } else if (stance === 'crouch') {
     fig.group.position.y = -0.35;
     fig.torso.rotation.x = 0.25;

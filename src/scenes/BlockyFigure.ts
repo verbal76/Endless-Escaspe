@@ -190,21 +190,21 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
 
     const armBase = Math.PI / 2 + 0.05;
     const legBase = Math.PI / 2 + 0.05;
-    const armSwing = 0.35 * swing;
-    const legSwing = 0.35 * swing;
+    // Bigger forward swing on the reaching half so the hand sweeps
+    // out past the head, then tucks back toward the body.
+    const armSwing = 0.5 * swing;
+    const legSwing = 0.4 * swing;
 
-    // Forward extension (around X axis, swings the limb +Z).
     fig.armL.rotation.x = armBase + armForwardL * armSwing;
     fig.armR.rotation.x = armBase + armForwardR * armSwing;
     fig.legR.rotation.x = legBase + legForwardR * legSwing;
     fig.legL.rotation.x = legBase + legForwardL * legSwing;
 
     // Inward yaw: only the REACHING arm angles toward centreline
-    // (the tucked arm stays at the body side). Left arm rotates +Y
-    // to swing its hand toward +X (centre); right arm rotates -Y.
-    // Math.max gates the swing to the positive (extending) half of
-    // the cycle so the tucked side stays out at the shoulder line.
-    const inwardYaw = 0.65;
+    // (the tucked arm stays at the body side). 0.95 rad (~54 deg)
+    // pulls the hand cleanly across centre so it ends up over /
+    // in front of the head, not at the shoulder line.
+    const inwardYaw = 0.95;
     fig.armL.rotation.y = inwardYaw * Math.max(0, armForwardL);
     fig.armR.rotation.y = -inwardYaw * Math.max(0, armForwardR);
   } else if (stance === 'crouch') {

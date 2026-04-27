@@ -53,6 +53,14 @@ import {
 } from '../scenes/BlockyFigure';
 import { attachGuardEquipment, poseGuardArms, type GuardEquipment } from '../scenes/GuardEquipment';
 import { createBackdrop, updateBackdrop } from '../scenes/Backdrop';
+import {
+  createWeather,
+  noiseMultiplier,
+  pickWeather,
+  updateWeather,
+  visionMultiplier,
+  type Weather,
+} from '../scenes/Weather';
 
 // Stats thresholds. Higher = lenient; lower = stingy.
 const STAT_DETECTED_3 = 3;   // <= seconds detected for 3 stars on this metric
@@ -88,14 +96,22 @@ export function Game() {
     const r = createRenderer(gl);
 
     const ground = createGround();
+    const groundMat = ground.material as THREE.MeshStandardMaterial;
     r.worldRoot.add(ground);
 
-    // Layered scenery: snow-capped mountains on the horizon, tree
-    // line flanking the playfield, drifting clouds, flying birds.
-    // Distance + perspective gives the parallax effect for free as
-    // the camera follows the player.
     const backdrop = createBackdrop();
     r.worldRoot.add(backdrop.group);
+
+    // Per-segment weather. Picked deterministically from the segment
+    // seed so a restart of the same segment gets the same conditions.
+    const weatherKind = pickWeather(useStore.getState().segmentSeed);
+    useStore.getState().setWeather(weatherKind);
+    const weather: Weather = createWeather(weatherKind, 0, 1);
+    r.worldRoot.add(weather.group);
+    // Snow tints the ground bright; rain and clear keep grass.
+    if (weatherKind === 'snow') {
+      groundMat.color.setHex(0xc8d6dc);
+    }
 
     const winLine = createWinLine();
     r.worldRoot.add(winLine);
@@ -247,6 +263,7 @@ export function Game() {
       animTime += dt;
 
       updateBackdrop(backdrop, dt);
+      updateWeather(weather, dt, player.x, player.z);
 
       updatePlayer(player, procgen.obstacles(), dt, segmentEndZ);
       updateHide(player, procgen.obstacles());
@@ -257,9 +274,13 @@ export function Game() {
         updateLightTower(t, dt);
         if (!lit && isPlayerLit(t, player.x, player.z)) lit = true;
       }
-      const effectiveVisionRange = lit
+      // Weather modifiers: snow boosts vision (player more visible
+       // against bright background); rain dampens player noise.
+      const weatherVision = visionMultiplier(weather.kind);
+      const weatherNoise = noiseMultiplier(weather.kind);
+      const effectiveVisionRange = (lit
         ? baseVisionRange * (1 + LIGHT_VISION_BONUS)
-        : baseVisionRange;
+        : baseVisionRange) * weatherVision;
 
       let anyDetected = false;
       let maxDetection = 0;
@@ -273,6 +294,7 @@ export function Game() {
           prev,
           dt,
           effectiveVisionRange,
+          weatherNoise,
         );
         st.setDetection(g.id, next);
         if (next > maxDetection) maxDetection = next;

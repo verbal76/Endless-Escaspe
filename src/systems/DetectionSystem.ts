@@ -45,6 +45,7 @@ export function updateDetection(
   prev: number,
   dt: number,
   visionRange: number,
+  noiseScale: number = 1,
 ): number {
   const dSq = dist2(guard.x, guard.z, player.x, player.z);
   const visionRangeSq = visionRange * visionRange;
@@ -87,7 +88,7 @@ export function updateDetection(
     const rangeSq = noiseRangeSq(player);
     if (dSq <= rangeSq) {
       const proximity = 1 - dSq / rangeSq;
-      noiseAdd = baseNoisePerSecond(player) * proximity * dt;
+      noiseAdd = baseNoisePerSecond(player) * proximity * dt * noiseScale;
     }
   }
 

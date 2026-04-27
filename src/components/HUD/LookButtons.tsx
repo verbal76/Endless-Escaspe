@@ -1,50 +1,68 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
 
-// Hold-to-look arrows. Press and hold the left arrow to swing the
-// camera 45 deg to the left; release and the camera lerps back to
-// straight-ahead. Same for right.
-//
-// Layout (per user feedback): RIGHT arrow sits directly under the
-// stance-button stack, which lives at right:63 with 78px-wide
-// buttons. The LEFT arrow sits a little further to the left of
-// the stack (further from the screen edge) at the same vertical
-// position. Both buttons are below the stack, in the bottom-right
-// corner of the HUD.
-//
-// The stance stack starts at bottom:100 (pushed up to make room),
-// so the look-arrow row sits at bottom:30 directly underneath.
+// Hold-to-look arrows. Use react-native-gesture-handler instead of
+// Pressable so they coexist with the joystick's Pan gesture - with
+// Pressable, the React Native responder system would lock movement
+// while a look arrow was held. Gesture.LongPress with minDuration:0
+// fires immediately on touch and cooperates with sibling gestures.
 
 const LOOK_YAW_DEG = 45;
 const LOOK_YAW_RAD = (LOOK_YAW_DEG * Math.PI) / 180;
 const ARROW_SIZE = 50;
 
+function setYaw(v: number) {
+  input.viewYaw = v;
+}
+
 export function LookButtons() {
+  const leftGesture = React.useMemo(
+    () =>
+      Gesture.LongPress()
+        .minDuration(0)
+        .maxDistance(99999)
+        .onStart(() => {
+          'worklet';
+          runOnJS(setYaw)(LOOK_YAW_RAD);
+        })
+        .onFinalize(() => {
+          'worklet';
+          runOnJS(setYaw)(0);
+        }),
+    [],
+  );
+
+  const rightGesture = React.useMemo(
+    () =>
+      Gesture.LongPress()
+        .minDuration(0)
+        .maxDistance(99999)
+        .onStart(() => {
+          'worklet';
+          runOnJS(setYaw)(-LOOK_YAW_RAD);
+        })
+        .onFinalize(() => {
+          'worklet';
+          runOnJS(setYaw)(0);
+        }),
+    [],
+  );
+
   return (
     <>
-      <Pressable
-        onPressIn={() => {
-          input.viewYaw = -LOOK_YAW_RAD;
-        }}
-        onPressOut={() => {
-          input.viewYaw = 0;
-        }}
-        style={({ pressed }) => [styles.left, pressed && styles.btnActive]}
-      >
-        <Text style={styles.glyph}>‹</Text>
-      </Pressable>
-      <Pressable
-        onPressIn={() => {
-          input.viewYaw = LOOK_YAW_RAD;
-        }}
-        onPressOut={() => {
-          input.viewYaw = 0;
-        }}
-        style={({ pressed }) => [styles.right, pressed && styles.btnActive]}
-      >
-        <Text style={styles.glyph}>›</Text>
-      </Pressable>
+      <GestureDetector gesture={leftGesture}>
+        <View style={styles.left}>
+          <Text style={styles.glyph}>‹</Text>
+        </View>
+      </GestureDetector>
+      <GestureDetector gesture={rightGesture}>
+        <View style={styles.right}>
+          <Text style={styles.glyph}>›</Text>
+        </View>
+      </GestureDetector>
     </>
   );
 }
@@ -63,20 +81,13 @@ const baseBtn = {
 };
 
 const styles = StyleSheet.create({
-  // Right arrow: directly below the stance stack (stack right edge at
-  // right:63, 78px wide -> centred under the column at right:77).
   right: {
     ...baseBtn,
     right: 63 + (78 - ARROW_SIZE) / 2,
   },
-  // Left arrow: a little to the left of the stack, same vertical row.
   left: {
     ...baseBtn,
     right: 63 + 78 + 14,
-  },
-  btnActive: {
-    backgroundColor: 'rgba(120, 200, 255, 0.45)',
-    borderColor: 'rgba(140, 220, 255, 0.85)',
   },
   glyph: {
     color: '#fff',

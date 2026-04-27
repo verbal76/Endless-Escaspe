@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { RunState, Stance } from '../types/world';
+import type { WeatherKind } from '../scenes/Weather';
 
 // End-of-segment stats reported on the win board.
 export type RunStats = {
@@ -28,9 +29,9 @@ type Store = {
   stance: Stance;
   paused: boolean;
   restartCounter: number;
-  // Populated when runState transitions to 'cleared' with the latest
-  // stats. The Banner reads this to draw the 3-star end-of-segment
-  // board.
+  // Per-segment weather. Picked at segment init by Game.tsx via
+  // pickWeather(seed); HUD subscribes if it ever needs to surface it.
+  weather: WeatherKind;
   lastStats: RunStats | null;
   setRunState: (s: RunState) => void;
   setHearts: (n: number) => void;
@@ -39,6 +40,7 @@ type Store = {
   setStage: (n: number) => void;
   setPaused: (b: boolean) => void;
   setLastStats: (s: RunStats | null) => void;
+  setWeather: (w: WeatherKind) => void;
   requestRestart: () => void;
   resetForSegment: (seed: number) => void;
   startRun: () => void;
@@ -53,6 +55,7 @@ export const useStore = create<Store>((set) => ({
   stance: 'walk',
   paused: false,
   restartCounter: 0,
+  weather: 'clear',
   lastStats: null,
   setRunState: (s) => set({ runState: s }),
   setHearts: (n) => set({ hearts: n }),
@@ -68,6 +71,7 @@ export const useStore = create<Store>((set) => ({
     set((st) => (st.stage === n ? st : { stage: n })),
   setPaused: (b) => set((st) => (st.paused === b ? st : { paused: b })),
   setLastStats: (s) => set({ lastStats: s }),
+  setWeather: (w) => set((st) => (st.weather === w ? st : { weather: w })),
   requestRestart: () =>
     set((st) => ({
       restartCounter: st.restartCounter + 1,

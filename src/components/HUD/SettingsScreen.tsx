@@ -1,30 +1,67 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useStore } from '../../state/store';
 import { BUILD_VERSION, OTA_VERSION } from '../../version';
 
 export function SettingsScreen() {
   const [open, setOpen] = useState(false);
+  const setPaused = useStore((s) => s.setPaused);
+  const setRunState = useStore((s) => s.setRunState);
+  const requestRestart = useStore((s) => s.requestRestart);
+
+  const openPanel = () => {
+    setOpen(true);
+    setPaused(true);
+  };
+  const close = () => {
+    setOpen(false);
+    setPaused(false);
+  };
+  const onResume = close;
+  const onRestart = () => {
+    setOpen(false);
+    requestRestart();
+  };
+  const onMainMenu = () => {
+    setOpen(false);
+    setPaused(false);
+    setRunState('idle');
+  };
 
   return (
     <>
       <Pressable
         accessibilityLabel="Settings"
         style={({ pressed }) => [styles.gearWrap, pressed && styles.gearPressed]}
-        onPress={() => setOpen(true)}
+        onPress={openPanel}
         hitSlop={10}
       >
         <Text style={styles.gearGlyph}>⚙</Text>
       </Pressable>
 
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
+      <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
         <View style={styles.backdrop}>
           <View style={styles.card}>
-            <Text style={styles.title}>Settings</Text>
+            <Text style={styles.title}>GAME PAUSED</Text>
+
+            <Pressable
+              style={({ pressed }) => [styles.bigBtn, styles.btnResume, pressed && styles.btnPressed]}
+              onPress={onResume}
+            >
+              <Text style={styles.bigLabel}>RESUME</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
+              onPress={onRestart}
+            >
+              <Text style={styles.bigLabel}>RESTART</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
+              onPress={onMainMenu}
+            >
+              <Text style={styles.bigLabel}>MAIN MENU</Text>
+            </Pressable>
 
             <Text style={styles.sectionHeading}>About</Text>
             <View style={styles.row}>
@@ -35,13 +72,6 @@ export function SettingsScreen() {
               <Text style={styles.rowLabel}>OTA</Text>
               <Text style={styles.rowValue}>{OTA_VERSION}</Text>
             </View>
-
-            <Pressable
-              style={({ pressed }) => [styles.closeBtn, pressed && styles.closeBtnPressed]}
-              onPress={() => setOpen(false)}
-            >
-              <Text style={styles.closeLabel}>CLOSE</Text>
-            </Pressable>
           </View>
         </View>
       </Modal>
@@ -73,7 +103,7 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 32,
@@ -81,60 +111,71 @@ const styles = StyleSheet.create({
   card: {
     minWidth: 320,
     maxWidth: 420,
-    backgroundColor: '#161a22',
-    borderRadius: 14,
+    backgroundColor: '#1a1d24',
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.10)',
+    borderColor: 'rgba(255, 210, 90, 0.40)',
     padding: 22,
   },
   title: {
+    color: '#ffd14a',
+    fontSize: 22,
+    fontWeight: '900',
+    letterSpacing: 2,
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  bigBtn: {
+    marginVertical: 6,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+  },
+  btnResume: {
+    backgroundColor: 'rgba(80, 200, 120, 0.25)',
+    borderColor: 'rgba(120, 240, 160, 0.65)',
+  },
+  btnRestart: {
+    backgroundColor: 'rgba(120, 200, 255, 0.20)',
+    borderColor: 'rgba(140, 220, 255, 0.65)',
+  },
+  btnMain: {
+    backgroundColor: 'rgba(255, 210, 90, 0.20)',
+    borderColor: 'rgba(255, 210, 90, 0.55)',
+  },
+  btnPressed: {
+    opacity: 0.7,
+  },
+  bigLabel: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '800',
-    letterSpacing: 0.5,
-    marginBottom: 12,
+    letterSpacing: 1.5,
   },
   sectionHeading: {
     color: 'rgba(255, 255, 255, 0.55)',
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.5,
-    marginTop: 8,
-    marginBottom: 8,
+    marginTop: 18,
+    marginBottom: 6,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
   rowLabel: {
     color: 'rgba(255, 255, 255, 0.65)',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   rowValue: {
     color: '#fff',
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: 'monospace',
-  },
-  closeBtn: {
-    marginTop: 18,
-    alignSelf: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 210, 90, 0.20)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 210, 90, 0.50)',
-  },
-  closeBtnPressed: {
-    backgroundColor: 'rgba(255, 210, 90, 0.45)',
-  },
-  closeLabel: {
-    color: '#ffd14a',
-    fontWeight: '800',
-    letterSpacing: 1,
-    fontSize: 12,
   },
 });

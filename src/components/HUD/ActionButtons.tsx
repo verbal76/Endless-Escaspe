@@ -38,7 +38,10 @@ export function ActionButtons() {
 const styles = StyleSheet.create({
   col: {
     position: 'absolute',
-    right: 24,
+    // Shifted left half a button width (button = 78px wide so +39px
+    // of right-offset) per user feedback - the cluster was hugging
+    // the right edge and felt cramped.
+    right: 63,
     bottom: 30,
     flexDirection: 'column',
     gap: 8,

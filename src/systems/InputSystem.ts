@@ -7,12 +7,13 @@ export type InputState = {
   // Normalized joystick vector in [-1, 1].
   axisX: number;
   axisY: number;
-  // Movement stance picker. CRAWL / CROUCH / WALK are mutually
-  // exclusive radio buttons in the HUD. Default WALK.
   stance: Stance;
-  // Speed multiplier toggle, orthogonal to stance. Doubles whatever
-  // base speed the current stance uses.
   run: boolean;
+  // Camera yaw offset (radians) requested by the look-arrow buttons.
+  // 0 = looking forward; +/- LOOK_YAW = held look-right / look-left.
+  // CameraRig lerps the camera toward this target so release snaps
+  // smoothly back to centred when the player lets go of the button.
+  viewYaw: number;
 };
 
 export const input: InputState = {
@@ -20,6 +21,7 @@ export const input: InputState = {
   axisY: 0,
   stance: 'walk',
   run: false,
+  viewYaw: 0,
 };
 
 export function resetInput() {
@@ -27,4 +29,5 @@ export function resetInput() {
   input.axisY = 0;
   input.stance = 'walk';
   input.run = false;
+  input.viewYaw = 0;
 }

@@ -1,80 +1,57 @@
 import * as THREE from 'three';
-import type { Chunk, Obstacle } from '../types/world';
+import type { Chunk, Obstacle, ObstacleKind } from '../types/world';
 import { mulberry32, pick, randInt, type Rng } from '../util/rng';
 import {
   CHUNK_LEN,
   CHUNKS_AHEAD,
   COVER_RADIUS,
-  OBSTACLE_RADIUS,
   PLAYER_RADIUS,
   PLAY_HALF_W,
 } from '../util/geometry';
+import {
+  NON_COVER_KINDS,
+  OBSTACLE_HEIGHT,
+  OBSTACLE_RADIUS,
+  buildObstacleMesh,
+} from '../scenes/Obstacles';
 
 let nextObstacleId = 1;
 let nextChunkId = 1;
 
-const crateGeo = new THREE.BoxGeometry(1.1, 1.1, 1.1);
-const wallGeo = new THREE.BoxGeometry(1.6, 0.6, 0.6);
-const coverGeo = new THREE.BoxGeometry(2.0, 1.4, 1.0);
-
-const crateMat = new THREE.MeshStandardMaterial({ color: 0x8a6a3d, roughness: 0.85 });
-const wallMat = new THREE.MeshStandardMaterial({ color: 0x4a4f55, roughness: 0.95 });
-const coverMat = new THREE.MeshStandardMaterial({ color: 0x2c3a4d, roughness: 0.9 });
-
 const SPAWN_X_MIN = -PLAY_HALF_W + 0.7;
 const SPAWN_X_MAX = PLAY_HALF_W - 0.7;
-const MIN_OBSTACLE_GAP = 2.5;
+const SPACING_BUFFER = 0.6; // extra metres on top of (a.r + b.r)
 const SLAB_STEP = 1.0;
 const SLAB_HALF_DEPTH = 1.2;
-const REQUIRED_GAP_W = PLAYER_RADIUS * 4; // ~1.8m walkable corridor at every Z slab
+const REQUIRED_GAP_W = PLAYER_RADIUS * 4;
 
-function buildObstacleMesh(o: Obstacle): THREE.Mesh {
-  if (o.kind === 'crate') {
-    const m = new THREE.Mesh(crateGeo, crateMat);
-    m.position.set(o.x, 0.55, o.z);
-    return m;
-  }
-  if (o.kind === 'cover') {
-    const m = new THREE.Mesh(coverGeo, coverMat);
-    m.position.set(o.x, 0.7, o.z);
-    return m;
-  }
-  const m = new THREE.Mesh(wallGeo, wallMat);
-  m.position.set(o.x, 0.3, o.z);
-  return m;
-}
-
-function tooClose(obstacles: Obstacle[], x: number, z: number): boolean {
+function tooClose(obstacles: Obstacle[], x: number, z: number, r: number): boolean {
   for (const o of obstacles) {
     const dx = o.x - x;
     const dz = o.z - z;
-    if (dx * dx + dz * dz < MIN_OBSTACLE_GAP * MIN_OBSTACLE_GAP) return true;
+    const minD = o.r + r + SPACING_BUFFER;
+    if (dx * dx + dz * dz < minD * minD) return true;
   }
   return false;
 }
 
-function placeScatter(
-  rng: Rng,
-  obstacles: Obstacle[],
-  startZ: number,
-  count: number,
-  kindFn: () => Obstacle['kind'],
-  isCover: boolean,
-  radius: number,
-) {
+function placeNonCoverScatter(rng: Rng, obstacles: Obstacle[], startZ: number, count: number) {
   for (let i = 0; i < count; i++) {
     let placed = false;
-    for (let attempt = 0; attempt < 12 && !placed; attempt++) {
+    for (let attempt = 0; attempt < 14 && !placed; attempt++) {
+      const kind: ObstacleKind = pick(rng, NON_COVER_KINDS);
+      const r = OBSTACLE_RADIUS[kind];
       const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
       const z = startZ + 1.5 + rng() * (CHUNK_LEN - 3);
-      if (tooClose(obstacles, x, z)) continue;
+      if (tooClose(obstacles, x, z, r)) continue;
       obstacles.push({
         id: nextObstacleId++,
-        kind: kindFn(),
+        kind,
         x,
         z,
-        r: radius,
-        isCover,
+        r,
+        height: OBSTACLE_HEIGHT[kind],
+        isCover: false,
         mesh: null,
       });
       placed = true;
@@ -82,9 +59,31 @@ function placeScatter(
   }
 }
 
-// Sweep across Z slabs; require at least one X-window of width REQUIRED_GAP_W
-// that is free of non-cover obstacles. Cover blocks are pass-through, so they
-// don't count as obstructions.
+function placeCoverScatter(rng: Rng, obstacles: Obstacle[], startZ: number, count: number) {
+  for (let i = 0; i < count; i++) {
+    let placed = false;
+    for (let attempt = 0; attempt < 14 && !placed; attempt++) {
+      const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
+      const z = startZ + 1.5 + rng() * (CHUNK_LEN - 3);
+      if (tooClose(obstacles, x, z, COVER_RADIUS)) continue;
+      obstacles.push({
+        id: nextObstacleId++,
+        kind: 'cover',
+        x,
+        z,
+        r: COVER_RADIUS,
+        height: OBSTACLE_HEIGHT.cover,
+        isCover: true,
+        mesh: null,
+      });
+      placed = true;
+    }
+  }
+}
+
+// Sweep across Z slabs; require at least one X-window of width
+// REQUIRED_GAP_W that is free of non-cover obstacles. Cover blocks
+// are pass-through, so they don't count as obstructions.
 function isSolvable(obstacles: Obstacle[], startZ: number, endZ: number): boolean {
   for (let z = startZ; z <= endZ; z += SLAB_STEP) {
     const blockers: Array<{ lo: number; hi: number }> = [];
@@ -108,24 +107,10 @@ function isSolvable(obstacles: Obstacle[], startZ: number, endZ: number): boolea
 
 function generateChunkContents(rng: Rng, startZ: number): Obstacle[] {
   const obstacles: Obstacle[] = [];
-
-  // Scaled to the wider playfield (PLAY_HALF_W = 9 -> 18m across).
-  // Density target: visibly populated edge-to-edge without strangling
-  // the player's path. Solvability sweep guarantees corridors.
-  const obstacleCount = randInt(rng, 10, 16);
-  placeScatter(
-    rng,
-    obstacles,
-    startZ,
-    obstacleCount,
-    () => pick(rng, ['crate', 'lowwall'] as const),
-    false,
-    OBSTACLE_RADIUS,
-  );
-
+  const obstacleCount = randInt(rng, 8, 14);
+  placeNonCoverScatter(rng, obstacles, startZ, obstacleCount);
   const coverCount = randInt(rng, 2, 5);
-  placeScatter(rng, obstacles, startZ, coverCount, () => 'cover', true, COVER_RADIUS);
-
+  placeCoverScatter(rng, obstacles, startZ, coverCount);
   return obstacles;
 }
 
@@ -181,7 +166,7 @@ export class ProcgenSystem {
     }
   }
 
-  // v1: fixed 5-chunk segment, no recycling. Multi-segment ships in v2.
+  // v1: fixed 5-chunk segment, no recycling.
   update(_playerZ: number) {}
 
   obstacles(): Obstacle[] {

@@ -2,7 +2,15 @@ import type { Object3D } from 'three';
 
 export type RunState = 'idle' | 'playing' | 'caught' | 'cleared';
 
-export type ObstacleKind = 'crate' | 'lowwall' | 'cover';
+export type ObstacleKind =
+  | 'crate'
+  | 'lowwall'
+  | 'cover'
+  | 'boulder'
+  | 'barrel'
+  | 'car'
+  | 'tree'
+  | 'hedgerow';
 
 export type Obstacle = {
   id: number;
@@ -13,6 +21,10 @@ export type Obstacle = {
   x: number;
   z: number;
   r: number;
+  // World-space top of the obstacle, in metres above the ground.
+  // DetectionSystem uses this to decide whether the obstacle is tall
+  // enough to break line of sight against the player's current stance.
+  height: number;
   isCover: boolean;
   mesh: Object3D | null;
 };

@@ -6,6 +6,12 @@ import {
   PLAY_HALF_W,
   VISION_CONE_DEG,
 } from '../util/geometry';
+import { createBlockyFigure, type BlockyFigure } from './BlockyFigure';
+
+// Department-of-Corrections jumpsuit orange.
+export const PLAYER_COLOR = 0xff7a1f;
+// Police-blue uniform.
+export const GUARD_COLOR = 0x2b4f8e;
 
 export function createPlayer(): Player {
   return {
@@ -21,18 +27,8 @@ export function createPlayer(): Player {
   };
 }
 
-export function createPlayerMesh(): THREE.Mesh {
-  const geo = new THREE.CapsuleGeometry(0.4, 0.8, 4, 8);
-  // transparent so the mesh can dim when hidden; opacity is normally 1.
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0xe5cc7d,
-    roughness: 0.6,
-    transparent: true,
-    opacity: 1,
-  });
-  const m = new THREE.Mesh(geo, mat);
-  m.position.set(0, 0.7, 0);
-  return m;
+export function createPlayerFigure(): BlockyFigure {
+  return createBlockyFigure(PLAYER_COLOR);
 }
 
 export type GuardConfig = {
@@ -75,11 +71,8 @@ export function createGuardConfigs(): GuardConfig[] {
   ];
 }
 
-export function createGuardMesh(): THREE.Mesh {
-  const geo = new THREE.CapsuleGeometry(0.45, 0.9, 4, 8);
-  const mat = new THREE.MeshStandardMaterial({ color: 0xb33b3b, roughness: 0.5 });
-  const m = new THREE.Mesh(geo, mat);
-  return m;
+export function createGuardFigure(): BlockyFigure {
+  return createBlockyFigure(GUARD_COLOR);
 }
 
 // Flat triangular cone on the ground showing the guard's actual
@@ -110,9 +103,15 @@ export function createFacingMarker(visionRange: number): THREE.Mesh {
 }
 
 export function createGround(): THREE.Mesh {
-  // Wide enough to cover the playfield with margin in landscape FOV.
+  // Grass-covered yard: you're outside the prison complex now,
+  // making for the property-line fence at the far end of the
+  // segment. Wide enough to cover the playfield with margin in
+  // landscape FOV.
   const geo = new THREE.PlaneGeometry(PLAY_HALF_W * 2 + 10, CHUNK_LEN * (CHUNKS_AHEAD + 2));
-  const mat = new THREE.MeshStandardMaterial({ color: 0x2a2d33, roughness: 1 });
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0x3f6a2c,
+    roughness: 1,
+  });
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
   m.position.set(0, 0, (CHUNK_LEN * CHUNKS_AHEAD) / 2);

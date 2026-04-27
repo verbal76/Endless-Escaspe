@@ -63,6 +63,11 @@ export type Player = {
   isCrouched: boolean;
   // Hidden-from-guards: crouched AND within HIDE_RANGE of a cover obstacle.
   isHidden: boolean;
+  // Stamina pool 0..1. Drains while running, regenerates while not.
+  // While 0 the run toggle can't engage (player breathes through it
+  // before they can sprint again). Stamina is only enforced from
+  // the stamina-enabled stage tier - see progression.staminaEnabledFor.
+  stamina: number;
 };
 
 // Guard behaviour state machine.

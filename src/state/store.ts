@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { RunState, Stance } from '../types/world';
 import type { WeatherKind } from '../scenes/Weather';
 import type { Save, SavesMap } from '../util/storage';
+import { startingHeartsFor } from '../util/progression';
 
 export type PlayerSkin = 'beige' | 'brown';
 
@@ -27,6 +28,14 @@ type Store = {
   hearts: number;
   // Per-guard detection 0..1; HUD subscribes selectively to keep re-renders cheap.
   detection: Record<number, number>;
+  // Player stamina mirror (0..1). Game.tsx writes it each frame so
+  // the HUD can subscribe; only meaningful when staminaEnabledFor
+  // the current stage.
+  stamina: number;
+  // Camera alarm level (0..1). Wall-mounted cameras feed this
+  // separately from per-guard detection; when it hits 1 an extra
+  // guard is summoned for the rest of the run.
+  alarmLevel: number;
   segmentSeed: number;
   stage: number;
   stance: Stance;
@@ -69,6 +78,8 @@ type Store = {
   setRunState: (s: RunState) => void;
   setHearts: (n: number) => void;
   setDetection: (id: number, v: number) => void;
+  setStamina: (v: number) => void;
+  setAlarmLevel: (v: number) => void;
   setStance: (s: Stance) => void;
   setStage: (n: number) => void;
   setPaused: (b: boolean) => void;
@@ -94,6 +105,8 @@ export const useStore = create<Store>((set) => ({
   runState: 'idle',
   hearts: 3,
   detection: {},
+  stamina: 1,
+  alarmLevel: 0,
   segmentSeed: 1,
   stage: 1,
   stance: 'walk',
@@ -116,6 +129,20 @@ export const useStore = create<Store>((set) => ({
       const cur = st.detection[id];
       if (cur === v) return st;
       return { detection: { ...st.detection, [id]: v } };
+    }),
+  setStamina: (v) =>
+    set((st) => {
+      const clamped = Math.max(0, Math.min(1, v));
+      // Coalesce sub-1% changes so the HUD bar isn't re-rendering
+      // every frame while the pool is slowly regenerating.
+      return Math.abs(st.stamina - clamped) < 0.01 ? st : { stamina: clamped };
+    }),
+  setAlarmLevel: (v) =>
+    set((st) => {
+      const clamped = Math.max(0, Math.min(1, v));
+      return Math.abs(st.alarmLevel - clamped) < 0.01
+        ? st
+        : { alarmLevel: clamped };
     }),
   setStance: (s) =>
     set((st) => (st.stance === s ? st : { stance: s })),
@@ -184,18 +211,22 @@ export const useStore = create<Store>((set) => ({
     set({
       runState: 'playing',
       detection: {},
+      stamina: 1,
+      alarmLevel: 0,
       segmentSeed: seed,
       stance: 'walk',
       paused: false,
       lastStats: null,
     }),
   startRun: () =>
-    set({
+    set((st) => ({
       runState: 'playing',
-      hearts: 3,
+      hearts: startingHeartsFor(st.stage),
       detection: {},
+      stamina: 1,
+      alarmLevel: 0,
       stance: 'walk',
       paused: false,
       lastStats: null,
-    }),
+    })),
 }));

@@ -62,8 +62,18 @@ const STAGES: StageLighting[] = [
   },
 ];
 
+// Stages cycle dawn -> day -> dusk -> night and then loop, with each
+// loop trending darker on the night phases so late-game nights are
+// genuinely dim. Indexes 0..4 in STAGES correspond to one cycle;
+// past stage 5 we cycle through them and then bias toward darker
+// indices via a tier offset.
 export function getStageLighting(stage: number): StageLighting {
-  const idx = Math.min(STAGES.length - 1, Math.max(0, stage - 1));
+  const s = Math.max(1, stage | 0);
+  // Late-game tier bias: after the first cycle we lean later in the
+  // table so brightness keeps trending down.
+  const tier = Math.min(2, Math.floor((s - 1) / 5));
+  const cyclePos = (s - 1) % 5;
+  const idx = Math.min(STAGES.length - 1, cyclePos + tier);
   return STAGES[idx];
 }
 

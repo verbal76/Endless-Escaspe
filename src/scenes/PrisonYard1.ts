@@ -33,6 +33,7 @@ export function createPlayer(): Player {
     isRunning: false,
     isCrouched: false,
     isHidden: false,
+    stamina: 1,
   };
 }
 
@@ -67,17 +68,32 @@ export function createGuard(cfg: GuardConfig): Guard {
   };
 }
 
-// Two guards split the segment vertically. Left guard patrols the
-// near-left half; right guard patrols the far-right half. Their
-// home radii overlap slightly in the middle so the player can be
-// pinched if they aren't careful.
-export function createGuardConfigs(): GuardConfig[] {
-  const segLen = CHUNK_LEN * CHUNKS_AHEAD;
+// Guards split the segment along Z into vertical zones; they
+// alternate sides on X. Two-guard layout for early stages; later
+// stages add up to three more, packed across the segment so coverage
+// scales with difficulty without leaving the player nowhere to go.
+export function createGuardConfigs(
+  guardCount: number,
+  segLen: number,
+): GuardConfig[] {
+  const n = Math.max(1, guardCount | 0);
   const halfX = Math.max(2, PLAY_HALF_W * 0.55);
-  return [
-    { id: 1, homeX: -halfX, homeZ: segLen * 0.32, homeRadius: 9 },
-    { id: 2, homeX: halfX, homeZ: segLen * 0.68, homeRadius: 9 },
-  ];
+  const configs: GuardConfig[] = [];
+  for (let i = 0; i < n; i++) {
+    // Zones evenly distributed along Z: i / n .. (i+1) / n.
+    const t = (i + 0.5) / n;
+    const homeZ = segLen * (0.18 + 0.74 * t);
+    const sideX = i % 2 === 0 ? -halfX : halfX;
+    configs.push({
+      id: i + 1,
+      homeX: sideX,
+      homeZ,
+      // Home radius shrinks slightly with more guards so they keep
+      // distinct turf rather than overlapping into one mob.
+      homeRadius: Math.max(5, 10 - n),
+    });
+  }
+  return configs;
 }
 
 // Guards get randomised beige or brown heads at spawn time so the
@@ -133,11 +149,11 @@ export function createGround(): THREE.Mesh {
   return m;
 }
 
-export function createWinLine(): THREE.Mesh {
+export function createWinLine(segLen: number = CHUNK_LEN * CHUNKS_AHEAD): THREE.Mesh {
   const geo = new THREE.PlaneGeometry(8, 0.4);
   const mat = new THREE.MeshBasicMaterial({ color: 0x55ff88 });
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
-  m.position.set(0, 0.02, CHUNK_LEN * CHUNKS_AHEAD - 0.5);
+  m.position.set(0, 0.02, segLen - 0.5);
   return m;
 }

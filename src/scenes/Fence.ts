@@ -6,20 +6,24 @@ import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
 // Visualised as a wireframe BoxGeometry with high subdivisions so
 // the wireframe looks like a wire mesh rather than a flat panel.
 // Collision is handled by clamping the player to PLAY_HALF_W in
-// PlayerController, so the fence is purely cosmetic.
-//
-// Colour adapts to backdrop brightness so the wire is always
-// readable: bright scenes (daylight or snow) get a black fence;
-// dim scenes (night or rain) get a light grey fence. The decision
-// is made at scene init from the current stage + weather.
+// PlayerController, so the fence is purely cosmetic *unless* it's
+// razor-wire-tipped (late stages), in which case touching the
+// boundary costs a heart - see isTouchingFence below.
 
 const FENCE_HEIGHT = 2.6;
 const FENCE_THICKNESS = 0.05;
 const FENCE_X_OFFSET = 0.3;
+const RAZOR_TOP_HEIGHT = 0.25;
 
 const POST_MAT = new THREE.MeshStandardMaterial({
   color: 0x3a3d44,
   roughness: 0.7,
+});
+
+const RAZOR_MAT = new THREE.MeshBasicMaterial({
+  color: 0xff4040,
+  transparent: true,
+  opacity: 0.9,
 });
 
 // Pick fence wire colour from the current scene mood. Bright snow
@@ -37,14 +41,16 @@ export function spawnFences(
   worldRoot: THREE.Group,
   stage: number,
   weather: WeatherKind,
+  segLen: number,
+  razorWire: boolean,
 ) {
-  const segLen = CHUNK_LEN * CHUNKS_AHEAD + 4;
-  const segsZ = Math.max(8, Math.round(segLen / 0.6));
+  const totalLen = segLen + 4;
+  const segsZ = Math.max(8, Math.round(totalLen / 0.6));
   const segsY = 5;
   const fenceGeo = new THREE.BoxGeometry(
     FENCE_THICKNESS,
     FENCE_HEIGHT,
-    segLen,
+    totalLen,
     1,
     segsY,
     segsZ,
@@ -58,16 +64,36 @@ export function spawnFences(
   });
 
   const left = new THREE.Mesh(fenceGeo, fenceMat);
-  left.position.set(-(PLAY_HALF_W + FENCE_X_OFFSET), FENCE_HEIGHT / 2, segLen / 2);
+  left.position.set(-(PLAY_HALF_W + FENCE_X_OFFSET), FENCE_HEIGHT / 2, totalLen / 2);
   worldRoot.add(left);
 
   const right = new THREE.Mesh(fenceGeo, fenceMat);
-  right.position.set(PLAY_HALF_W + FENCE_X_OFFSET, FENCE_HEIGHT / 2, segLen / 2);
+  right.position.set(PLAY_HALF_W + FENCE_X_OFFSET, FENCE_HEIGHT / 2, totalLen / 2);
   worldRoot.add(right);
+
+  // Razor wire: an additional thin red strip running along the top
+  // of each fence as a visual warning. Hit detection is handled by
+  // isTouchingFence + the razor flag in the game loop.
+  if (razorWire) {
+    const razorGeo = new THREE.BoxGeometry(
+      FENCE_THICKNESS * 1.4,
+      RAZOR_TOP_HEIGHT,
+      totalLen,
+    );
+    for (const sx of [-1, 1]) {
+      const wire = new THREE.Mesh(razorGeo, RAZOR_MAT);
+      wire.position.set(
+        sx * (PLAY_HALF_W + FENCE_X_OFFSET),
+        FENCE_HEIGHT + RAZOR_TOP_HEIGHT * 0.5,
+        totalLen / 2,
+      );
+      worldRoot.add(wire);
+    }
+  }
 
   const postGeo = new THREE.CylinderGeometry(0.08, 0.08, FENCE_HEIGHT, 6);
   const postSpacing = 6;
-  const postCount = Math.floor(segLen / postSpacing) + 1;
+  const postCount = Math.floor(totalLen / postSpacing) + 1;
   for (let i = 0; i < postCount; i++) {
     const z = i * postSpacing;
     for (const sx of [-1, 1]) {
@@ -76,4 +102,11 @@ export function spawnFences(
       worldRoot.add(post);
     }
   }
+}
+
+// Touch detection for razor wire - the player is considered to be
+// in contact with the fence when they're hard up against the
+// PlayerController's x-clamp boundary.
+export function isTouchingFence(px: number): boolean {
+  return Math.abs(px) >= PLAY_HALF_W - 0.04;
 }

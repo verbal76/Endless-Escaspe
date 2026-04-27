@@ -139,13 +139,19 @@ export class ProcgenSystem {
   private rng: Rng;
   private worldRoot: THREE.Group;
 
-  constructor(seed: number, worldRoot: THREE.Group) {
+  // Number of chunks the segment will hold. Defaults to the engine
+  // baseline (CHUNKS_AHEAD); late stages pass a larger value so
+  // segments physically lengthen with difficulty.
+  private chunkCount: number;
+
+  constructor(seed: number, worldRoot: THREE.Group, chunkCount: number = CHUNKS_AHEAD) {
     this.rng = mulberry32(seed);
     this.worldRoot = worldRoot;
+    this.chunkCount = Math.max(1, chunkCount | 0);
   }
 
   init() {
-    for (let i = 0; i < CHUNKS_AHEAD; i++) {
+    for (let i = 0; i < this.chunkCount; i++) {
       this.spawnChunk(i * CHUNK_LEN);
     }
   }

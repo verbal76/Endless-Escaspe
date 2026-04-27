@@ -27,17 +27,53 @@ import type { Guard } from '../types/world';
 import {
   CHUNK_LEN,
   CHUNKS_AHEAD,
-  LIGHT_VISION_BONUS,
   PLAYER_RADIUS,
-  getVisionRange,
 } from '../util/geometry';
 import { circleHit } from '../util/collision';
+import {
+  aiTierFor,
+  detectionDecayFor,
+  detectionRateScaleFor,
+  dogCountFor,
+  floodlightCrouchedRateFor,
+  floodlightStandingRateFor,
+  forceStormyWeatherFor,
+  guardCountFor,
+  lightScanSpeedMulFor,
+  lightTowerRowsFor,
+  lightVisionBonusFor,
+  noiseRangeCrouchSqFor,
+  noiseRangeWalkSqFor,
+  razorWireEnabledFor,
+  segmentLengthMulFor,
+  slowMoEnabledFor,
+  staminaEnabledFor,
+  startingHeartsFor,
+  visionRangeFor,
+} from '../util/progression';
+import {
+  createDog,
+  dogHits,
+  setDogTransform,
+  updateDog,
+  type Dog,
+} from '../scenes/Dog';
+import { isTouchingFence } from '../scenes/Fence';
+import {
+  cameraCountFor,
+  isBossStage,
+  spawnCameras,
+  updateCameraAlarm,
+  type Camera,
+} from '../scenes/Camera';
 
 import { Joystick } from '../components/HUD/Joystick';
 import { ActionButtons } from '../components/HUD/ActionButtons';
 import { RunButton } from '../components/HUD/RunButton';
 import { LookButtons } from '../components/HUD/LookButtons';
 import { Hearts } from '../components/HUD/Hearts';
+import { StaminaBar } from '../components/HUD/StaminaBar';
+import { AlarmBar } from '../components/HUD/AlarmBar';
 import { Banner } from '../components/HUD/Banner';
 import { StartScreen } from '../components/HUD/StartScreen';
 import { AlarmOverlay } from '../components/HUD/AlarmOverlay';
@@ -45,7 +81,13 @@ import { SettingsScreen } from '../components/HUD/SettingsScreen';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
 import { spawnFences } from '../scenes/Fence';
-import { spawnLightTowers, updateLightTower, isPlayerLit, type LightTower } from '../scenes/LightTower';
+import {
+  consumeSearchlightTrigger,
+  isPlayerLit,
+  spawnLightTowers,
+  updateLightTower,
+  type LightTower,
+} from '../scenes/LightTower';
 import {
   type BlockyFigure,
   setFigurePosition,
@@ -99,6 +141,19 @@ export function Game() {
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     const r = createRenderer(gl);
 
+    // Snapshot the stage at scene-init time. Most stage-driven knobs
+    // are resolved once here (so the difficulty doesn't shift mid-
+    // segment) but a few - decay, rate scale, AI tier, etc. - are
+    // re-evaluated each frame because they're cheap.
+    const initialStage = useStore.getState().stage;
+
+    const segLengthMul = segmentLengthMulFor(initialStage);
+    const chunkCount = Math.max(
+      CHUNKS_AHEAD,
+      Math.round(CHUNKS_AHEAD * segLengthMul),
+    );
+    const segLen = chunkCount * CHUNK_LEN;
+
     const ground = createGround();
     const groundMat = ground.material as THREE.MeshStandardMaterial;
     r.worldRoot.add(ground);
@@ -110,10 +165,18 @@ export function Game() {
     // seed so a restart of the same segment gets the same conditions.
     // If the user has weather effects toggled off, force clear and
     // boost the AI senses (see the update loop below) so toggling
-    // off doesn't hand the player a free pass.
+    // off doesn't hand the player a free pass. From stage 15+, even
+    // the toggle-off path produces a non-clear roll so storms become
+    // a permanent late-game pressure.
     const weatherEnabledAtInit = useStore.getState().weatherEnabled;
     const rolledWeatherKind = pickWeather(useStore.getState().segmentSeed);
-    const weatherKind = weatherEnabledAtInit ? rolledWeatherKind : 'clear';
+    const stormyForced = forceStormyWeatherFor(initialStage);
+    let weatherKind = weatherEnabledAtInit ? rolledWeatherKind : 'clear';
+    if (stormyForced && weatherKind === 'clear') {
+      // Coin flip between rain and snow so late stages don't always
+      // pick the same storm type.
+      weatherKind = (useStore.getState().segmentSeed & 1) === 0 ? 'rain' : 'snow';
+    }
     useStore.getState().setWeather(weatherKind);
     const weather: Weather = createWeather(weatherKind, 0, 1);
     r.worldRoot.add(weather.group);
@@ -121,34 +184,35 @@ export function Game() {
       groundMat.color.setHex(0xc8d6dc);
     }
 
-    const winLine = createWinLine();
+    const winLine = createWinLine(segLen);
     r.worldRoot.add(winLine);
 
     const player = createPlayer();
     const playerFigure = createPlayerFigure(useStore.getState().playerSkin);
     r.worldRoot.add(playerFigure.group);
 
-    const baseVisionRange = getVisionRange(useStore.getState().stage);
+    const baseVisionRange = visionRangeFor(initialStage);
 
     type GuardEntry = { guard: Guard; figure: BlockyFigure; equipment: GuardEquipment };
-    const guardEntries: GuardEntry[] = createGuardConfigs().map((cfg) => {
-      const guard = createGuard(cfg);
-      const figure = createGuardFigure();
-      figure.group.position.set(guard.x, 0, guard.z);
-      r.worldRoot.add(figure.group);
-      // Equipment: flashlight (with visible beam) + pistol on the
-      // figure's arms. Forced "extended forward" pose every render
-      // so they stay aimed reliably.
-      const equipment = attachGuardEquipment(figure, baseVisionRange);
-      // Wire the legacy mesh field so guard-touching catch logic
-      // still has something non-null to reference - but its rotation
-      // is no longer used for aiming.
-      guard.mesh = figure.group;
-      return { guard, figure, equipment };
-    });
+    const guardCount = guardCountFor(initialStage);
+    const guardEntries: GuardEntry[] = createGuardConfigs(guardCount, segLen).map(
+      (cfg) => {
+        const guard = createGuard(cfg);
+        const figure = createGuardFigure();
+        figure.group.position.set(guard.x, 0, guard.z);
+        r.worldRoot.add(figure.group);
+        const equipment = attachGuardEquipment(figure, baseVisionRange);
+        guard.mesh = figure.group;
+        return { guard, figure, equipment };
+      },
+    );
     const guards: Guard[] = guardEntries.map((e) => e.guard);
 
-    const procgen = new ProcgenSystem(useStore.getState().segmentSeed, r.worldRoot);
+    const procgen = new ProcgenSystem(
+      useStore.getState().segmentSeed,
+      r.worldRoot,
+      chunkCount,
+    );
     procgen.init();
 
     // Snow weather: dust the top of every obstacle with a thin
@@ -157,17 +221,48 @@ export function Game() {
       dustObstaclesWithSnow(procgen.obstacles());
     }
 
-    // Per-stage scene lighting (day -> dusk -> night).
-    applyStageLighting(r.renderer, r.scene, useStore.getState().stage);
+    // Per-stage scene lighting (day -> dusk -> night). Cycles every
+    // 5 stages and trends darker each cycle (see Lighting.ts).
+    applyStageLighting(r.renderer, r.scene, initialStage);
 
-    // Real siren: synthesised WAV played by expo-audio when detection
-    // is above PLAY_THRESHOLD; volume tracks the meter.
     const siren: SirenHandle = createSiren();
 
     const projectiles = new ProjectileSystem(r.worldRoot);
 
-    spawnFences(r.worldRoot, useStore.getState().stage, weatherKind);
-    const lightTowers: LightTower[] = spawnLightTowers(r.worldRoot);
+    const razorWire = razorWireEnabledFor(initialStage);
+    spawnFences(r.worldRoot, initialStage, weatherKind, segLen, razorWire);
+    const lightTowers: LightTower[] = spawnLightTowers(
+      r.worldRoot,
+      segLen,
+      lightTowerRowsFor(initialStage),
+      lightScanSpeedMulFor(initialStage),
+      initialStage >= 8, // tracking from stage 8+
+    );
+
+    // Dogs: trail a designated handler guard, smell the player at
+    // close range, detach into chase when the handler does. One per
+    // entry in dogCountFor; we pair them with the first N guards.
+    const dogs: Dog[] = [];
+    const dogCount = dogCountFor(initialStage);
+    for (let i = 0; i < dogCount && i < guards.length; i++) {
+      const handler = guards[i];
+      const d = createDog(i + 1, handler.id, handler.x + 1, handler.z);
+      r.worldRoot.add(d.group);
+      dogs.push(d);
+    }
+
+    const cameras: Camera[] = spawnCameras(
+      r.worldRoot,
+      segLen,
+      cameraCountFor(initialStage),
+    );
+
+    // Boss stage: pump up the lead guard's effective vision so the
+    // segment reads as a tougher fight without changing procgen.
+    // The bonus is multiplied into baseVisionRange via the
+    // visionBoostForGuard function below at detection time.
+    const bossStage = isBossStage(initialStage);
+    const bossGuardId = bossStage && guards.length > 0 ? guards[0].id : -1;
 
     const radialMeter = createRadialMeter();
     r.worldRoot.add(radialMeter.group);
@@ -178,7 +273,7 @@ export function Game() {
       return a;
     });
 
-    const segmentEndZ = CHUNK_LEN * CHUNKS_AHEAD;
+    const segmentEndZ = segLen;
 
     // Per-run stats accumulators.
     let runTime = 0;
@@ -200,8 +295,11 @@ export function Game() {
       player.z = 1;
       player.isHidden = false;
       player.stance = 'walk';
+      player.stamina = 1;
       const st = useStore.getState();
       st.setStance('walk');
+      st.setStamina(1);
+      st.setAlarmLevel(0);
       for (const g of guards) {
         g.x = g.homeX;
         g.z = g.homeZ;
@@ -211,6 +309,15 @@ export function Game() {
         g.investigationTarget = null;
         g.fireCooldown = 0;
         st.setDetection(g.id, 0);
+      }
+      // Reset dogs to their handler's spawn position and cancel
+      // any chase state.
+      for (const d of dogs) {
+        const handler = guards.find((g) => g.id === d.handlerGuardId);
+        d.x = handler ? handler.x + 1 : 0;
+        d.z = handler ? handler.z : 1;
+        d.state = 'leash';
+        setDogTransform(d);
       }
       projectiles.clear();
     };
@@ -230,7 +337,9 @@ export function Game() {
       player.z = 1;
       player.isHidden = false;
       player.stance = 'walk';
+      player.stamina = 1;
       st.setStance('walk');
+      st.setStamina(1);
       for (const g of guards) {
         g.x = g.homeX;
         g.z = g.homeZ;
@@ -240,6 +349,12 @@ export function Game() {
         g.investigationTarget = null;
         g.fireCooldown = 0;
         st.setDetection(g.id, 0);
+      }
+      for (const d of dogs) {
+        const handler = guards.find((g) => g.id === d.handlerGuardId);
+        d.x = handler ? handler.x + 1 : 0;
+        d.z = handler ? handler.z : 1;
+        d.state = 'leash';
       }
     };
 
@@ -289,7 +404,10 @@ export function Game() {
       }
 
       st.setRunState('cleared');
-      st.setHearts(3);
+      // Hearts count for the *next* segment (post-Banner) is the
+      // stage-driven starting count. Game.tsx's startRun and the
+      // restart path use this same helper.
+      st.setHearts(startingHeartsFor(justClearedStage + 1));
       projectiles.clear();
     };
 
@@ -304,7 +422,7 @@ export function Game() {
       }
       if (st.restartCounter !== lastRestartCounter) {
         lastRestartCounter = st.restartCounter;
-        st.setHearts(3);
+        st.setHearts(startingHeartsFor(st.stage));
         st.setLastStats(null);
         st.setRunState('playing');
         resetSegment();
@@ -321,17 +439,59 @@ export function Game() {
       runTime += dt;
       animTime += dt;
 
-      updateBackdrop(backdrop, dt);
-      updateWeather(weather, dt, player.x, player.z);
+      // Slow-mo close call: when detection is high AND a chasing
+      // guard is right on top of you, stretch real-time briefly so
+      // the player has a frame's grace to break LOS. Disabled past
+      // the slow-mo tier so it doesn't carry late-stage runs.
+      let timeScale = 1;
+      if (slowMoEnabledFor(st.stage)) {
+        let closeCall = false;
+        const detmap = st.detection;
+        for (const g of guards) {
+          const detv = detmap[g.id] ?? 0;
+          if (detv >= 0.8) {
+            const dx = g.x - player.x;
+            const dz = g.z - player.z;
+            if (dx * dx + dz * dz <= 64 /* 8m */) {
+              closeCall = true;
+              break;
+            }
+          }
+        }
+        if (closeCall) timeScale = 0.5;
+      }
+      const effDt = dt * timeScale;
 
-      updatePlayer(player, procgen.obstacles(), dt, segmentEndZ);
+      updateBackdrop(backdrop, effDt);
+      updateWeather(weather, effDt, player.x, player.z);
+
+      const staminaActive = staminaEnabledFor(st.stage);
+      updatePlayer(player, procgen.obstacles(), effDt, segmentEndZ, staminaActive);
       updateHide(player, procgen.obstacles());
       if (player.stance !== st.stance) st.setStance(player.stance);
+      st.setStamina(player.stamina);
+
+      // Razor wire: touching the fence at razor-wire stages costs
+      // a heart and resets the player to spawn. Treat it as a catch.
+      if (razorWire && isTouchingFence(player.x)) {
+        handleCatch();
+        return;
+      }
 
       let lit = false;
+      // Searchlight one-shot bump: when a tracking-capable tower
+      // has held the player in its beam for long enough, every
+      // guard's detection meter takes a single jolt of this size.
+      let searchlightBump = 0;
       for (const t of lightTowers) {
-        updateLightTower(t, dt);
+        updateLightTower(t, effDt, player.x, player.z);
         if (!lit && isPlayerLit(t, player.x, player.z)) lit = true;
+        if (consumeSearchlightTrigger(t)) {
+          // Late-stage searchlights bite harder. 0.4 is a discrete
+          // jump - should yank the meter past the SEEN_THRESHOLD if
+          // it was anywhere near it.
+          searchlightBump = Math.max(searchlightBump, 0.4);
+        }
       }
       // Weather modifiers: snow boosts vision (player more visible
       // against bright background); rain dampens player noise.
@@ -347,42 +507,106 @@ export function Game() {
       const weatherNoise = weatherEnabledAtInit
         ? noiseMultiplier(weather.kind)
         : 1.0;
-      const litBonus = weatherEnabledAtInit ? LIGHT_VISION_BONUS : 0.18;
+      const litBonus = lightVisionBonusFor(st.stage);
       const effectiveVisionRange = (lit
         ? baseVisionRange * (1 + litBonus)
         : baseVisionRange) * weatherVision;
 
-      // Standing in a floodlight footprint adds detection directly
-      // to every guard, on top of the vision range bonus. Crouching
-      // halves the contribution (smaller silhouette). Per-second
-      // rate, scaled by dt. Tuned alongside DetectionSystem's /6 so
-      // the ring fills as a slow alarm rather than a snap-fill.
-      const litRate = lit ? (player.isCrouched ? 0.05 : 0.125) : 0;
-      const litAdd = litRate * dt;
+      const litRateBase = lit
+        ? player.isCrouched
+          ? floodlightCrouchedRateFor(st.stage)
+          : floodlightStandingRateFor(st.stage)
+        : 0;
+      const litAdd = litRateBase * effDt;
 
+      // Stage-driven detection tuning passed to DetectionSystem so
+      // the rate ramp + decay curve all flow from progression.ts.
+      const tuning = {
+        rateScale: detectionRateScaleFor(st.stage),
+        decay: detectionDecayFor(st.stage),
+        noiseRangeWalkSq: noiseRangeWalkSqFor(st.stage),
+        noiseRangeCrouchSq: noiseRangeCrouchSqFor(st.stage),
+      };
+      const aiTier = aiTierFor(st.stage);
+
+      // Camera alarm bar: cameras feed a separate yard-alarm pool
+      // that, when full, escalates every guard. Update first so the
+      // guard pass below can read the current level.
+      const newAlarm =
+        cameras.length > 0
+          ? updateCameraAlarm(cameras, player, procgen.obstacles(), st.alarmLevel, effDt)
+          : 0;
+      if (cameras.length > 0) st.setAlarmLevel(newAlarm);
+      // While the alarm is full, scale every guard's effective
+      // vision range up by 25% - readable as "the whole yard is
+      // looking for you now."
+      const alarmHot = newAlarm >= 1.0;
+      const effectiveVisionRangeWithAlarm = alarmHot
+        ? effectiveVisionRange * 1.25
+        : effectiveVisionRange;
+
+      // Pass 1: compute new detection for every guard, including
+      // any dog smell contribution to the handler.
+      const nextDetection: Record<number, number> = {};
       let anyDetected = false;
       let maxDetection = 0;
+      let chaserGuard: Guard | null = null;
       for (const entry of guardEntries) {
         const g = entry.guard;
         const prev = st.detection[g.id] ?? 0;
+        // Boss guard sees ~50% further than the rest at boss stages.
+        const guardRange =
+          g.id === bossGuardId
+            ? effectiveVisionRangeWithAlarm * 1.5
+            : effectiveVisionRangeWithAlarm;
         const visionAndNoise = updateDetection(
           g,
           player,
           procgen.obstacles(),
           prev,
-          dt,
-          effectiveVisionRange,
+          effDt,
+          guardRange,
+          tuning,
           weatherNoise,
         );
-        // Apply the floodlight bump on top.
-        const next = Math.min(1, visionAndNoise + litAdd);
-        st.setDetection(g.id, next);
+        let dogSmell = 0;
+        for (const d of dogs) {
+          if (d.handlerGuardId === g.id) {
+            dogSmell += updateDog(d, g, player, effDt);
+          }
+        }
+        const next = Math.min(
+          1,
+          visionAndNoise + litAdd + dogSmell + searchlightBump,
+        );
+        nextDetection[g.id] = next;
         if (next > maxDetection) maxDetection = next;
         if (next > DETECTED_THRESHOLD) anyDetected = true;
-        updateGuard(g, player, next, dt, procgen.obstacles(), (gFiring, tx, tz) => {
-          // Origin: pistol world position from the firing guard's
-          // figure. Falls back to guard centre if the matrix isn't
-          // ready (defensive).
+        if (next >= 1.0 && !chaserGuard) chaserGuard = g;
+      }
+
+      // Pass 2: write detection to the store and run guard AI. This
+      // ordering lets us implement the AI tier-3 broadcast: if any
+      // guard has hit chase, point the nearest other non-chase
+      // guard at the same investigation target.
+      for (const entry of guardEntries) {
+        const g = entry.guard;
+        const next = nextDetection[g.id] ?? 0;
+        st.setDetection(g.id, next);
+        // Tier 3 broadcast: silent investigation cue for non-chasing
+        // guards in earshot of the chaser.
+        if (aiTier >= 3 && chaserGuard && g.id !== chaserGuard.id && g.state !== 'chase') {
+          const dx = g.x - chaserGuard.x;
+          const dz = g.z - chaserGuard.z;
+          if (dx * dx + dz * dz <= 400 /* 20m */) {
+            g.investigationTarget = { x: player.x, z: player.z };
+            if (g.state === 'wander' || g.state === 'return') {
+              g.state = 'investigate';
+              g.behaviorTimer = 0;
+            }
+          }
+        }
+        updateGuard(g, player, next, effDt, procgen.obstacles(), (gFiring, tx, tz) => {
           const firingEntry = guardEntries.find((e) => e.guard.id === gFiring.id);
           let fx = gFiring.x;
           let fz = gFiring.z;
@@ -391,12 +615,37 @@ export function Game() {
             fx = tmpVec.x;
             fz = tmpVec.z;
           }
-          projectiles.spawn(fx, fz, tx, tz);
+          // Tier 4 lead shots: aim at the player's projected
+          // position N seconds out instead of their current spot.
+          let aimX = tx;
+          let aimZ = tz;
+          if (aiTier >= 4) {
+            const lead = 0.25;
+            aimX = tx + player.vx * lead;
+            aimZ = tz + player.vz * lead;
+          }
+          projectiles.spawn(fx, fz, aimX, aimZ);
         });
       }
 
+      // Detached dogs that aren't paired with any handler still
+      // need an update tick (they keep chasing the player even if
+      // the handler has been despawned, which can't happen yet but
+      // belt-and-braces). Also handle dog->player collision: dogs
+      // count as a soft catch identical to a guard touch.
+      for (const d of dogs) {
+        if (d.state === 'chase') {
+          updateDog(d, undefined, player, effDt);
+        }
+        setDogTransform(d);
+        if (dogHits(d, player)) {
+          handleCatch();
+          return;
+        }
+      }
+
       // Stats accumulators.
-      if (anyDetected) timeDetectedAcc += dt;
+      if (anyDetected) timeDetectedAcc += effDt;
       if (maxDetection > SEEN_THRESHOLD && !prevAnyDetected) timesSeenAcc++;
       prevAnyDetected = maxDetection > SEEN_THRESHOLD;
 
@@ -411,7 +660,7 @@ export function Game() {
         return;
       }
 
-      if (projectiles.update(dt, player)) {
+      if (projectiles.update(effDt, player)) {
         handleCatch();
         return;
       }
@@ -429,6 +678,7 @@ export function Game() {
         }
       }
     };
+
 
     const render = (_alpha: number) => {
       // Player figure pose + position.
@@ -499,6 +749,8 @@ export function Game() {
       <ActionButtons />
       <LookButtons />
       <Hearts />
+      <StaminaBar />
+      <AlarmBar />
       <Banner />
       <StartScreen />
       <SettingsScreen />

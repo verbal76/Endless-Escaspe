@@ -1,12 +1,18 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useStore } from '../../state/store';
+import { startingHeartsFor } from '../../util/progression';
 
 export function Hearts() {
   const hearts = useStore((s) => s.hearts);
+  const stage = useStore((s) => s.stage);
+  // Late stages start the player with fewer hearts; only render
+  // that many slots so the HUD doesn't lie about how much margin
+  // is left.
+  const max = startingHeartsFor(stage);
   return (
     <View style={styles.row}>
-      {[0, 1, 2].map((i) => (
+      {Array.from({ length: max }).map((_, i) => (
         <Text
           key={i}
           style={[styles.heart, i >= hearts && styles.heartGone]}

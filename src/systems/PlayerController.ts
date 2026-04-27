@@ -15,16 +15,42 @@ function baseSpeedFor(stance: Player['stance']): number {
   return PLAYER_WALK_SPEED;
 }
 
+// Stamina drain (per second while running) and regen (per second
+// while not). Drain rate is set so a full pool is exhausted after
+// ~3.3s of sprinting; regen takes ~6.6s to fully refill.
+const STAMINA_DRAIN_PER_S = 0.30;
+const STAMINA_REGEN_PER_S = 0.15;
+
 export function updatePlayer(
   p: Player,
   obstacles: readonly Obstacle[],
   dt: number,
   segmentEndZ: number,
+  staminaEnabled: boolean = false,
 ) {
   // Stance and run come straight from the HUD radio/toggle.
   p.stance = input.stance;
   p.isCrouched = p.stance === 'crouch';
-  p.isRunning = input.run;
+  // Stamina gate: when enabled (late stages), running is blocked
+  // while the pool is empty. Players still have to release the
+  // toggle and re-engage once stamina returns - prevents holding
+  // RUN through the whole regen cycle.
+  let wantsRun = input.run;
+  if (staminaEnabled) {
+    if (wantsRun && p.stamina <= 0.001) wantsRun = false;
+  }
+  p.isRunning = wantsRun;
+
+  // Drain / regen stamina. Always tracked so the HUD can read it
+  // even at stages where it's not yet gating movement, but stages
+  // before the enabled tier always see a full pool.
+  if (!staminaEnabled) {
+    p.stamina = 1;
+  } else if (p.isRunning) {
+    p.stamina = Math.max(0, p.stamina - STAMINA_DRAIN_PER_S * dt);
+  } else {
+    p.stamina = Math.min(1, p.stamina + STAMINA_REGEN_PER_S * dt);
+  }
 
   const base = baseSpeedFor(p.stance);
   // RUN doubles whatever the stance speed is. Even crawling can "run"

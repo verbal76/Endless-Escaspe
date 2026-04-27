@@ -7,7 +7,6 @@ import type { Stance } from '../../types/world';
 // near the joystick on the left side of the screen.
 
 const STANCES: Array<{ label: string; value: Stance }> = [
-  { label: 'CRAWL', value: 'crawl' },
   { label: 'CROUCH', value: 'crouch' },
   { label: 'WALK', value: 'walk' },
 ];

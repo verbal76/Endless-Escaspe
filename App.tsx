@@ -22,6 +22,7 @@ export default function App() {
     loadSettings().then((s) => {
       useStore.getState().setMasterVolume(s.masterVolume);
       useStore.getState().setWeatherEnabled(s.weatherEnabled);
+      useStore.getState().setPlayerSkin(s.playerSkin);
     });
   }, []);
 

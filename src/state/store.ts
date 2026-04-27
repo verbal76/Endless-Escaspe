@@ -2,6 +2,8 @@ import { create } from 'zustand';
 import type { RunState, Stance } from '../types/world';
 import type { WeatherKind } from '../scenes/Weather';
 
+export type PlayerSkin = 'beige' | 'brown';
+
 // End-of-segment stats reported on the win board.
 export type RunStats = {
   // Number of distinct alert peaks this run (transitions from
@@ -39,6 +41,8 @@ type Store = {
   // Master audio volume 0..1, applied on top of the siren's
   // detection-driven volume curve. Persisted via AsyncStorage.
   masterVolume: number;
+  // Player head skin tone. Selected from the start screen; persisted.
+  playerSkin: PlayerSkin;
   lastStats: RunStats | null;
   // Best star score (1..3) ever achieved per stage. Hydrated from
   // AsyncStorage on app boot; persisted whenever a new high is set.
@@ -54,6 +58,7 @@ type Store = {
   setBestStars: (b: Record<number, number>) => void;
   setWeatherEnabled: (b: boolean) => void;
   setMasterVolume: (v: number) => void;
+  setPlayerSkin: (s: PlayerSkin) => void;
   recordSegmentStars: (stage: number, stars: number) => boolean;
   requestRestart: () => void;
   resetForSegment: (seed: number) => void;
@@ -72,6 +77,7 @@ export const useStore = create<Store>((set) => ({
   weather: 'clear',
   weatherEnabled: true,
   masterVolume: 0.7,
+  playerSkin: 'beige',
   lastStats: null,
   bestStars: {},
   setRunState: (s) => set({ runState: s }),
@@ -98,6 +104,8 @@ export const useStore = create<Store>((set) => ({
         ? st
         : { masterVolume: clamped };
     }),
+  setPlayerSkin: (s) =>
+    set((st) => (st.playerSkin === s ? st : { playerSkin: s })),
   setBestStars: (b) => set({ bestStars: b }),
   // Returns true iff this is a new high score for the stage. Caller
   // can then persist to AsyncStorage (Game.tsx handles that).

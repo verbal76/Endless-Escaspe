@@ -20,12 +20,17 @@ export function Banner() {
     (s) => s.bestStars[justClearedStage] ?? 0,
   );
 
-  if (runState === 'playing') return null;
+  // Idle (initial app launch) is handled by StartScreen now; the
+  // Banner only renders the post-run states.
+  // Idle (initial app launch) is handled by StartScreen now; the
+  // Banner only renders the post-run states.
+  if (runState === 'playing' || runState === 'idle') return null;
 
   const isCleared = runState === 'cleared';
-  const isCaught = runState === 'caught';
-  const title = isCleared ? 'YOU MADE IT!' : isCaught ? 'CAUGHT' : 'ENDLESS ESCASPE';
-  const cta = isCleared ? 'NEXT SEGMENT' : isCaught ? 'RESTART' : 'START';
+  // 'caught' is the implicit default for the remaining branch but
+  // we don't need a separate flag.
+  const title = isCleared ? 'YOU MADE IT!' : 'CAUGHT';
+  const cta = isCleared ? 'NEXT SEGMENT' : 'RESTART';
 
   const stars = isCleared && stats ? Math.max(1, Math.min(3, stats.stars)) : 0;
 

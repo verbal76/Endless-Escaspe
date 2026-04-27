@@ -1,17 +1,14 @@
 import type { Obstacle, Player } from '../types/world';
 import { dist2 } from '../util/math';
 
-// Effective hide radius (squared) around any cover obstacle.
-// dist2 returns squared distance, so this is the squared threshold.
 const HIDE_RANGE_SQ = 2.5 * 2.5;
 
-// "Hidden" now means: the player is in CRAWL stance AND is close
-// enough to a cover obstacle that the cover masks them. This gates
-// the on-screen PRONE/HIDDEN badge and acts as a soft signal that
-// detection won't accumulate from this position. The detection
-// system's own line-of-sight raycasts still do the heavy lifting.
+// Hidden-from-guards: the player is in CROUCH stance (low profile)
+// AND close enough to a cover obstacle that it masks them. The
+// detection system's line-of-sight raycasts still do the heavy
+// lifting; this flag exposes the state to HUD subscribers.
 export function updateHide(p: Player, obstacles: readonly Obstacle[]) {
-  if (!p.isProne) {
+  if (!p.isCrouched) {
     p.isHidden = false;
     return;
   }

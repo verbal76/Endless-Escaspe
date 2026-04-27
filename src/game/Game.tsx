@@ -39,8 +39,8 @@ import { RunButton } from '../components/HUD/RunButton';
 import { LookButtons } from '../components/HUD/LookButtons';
 import { Hearts } from '../components/HUD/Hearts';
 import { Banner } from '../components/HUD/Banner';
+import { StartScreen } from '../components/HUD/StartScreen';
 import { AlarmOverlay } from '../components/HUD/AlarmOverlay';
-import { HiddenBadge } from '../components/HUD/HiddenBadge';
 import { SettingsScreen } from '../components/HUD/SettingsScreen';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
@@ -125,7 +125,7 @@ export function Game() {
     r.worldRoot.add(winLine);
 
     const player = createPlayer();
-    const playerFigure = createPlayerFigure();
+    const playerFigure = createPlayerFigure(useStore.getState().playerSkin);
     r.worldRoot.add(playerFigure.group);
 
     const baseVisionRange = getVisionRange(useStore.getState().stage);
@@ -326,12 +326,19 @@ export function Game() {
         ? baseVisionRange * (1 + litBonus)
         : baseVisionRange) * weatherVision;
 
+      // Standing in a floodlight footprint adds detection directly
+      // to every guard, on top of the vision range bonus. Crouching
+      // halves the contribution (smaller silhouette). Per-second
+      // rate, scaled by dt.
+      const litRate = lit ? (player.isCrouched ? 0.10 : 0.25) : 0;
+      const litAdd = litRate * dt;
+
       let anyDetected = false;
       let maxDetection = 0;
       for (const entry of guardEntries) {
         const g = entry.guard;
         const prev = st.detection[g.id] ?? 0;
-        const next = updateDetection(
+        const visionAndNoise = updateDetection(
           g,
           player,
           procgen.obstacles(),
@@ -340,6 +347,8 @@ export function Game() {
           effectiveVisionRange,
           weatherNoise,
         );
+        // Apply the floodlight bump on top.
+        const next = Math.min(1, visionAndNoise + litAdd);
         st.setDetection(g.id, next);
         if (next > maxDetection) maxDetection = next;
         if (next > DETECTED_THRESHOLD) anyDetected = true;
@@ -463,8 +472,8 @@ export function Game() {
       <ActionButtons />
       <LookButtons />
       <Hearts />
-      <HiddenBadge />
       <Banner />
+      <StartScreen />
       <SettingsScreen />
     </View>
   );

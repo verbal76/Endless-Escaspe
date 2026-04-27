@@ -61,10 +61,13 @@ function makePart(
   return new THREE.Mesh(geo, mat);
 }
 
-export function createBlockyFigure(color: number): BlockyFigure {
+// Optional headColor lets guards / players override just the head
+// while keeping the body uniform-coloured. If omitted, the head
+// matches the body colour.
+export function createBlockyFigure(color: number, headColor?: number): BlockyFigure {
   const group = new THREE.Group();
 
-  const head = makePart(HEAD_SIZE, HEAD_SIZE, HEAD_SIZE, color, false);
+  const head = makePart(HEAD_SIZE, HEAD_SIZE, HEAD_SIZE, headColor ?? color, false);
   head.position.y = HEAD_Y;
   group.add(head);
 
@@ -162,14 +165,13 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
   const phase = time * cycleHz * 2 * Math.PI;
   const swing = Math.min(1, speed / 4) * (isRunning ? 0.9 : 0.55);
 
-  if (stance === 'crawl') {
-    // Baby crawl per the user's hand-drawn reference: same-side
-    // reach pair (left arm + left leg, then right arm + right leg).
-    // The reaching arm extends forward-and-OUTWARD (not inward
-    // across the body); the reaching leg trails BACKWARD-and-
-    // OUTWARD, like pushing off the ground. Tucked limbs hang
-    // straight down at their pivot, reading from the camera as a
-    // short stub at the body side - exactly like the drawing.
+  if (stance === 'crouch') {
+    // CROUCH now uses the on-hands-and-knees animation that was
+    // formerly the CRAWL stance - same-side reach pair (left arm +
+    // left leg, then right arm + right leg) per the user's hand-
+    // drawn reference. Reaching arm sweeps UP and FORWARD past the
+    // head; trailing leg kicks back. Tucked limbs hang at the body
+    // side, foreshortened from the camera.
 
     fig.torso.rotation.x = Math.PI / 2.4;
     fig.torso.position.set(0, 0.6, 0);
@@ -177,26 +179,16 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
     fig.head.position.set(0, 0.7, 0.55);
     fig.head.rotation.x = -Math.PI / 5;
 
-    // Pivots: shoulders sit slightly out from the torso side and
-    // forward of centre; hips behind torso, narrower stance.
     const shoulderHalf = TORSO_W / 2 + ARM_W / 2 + 0.02;
     const shoulderY = 0.75;
     const hipY = 0.55;
     const hipBack = -0.2;
 
-    // Pose A = left side reaching, Pose B = right side reaching.
-    // When stationary, lock to Pose A so the static figure reads
-    // as a clear "ready to crawl" pose, not a frozen ambiguous
-    // mid-cycle.
     const aRaw = poseA_amount(phase);
     const a = swing > 0.05 ? aRaw : 1; // freeze on Pose A when still
     const b = 1 - a;
 
-    // ARMS - reach pose: rotation.x = ~60deg above horizontal so the
-    // reaching hand sweeps UP and FORWARD past the head, like in the
-    // hand-drawn reference. Outward yaw spreads the arm laterally so
-    // it's visible from the third-person camera.
-    const ARM_REACH_X = Math.PI / 3;             // 60deg up-and-forward
+    const ARM_REACH_X = Math.PI / 3;
     const ARM_REACH_OUTWARD_Y = 0.55;
     fig.armL.position.set(-shoulderHalf, shoulderY, 0.18);
     fig.armR.position.set(shoulderHalf, shoulderY, 0.18);
@@ -205,26 +197,14 @@ export function updateFigurePose(fig: BlockyFigure, input: FigurePoseInput) {
     fig.armL.rotation.y = -a * ARM_REACH_OUTWARD_Y;
     fig.armR.rotation.y = b * ARM_REACH_OUTWARD_Y;
 
-    // LEGS - same-side syncing: when LEFT arm reaches (a=1), LEFT
-    // leg trails BACKWARD. rotation.x = -PI/2 + 0.2 (slightly back
-    // and up - foot kicked behind). Outward yaw: positive rotation
-    // around Y rotates -Z (back) toward -X (outward to the left
-    // for the left leg, see the math comment in the plan).
-    const LEG_REACH_X = -Math.PI / 2 + 0.20;     // backward, slight lift
-    const LEG_REACH_OUTWARD_Y = 0.40;             // ~23deg outward
+    const LEG_REACH_X = -Math.PI / 2 + 0.20;
+    const LEG_REACH_OUTWARD_Y = 0.40;
     fig.legL.position.set(-(LEG_W / 2 + 0.02), hipY, hipBack);
     fig.legR.position.set(LEG_W / 2 + 0.02, hipY, hipBack);
     fig.legL.rotation.x = a * LEG_REACH_X;
     fig.legR.rotation.x = b * LEG_REACH_X;
-    fig.legL.rotation.y = a * LEG_REACH_OUTWARD_Y;   // outward to -X
-    fig.legR.rotation.y = -b * LEG_REACH_OUTWARD_Y;  // outward to +X
-  } else if (stance === 'crouch') {
-    fig.group.position.y = -0.35;
-    fig.torso.rotation.x = 0.25;
-    fig.legL.rotation.x = -0.6 + Math.sin(phase) * 0.35 * swing;
-    fig.legR.rotation.x = -0.6 + Math.sin(phase + Math.PI) * 0.35 * swing;
-    fig.armL.rotation.x = Math.sin(phase + Math.PI) * 0.4 * swing;
-    fig.armR.rotation.x = Math.sin(phase) * 0.4 * swing;
+    fig.legL.rotation.y = a * LEG_REACH_OUTWARD_Y;
+    fig.legR.rotation.y = -b * LEG_REACH_OUTWARD_Y;
   } else {
     if (isRunning) fig.torso.rotation.x = 0.18;
     fig.legL.rotation.x = Math.sin(phase) * 0.7 * swing;

@@ -2,7 +2,6 @@ import type { Obstacle, Player } from '../types/world';
 import { input } from './InputSystem';
 import {
   PLAYER_CROUCH_SPEED,
-  PLAYER_PRONE_SPEED,
   PLAYER_RADIUS,
   PLAYER_WALK_SPEED,
   PLAY_HALF_W,
@@ -12,7 +11,6 @@ import { circleHit } from '../util/collision';
 const PLAYFIELD_BACK_Z = -2;
 
 function baseSpeedFor(stance: Player['stance']): number {
-  if (stance === 'crawl') return PLAYER_PRONE_SPEED;
   if (stance === 'crouch') return PLAYER_CROUCH_SPEED;
   return PLAYER_WALK_SPEED;
 }
@@ -23,10 +21,8 @@ export function updatePlayer(
   dt: number,
   segmentEndZ: number,
 ) {
-  // Stance and run come straight from the HUD radio/toggle. Visual /
-  // gameplay flags derive from stance only.
+  // Stance and run come straight from the HUD radio/toggle.
   p.stance = input.stance;
-  p.isProne = p.stance === 'crawl';
   p.isCrouched = p.stance === 'crouch';
   p.isRunning = input.run;
 

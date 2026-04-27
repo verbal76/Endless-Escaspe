@@ -14,6 +14,15 @@ export const PLAYER_COLOR = 0xa05423;
 // Police-blue uniform.
 export const GUARD_COLOR = 0x2b4f8e;
 
+// Skin tone palette - shared by player choice and randomised guard
+// heads. Beige is a warm pale tan; brown is a deeper, warmer tan.
+export const SKIN_BEIGE = 0xe8c697;
+export const SKIN_BROWN = 0x7e4f2a;
+
+export function skinHex(skin: 'beige' | 'brown'): number {
+  return skin === 'brown' ? SKIN_BROWN : SKIN_BEIGE;
+}
+
 export function createPlayer(): Player {
   return {
     x: 0,
@@ -23,13 +32,12 @@ export function createPlayer(): Player {
     stance: 'walk',
     isRunning: false,
     isCrouched: false,
-    isProne: false,
     isHidden: false,
   };
 }
 
-export function createPlayerFigure(): BlockyFigure {
-  return createBlockyFigure(PLAYER_COLOR);
+export function createPlayerFigure(skin: 'beige' | 'brown' = 'beige'): BlockyFigure {
+  return createBlockyFigure(PLAYER_COLOR, skinHex(skin));
 }
 
 export type GuardConfig = {
@@ -72,8 +80,11 @@ export function createGuardConfigs(): GuardConfig[] {
   ];
 }
 
+// Guards get randomised beige or brown heads at spawn time so the
+// crew feels less cloned. 50/50 split.
 export function createGuardFigure(): BlockyFigure {
-  return createBlockyFigure(GUARD_COLOR);
+  const skin = Math.random() < 0.5 ? SKIN_BEIGE : SKIN_BROWN;
+  return createBlockyFigure(GUARD_COLOR, skin);
 }
 
 // Flat triangular cone on the ground showing the guard's actual

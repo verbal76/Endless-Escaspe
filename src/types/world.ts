@@ -48,8 +48,10 @@ export type Chunk = {
 };
 
 // Player movement mode. RUN is a separate, orthogonal speed multiplier
-// (input.run) that doubles movement speed for any of these stances.
-export type Stance = 'crawl' | 'crouch' | 'walk';
+// (input.run) that doubles movement speed for either of these stances.
+// CRAWL was removed - the on-hands-and-knees animation is now the
+// CROUCH pose visually.
+export type Stance = 'crouch' | 'walk';
 
 export type Player = {
   x: number;
@@ -58,12 +60,8 @@ export type Player = {
   vz: number;
   stance: Stance;
   isRunning: boolean;
-  // Derived flags - true iff stance equals the corresponding value.
-  // Kept on the type so render code and DetectionSystem don't have to
-  // re-derive each frame, but they're written from `stance` only.
   isCrouched: boolean;
-  isProne: boolean;
-  // Hidden-from-guards: prone AND within HIDE_RANGE of a cover obstacle.
+  // Hidden-from-guards: crouched AND within HIDE_RANGE of a cover obstacle.
   isHidden: boolean;
 };
 

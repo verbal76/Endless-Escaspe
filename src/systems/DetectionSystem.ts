@@ -14,21 +14,15 @@ const NOISE_RANGE_CRAWL_SQ = 2 * 2;
 // Per-second detection contribution at zero distance for each
 // stance and movement state. Falls off linearly with distance.
 function baseNoisePerSecond(p: Player): number {
-  if (!p.isCrouched && !p.isProne) {
-    // walk
-    return p.isRunning ? 0.8 : 0.4;
+  if (!p.isCrouched) {
+    return p.isRunning ? 0.8 : 0.4; // walk
   }
-  if (p.isCrouched) {
-    return p.isRunning ? 0.30 : 0.15;
-  }
-  // prone / crawl
-  return p.isRunning ? 0.10 : 0.04;
+  return p.isRunning ? 0.30 : 0.15;  // crouch (the low-profile stance)
 }
 
 function noiseRangeSq(p: Player): number {
-  if (!p.isCrouched && !p.isProne) return NOISE_RANGE_WALK_SQ;
-  if (p.isCrouched) return NOISE_RANGE_CROUCH_SQ;
-  return NOISE_RANGE_CRAWL_SQ;
+  if (!p.isCrouched) return NOISE_RANGE_WALK_SQ;
+  return NOISE_RANGE_CROUCH_SQ;
 }
 
 function angleDelta(a: number, b: number): number {
@@ -51,23 +45,19 @@ export function updateDetection(
   const visionRangeSq = visionRange * visionRange;
 
   // Stance scales how visible the player is when in the cone.
-  const visionScale = player.isProne ? 0.25 : player.isCrouched ? 0.55 : 1.0;
-  const hiddenScale = player.isHidden ? 0 : 1; // crawl + cover masks them
+  // CROUCH is the low-profile stance (uses the on-hands-and-knees
+  // animation) - quieter, smaller silhouette. WALK is full upright.
+  const visionScale = player.isCrouched ? 0.45 : 1.0;
+  const hiddenScale = player.isHidden ? 0 : 1; // crouch + cover masks them
 
   let visionAdd = 0;
   if (dSq <= visionRangeSq && hiddenScale > 0) {
     const angleToPlayer = Math.atan2(player.z - guard.z, player.x - guard.x);
     if (angleDelta(guard.facing, angleToPlayer) <= VISION_HALF) {
-      // Per-stance cover threshold. The shorter the player is, the
-      // shorter the obstacle needed to break the guard's sight line.
-      // Standing requires torso/head-height obstacles; crouched
-      // accepts hip-height; prone is hidden by almost anything above
-      // the grass.
-      const requiredCoverHeight = player.isProne
-        ? 0.25
-        : player.isCrouched
-          ? 0.55
-          : 1.0;
+      // Per-stance cover threshold. Crouched (the on-hands-and-knees
+      // low profile) is hidden by hip-height obstacles; standing
+      // requires torso/head-height to break sight.
+      const requiredCoverHeight = player.isCrouched ? 0.30 : 1.0;
       const blockers: Circle[] = obstacles
         .filter((o) => o.height >= requiredCoverHeight)
         .map((o) => ({ x: o.x, z: o.z, r: o.r * 0.85 }));

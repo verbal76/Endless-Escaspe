@@ -30,17 +30,19 @@ export async function saveBestStars(b: BestStars): Promise<void> {
   }
 }
 
-// User settings persisted alongside hi-scores. Currently the only
-// fields are masterVolume (0..1) and weatherEnabled (boolean).
+// User settings persisted alongside hi-scores. masterVolume,
+// weatherEnabled, and playerSkin (chosen from the start screen).
 
 export type Settings = {
   masterVolume: number;
   weatherEnabled: boolean;
+  playerSkin: 'beige' | 'brown';
 };
 
 const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.7,
   weatherEnabled: true,
+  playerSkin: 'beige',
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -58,6 +60,10 @@ export async function loadSettings(): Promise<Settings> {
           typeof parsed.weatherEnabled === 'boolean'
             ? parsed.weatherEnabled
             : DEFAULT_SETTINGS.weatherEnabled,
+        playerSkin:
+          parsed.playerSkin === 'brown' || parsed.playerSkin === 'beige'
+            ? parsed.playerSkin
+            : DEFAULT_SETTINGS.playerSkin,
       };
     }
   } catch {

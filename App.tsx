@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Game } from './src/game/Game';
 import { useStore } from './src/state/store';
-import { loadBestStars } from './src/util/storage';
+import { loadBestStars, loadSettings } from './src/util/storage';
 
 export default function App() {
   // Keep the screen lit during play.
@@ -16,9 +16,13 @@ export default function App() {
     };
   }, []);
 
-  // Hydrate persistent best-stars on boot.
+  // Hydrate persistent best-stars and user settings on boot.
   useEffect(() => {
     loadBestStars().then((b) => useStore.getState().setBestStars(b));
+    loadSettings().then((s) => {
+      useStore.getState().setMasterVolume(s.masterVolume);
+      useStore.getState().setWeatherEnabled(s.weatherEnabled);
+    });
   }, []);
 
   return (

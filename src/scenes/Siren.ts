@@ -57,10 +57,10 @@ export function createSiren(): SirenHandle {
   };
 }
 
-export function updateSiren(s: SirenHandle, detection: number) {
+export function updateSiren(s: SirenHandle, detection: number, masterVolume: number) {
   if (!s.ready || !s.player) return;
   if (detection >= PLAY_THRESHOLD) {
-    const vol = Math.min(MAX_VOLUME, detection * MAX_VOLUME);
+    const vol = Math.min(MAX_VOLUME, detection * MAX_VOLUME) * masterVolume;
     if (Math.abs(vol - s.lastVolume) > 0.02) {
       s.player.volume = vol;
       s.lastVolume = vol;

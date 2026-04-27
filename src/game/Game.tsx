@@ -108,11 +108,15 @@ export function Game() {
 
     // Per-segment weather. Picked deterministically from the segment
     // seed so a restart of the same segment gets the same conditions.
-    const weatherKind = pickWeather(useStore.getState().segmentSeed);
+    // If the user has weather effects toggled off, force clear and
+    // boost the AI senses (see the update loop below) so toggling
+    // off doesn't hand the player a free pass.
+    const weatherEnabledAtInit = useStore.getState().weatherEnabled;
+    const rolledWeatherKind = pickWeather(useStore.getState().segmentSeed);
+    const weatherKind = weatherEnabledAtInit ? rolledWeatherKind : 'clear';
     useStore.getState().setWeather(weatherKind);
     const weather: Weather = createWeather(weatherKind, 0, 1);
     r.worldRoot.add(weather.group);
-    // Snow tints the ground bright; rain and clear keep grass.
     if (weatherKind === 'snow') {
       groundMat.color.setHex(0xc8d6dc);
     }
@@ -284,7 +288,7 @@ export function Game() {
         projectiles.clear();
         // Silence the siren on pause / non-playing states so the
         // speaker doesn't keep wailing while the player is in menus.
-        updateSiren(siren, 0);
+        updateSiren(siren, 0, useStore.getState().masterVolume);
         return;
       }
 
@@ -304,11 +308,22 @@ export function Game() {
         if (!lit && isPlayerLit(t, player.x, player.z)) lit = true;
       }
       // Weather modifiers: snow boosts vision (player more visible
-       // against bright background); rain dampens player noise.
-      const weatherVision = visionMultiplier(weather.kind);
-      const weatherNoise = noiseMultiplier(weather.kind);
+      // against bright background); rain dampens player noise.
+      // Compensation: if weather effects are toggled OFF, give the
+      // AI a constant +10% vision and a stronger light tower bonus
+      // so the player doesn't get an easier game by hitting the
+      // toggle. weatherEnabled is fixed for the lifetime of the
+      // segment (captured at init); changing the toggle takes effect
+      // on the next segment.
+      const weatherVision = weatherEnabledAtInit
+        ? visionMultiplier(weather.kind)
+        : 1.10;
+      const weatherNoise = weatherEnabledAtInit
+        ? noiseMultiplier(weather.kind)
+        : 1.0;
+      const litBonus = weatherEnabledAtInit ? LIGHT_VISION_BONUS : 0.18;
       const effectiveVisionRange = (lit
-        ? baseVisionRange * (1 + LIGHT_VISION_BONUS)
+        ? baseVisionRange * (1 + litBonus)
         : baseVisionRange) * weatherVision;
 
       let anyDetected = false;
@@ -349,8 +364,9 @@ export function Game() {
       if (maxDetection > SEEN_THRESHOLD && !prevAnyDetected) timesSeenAcc++;
       prevAnyDetected = maxDetection > SEEN_THRESHOLD;
 
-      // Live siren volume tracks the highest detection across guards.
-      updateSiren(siren, maxDetection);
+      // Live siren volume tracks the highest detection across guards,
+      // multiplied by the master volume slider in the pause panel.
+      updateSiren(siren, maxDetection, st.masterVolume);
 
       procgen.update(player.z);
 

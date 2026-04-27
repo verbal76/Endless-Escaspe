@@ -32,6 +32,13 @@ type Store = {
   // Per-segment weather. Picked at segment init by Game.tsx via
   // pickWeather(seed); HUD subscribes if it ever needs to surface it.
   weather: WeatherKind;
+  // Toggle: when false, every segment is forced to clear weather and
+  // the AI gets a sense boost so the player doesn't get an easier
+  // game by disabling effects. Persisted via AsyncStorage.
+  weatherEnabled: boolean;
+  // Master audio volume 0..1, applied on top of the siren's
+  // detection-driven volume curve. Persisted via AsyncStorage.
+  masterVolume: number;
   lastStats: RunStats | null;
   // Best star score (1..3) ever achieved per stage. Hydrated from
   // AsyncStorage on app boot; persisted whenever a new high is set.
@@ -45,6 +52,8 @@ type Store = {
   setLastStats: (s: RunStats | null) => void;
   setWeather: (w: WeatherKind) => void;
   setBestStars: (b: Record<number, number>) => void;
+  setWeatherEnabled: (b: boolean) => void;
+  setMasterVolume: (v: number) => void;
   recordSegmentStars: (stage: number, stars: number) => boolean;
   requestRestart: () => void;
   resetForSegment: (seed: number) => void;
@@ -61,6 +70,8 @@ export const useStore = create<Store>((set) => ({
   paused: false,
   restartCounter: 0,
   weather: 'clear',
+  weatherEnabled: true,
+  masterVolume: 0.7,
   lastStats: null,
   bestStars: {},
   setRunState: (s) => set({ runState: s }),
@@ -78,6 +89,15 @@ export const useStore = create<Store>((set) => ({
   setPaused: (b) => set((st) => (st.paused === b ? st : { paused: b })),
   setLastStats: (s) => set({ lastStats: s }),
   setWeather: (w) => set((st) => (st.weather === w ? st : { weather: w })),
+  setWeatherEnabled: (b) =>
+    set((st) => (st.weatherEnabled === b ? st : { weatherEnabled: b })),
+  setMasterVolume: (v) =>
+    set((st) => {
+      const clamped = Math.max(0, Math.min(1, v));
+      return Math.abs(st.masterVolume - clamped) < 0.005
+        ? st
+        : { masterVolume: clamped };
+    }),
   setBestStars: (b) => set({ bestStars: b }),
   // Returns true iff this is a new high score for the stage. Caller
   // can then persist to AsyncStorage (Game.tsx handles that).

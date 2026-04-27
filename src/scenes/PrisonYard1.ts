@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import type { Guard, Player } from '../types/world';
-import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
+import {
+  CHUNK_LEN,
+  CHUNKS_AHEAD,
+  PLAY_HALF_W,
+  VISION_CONE_DEG,
+  VISION_RANGE,
+} from '../util/geometry';
 
 export function createPlayer(): Player {
   return {
@@ -77,17 +83,32 @@ export function createGuardMesh(): THREE.Mesh {
   return m;
 }
 
+// A flat triangular cone on the ground showing the guard's actual
+// vision footprint: VISION_CONE_DEG wide, VISION_RANGE long. Apex
+// sits at the guard, base spans the full cone angle at max range.
+// Visual now matches DetectionSystem behavior 1:1.
 export function createFacingMarker(): THREE.Mesh {
-  const geo = new THREE.PlaneGeometry(0.8, 4);
+  const halfAngle = (VISION_CONE_DEG * Math.PI) / 180 / 2;
+  const baseHalfWidth = Math.tan(halfAngle) * VISION_RANGE;
+  // Local frame: apex at origin, cone extends along +Z (forward). The
+  // guard mesh is rotated so its forward axis lines up correctly.
+  const verts = new Float32Array([
+    0, 0, 0,
+    -baseHalfWidth, 0, VISION_RANGE,
+    baseHalfWidth, 0, VISION_RANGE,
+  ]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+  geo.setIndex([0, 1, 2]);
+  geo.computeVertexNormals();
   const mat = new THREE.MeshBasicMaterial({
     color: 0xffd14a,
     transparent: true,
-    opacity: 0.35,
+    opacity: 0.30,
     depthWrite: false,
+    side: THREE.DoubleSide,
   });
-  const m = new THREE.Mesh(geo, mat);
-  m.rotation.x = -Math.PI / 2;
-  return m;
+  return new THREE.Mesh(geo, mat);
 }
 
 export function createGround(): THREE.Mesh {

@@ -60,8 +60,12 @@ export function updateDetection(
   if (dSq <= VISION_RANGE_SQ && hiddenScale > 0) {
     const angleToPlayer = Math.atan2(player.z - guard.z, player.x - guard.x);
     if (angleDelta(guard.facing, angleToPlayer) <= VISION_HALF) {
+      // Anything that's at or above eye level blocks the guard's
+      // line of sight: cover (1.4m) and crates (1.1m). Low walls
+      // (0.6m) stay see-through because the guard is tall enough to
+      // look over them.
       const blockers: Circle[] = obstacles
-        .filter((o) => o.isCover)
+        .filter((o) => o.isCover || o.kind === 'crate')
         .map((o) => ({ x: o.x, z: o.z, r: o.r * 0.85 }));
       if (lineOfSightClear(guard.x, guard.z, player.x, player.z, blockers)) {
         const proximity = 1 - dSq / VISION_RANGE_SQ;

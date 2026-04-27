@@ -65,7 +65,10 @@ export function Game() {
       g.mesh.position.set(g.x, 0.7, g.z);
       r.worldRoot.add(g.mesh);
       g.visionMesh = createFacingMarker();
-      g.visionMesh.position.set(0, 0.05, 2);
+      // Apex of the cone is at origin (the guard); cone extends along
+      // its local +Z. Just lift slightly off the ground so it doesn't
+      // z-fight.
+      g.visionMesh.position.set(0, 0.05, 0);
       g.mesh.add(g.visionMesh);
       return g;
     });

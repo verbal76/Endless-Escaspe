@@ -166,7 +166,7 @@ export function Game() {
 
     const projectiles = new ProjectileSystem(r.worldRoot);
 
-    spawnFences(r.worldRoot);
+    spawnFences(r.worldRoot, useStore.getState().stage, weatherKind);
     const lightTowers: LightTower[] = spawnLightTowers(r.worldRoot);
 
     const radialMeter = createRadialMeter();

@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #16 · designer-pass';
+export const OTA_VERSION = 'OTA #17 · adaptive-fence-color';

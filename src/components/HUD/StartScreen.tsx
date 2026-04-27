@@ -124,23 +124,30 @@ function FigurePickButton({
   );
 }
 
-type Mode = 'home' | 'pick' | 'name' | 'continue';
+type Mode = 'home' | 'pick' | 'name' | 'continue' | 'profile';
 
 export function StartScreen() {
   const runState = useStore((s) => s.runState);
   const startRun = useStore((s) => s.startRun);
   const setPlayerSkin = useStore((s) => s.setPlayerSkin);
   const setStage = useStore((s) => s.setStage);
+  const setBestStars = useStore((s) => s.setBestStars);
   const saves = useStore((s) => s.saves);
   const upsertSave = useStore((s) => s.upsertSave);
   const removeSave = useStore((s) => s.removeSave);
   const setActiveSave = useStore((s) => s.setActiveSave);
   const setPlayerName = useStore((s) => s.setPlayerName);
+  const pendingStartMode = useStore((s) => s.pendingStartMode);
+  const setPendingStartMode = useStore((s) => s.setPendingStartMode);
 
   const [mode, setMode] = useState<Mode>('home');
   const [pickedSkin, setPickedSkin] = useState<PlayerSkin | null>(null);
   const [nameDraft, setNameDraft] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
+  // The save key currently being viewed in 'profile' mode. Decoupled
+  // from activeSaveName so we can browse a save's star board without
+  // committing to load it until the player taps a stage / PLAY.
+  const [profileKey, setProfileKey] = useState<string | null>(null);
 
   // List view sorted most-recent-first so the player's likely target
   // is at the top of the list.
@@ -155,8 +162,34 @@ export function StartScreen() {
       setPickedSkin(null);
       setNameDraft('');
       setNameError(null);
+      setProfileKey(null);
     }
   }, [runState, mode]);
+
+  // Honour pause-menu "LOAD RUN": drop directly onto the save list.
+  // Cleared via setPendingStartMode(null) so the next plain return
+  // to the main menu lands on 'home' as usual.
+  useEffect(() => {
+    if (runState !== 'idle') return;
+    if (pendingStartMode === 'continue') {
+      setMode(Object.keys(saves).length > 0 ? 'continue' : 'home');
+      setPendingStartMode(null);
+    } else if (pendingStartMode === 'home') {
+      setMode('home');
+      setPendingStartMode(null);
+    }
+  }, [pendingStartMode, runState, saves, setPendingStartMode]);
+
+  // If the profile we're viewing has been deleted (or the key is
+  // stale for any other reason) bounce back to the appropriate
+  // surface on the next tick. Keeps render side-effect-free.
+  useEffect(() => {
+    if (mode !== 'profile') return;
+    if (!profileKey || !saves[profileKey]) {
+      setMode(Object.keys(saves).length > 0 ? 'continue' : 'home');
+      setProfileKey(null);
+    }
+  }, [mode, profileKey, saves]);
 
   if (runState !== 'idle') return null;
 
@@ -195,13 +228,17 @@ export function StartScreen() {
     }
     const key = saveKeyFromName(name);
     if (saves[key]) {
-      setNameError('A save with that name already exists.');
+      Alert.alert(
+        'Name already taken',
+        `"${name}" is already in use. Pick a different name or delete the existing save from the load screen.`,
+      );
       return;
     }
     const save: Save = {
       name,
       skin: pickedSkin,
       stage: 1,
+      bestStars: {},
       updatedAt: Date.now(),
     };
     upsertSave(save);
@@ -209,24 +246,33 @@ export function StartScreen() {
     setPlayerSkin(pickedSkin);
     setPlayerName(name);
     setStage(1);
+    setBestStars({});
     const next: SavesMap = { ...saves, [key]: save };
     writeSaves(next);
     startRun();
   };
 
-  const onLoadSave = (s: Save) => {
+  // Load the active save, optionally jumping into a specific stage
+  // (replay) instead of the save's own resume point.
+  const beginRunForSave = (s: Save, stage?: number) => {
     const key = saveKeyFromName(s.name);
     setActiveSave(key);
     setPlayerSkin(s.skin);
     setPlayerName(s.name);
-    setStage(s.stage);
+    setBestStars(s.bestStars);
+    setStage(stage ?? s.stage);
     startRun();
+  };
+
+  const onOpenProfile = (s: Save) => {
+    setProfileKey(saveKeyFromName(s.name));
+    setMode('profile');
   };
 
   const onDeleteSave = (s: Save) => {
     Alert.alert(
-      'Delete save?',
-      `Permanently delete "${s.name}" (Stage ${s.stage}).`,
+      'Delete character?',
+      `Permanently delete "${s.name}" and their star board.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -240,9 +286,17 @@ export function StartScreen() {
               if (k !== key) next[k] = saves[k];
             }
             writeSaves(next);
-            // If they just emptied the list, fall back to the home
-            // screen so they're not staring at an empty CONTINUE list.
-            if (Object.keys(next).length === 0) goBackHome();
+            // If we deleted the save we were profiling, bounce back
+            // to the list (or home if nothing's left).
+            if (mode === 'profile' && profileKey === key) {
+              if (Object.keys(next).length === 0) goBackHome();
+              else setMode('continue');
+            } else if (
+              mode === 'continue' &&
+              Object.keys(next).length === 0
+            ) {
+              goBackHome();
+            }
           },
         },
       ],
@@ -365,52 +419,154 @@ export function StartScreen() {
     );
   }
 
-  // mode === 'continue'
+  if (mode === 'continue') {
+    return (
+      <View pointerEvents="box-none" style={styles.root}>
+        <TitleRow />
+        <Text style={styles.tagline}>Continue a run</Text>
+        <ScrollView
+          style={styles.saveList}
+          contentContainerStyle={styles.saveListContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {sortedSaves.map((s) => (
+            <View key={saveKeyFromName(s.name)} style={styles.saveRow}>
+              <Pressable
+                onPress={() => onOpenProfile(s)}
+                style={({ pressed }) => [
+                  styles.saveRowMain,
+                  pressed && styles.saveRowMainDown,
+                ]}
+              >
+                <PrisonerFigure skin={s.skin} size="sm" />
+                <View style={styles.saveRowText}>
+                  <Text style={styles.saveName}>{s.name}</Text>
+                  <Text style={styles.saveStage}>
+                    Stage {s.stage}
+                    {totalStars(s) > 0 ? `  ·  ${totalStars(s)}★` : ''}
+                  </Text>
+                </View>
+              </Pressable>
+              <Pressable
+                onPress={() => onDeleteSave(s)}
+                hitSlop={8}
+                style={({ pressed }) => [
+                  styles.deleteBtn,
+                  pressed && styles.deleteBtnDown,
+                ]}
+              >
+                <Text style={styles.deleteGlyph}>×</Text>
+              </Pressable>
+            </View>
+          ))}
+        </ScrollView>
+        <Pressable
+          onPress={goBackHome}
+          style={({ pressed }) => [styles.linkBtn, pressed && styles.linkBtnDown]}
+        >
+          <Text style={styles.linkLabel}>BACK</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  // mode === 'profile'. The effect above redirects when the key is
+  // stale; just render nothing this frame.
+  const profile = profileKey ? saves[profileKey] : undefined;
+  if (!profile) return null;
+  const clearedStages = Math.max(0, profile.stage - 1);
+  // Show every stage they've cleared plus the current "next" stage,
+  // so the player can both review past results and pick up where
+  // they left off from a single grid.
+  const boardStages: number[] = [];
+  for (let i = 1; i <= profile.stage; i++) boardStages.push(i);
+
   return (
     <View pointerEvents="box-none" style={styles.root}>
-      <TitleRow />
-      <Text style={styles.tagline}>Continue a run</Text>
+      <View style={styles.profileHeader}>
+        <View style={styles.profileFigureFrame}>
+          <PrisonerFigure skin={profile.skin} size="sm" />
+        </View>
+        <View style={styles.profileHeaderText}>
+          <Text style={styles.profileName}>{profile.name}</Text>
+          <Text style={styles.profileSubtitle}>
+            {clearedStages === 0
+              ? 'No stages cleared yet'
+              : `${clearedStages} stage${clearedStages === 1 ? '' : 's'} cleared  ·  ${totalStars(profile)}★`}
+          </Text>
+        </View>
+      </View>
+
       <ScrollView
-        style={styles.saveList}
-        contentContainerStyle={styles.saveListContent}
+        style={styles.boardList}
+        contentContainerStyle={styles.boardListContent}
         showsVerticalScrollIndicator={false}
       >
-        {sortedSaves.map((s) => (
-          <View key={saveKeyFromName(s.name)} style={styles.saveRow}>
-            <Pressable
-              onPress={() => onLoadSave(s)}
-              style={({ pressed }) => [
-                styles.saveRowMain,
-                pressed && styles.saveRowMainDown,
-              ]}
-            >
-              <PrisonerFigure skin={s.skin} size="sm" />
-              <View style={styles.saveRowText}>
-                <Text style={styles.saveName}>{s.name}</Text>
-                <Text style={styles.saveStage}>Stage {s.stage}</Text>
-              </View>
-            </Pressable>
-            <Pressable
-              onPress={() => onDeleteSave(s)}
-              hitSlop={8}
-              style={({ pressed }) => [
-                styles.deleteBtn,
-                pressed && styles.deleteBtnDown,
-              ]}
-            >
-              <Text style={styles.deleteGlyph}>×</Text>
-            </Pressable>
-          </View>
-        ))}
+        <View style={styles.boardGrid}>
+          {boardStages.map((n) => {
+            const stars = profile.bestStars[n] ?? 0;
+            const isNext = n === profile.stage;
+            const isCleared = n < profile.stage;
+            return (
+              <Pressable
+                key={n}
+                onPress={() => beginRunForSave(profile, n)}
+                style={({ pressed }) => [
+                  styles.boardCell,
+                  isNext && styles.boardCellNext,
+                  isCleared && styles.boardCellCleared,
+                  pressed && styles.boardCellDown,
+                ]}
+              >
+                <Text style={styles.boardStageNum}>{n}</Text>
+                <Text style={styles.boardStars}>
+                  {stars > 0
+                    ? STAR_FILLED.repeat(stars) + STAR_EMPTY.repeat(3 - stars)
+                    : isNext
+                      ? 'NEXT'
+                      : '— — —'}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </ScrollView>
-      <Pressable
-        onPress={goBackHome}
-        style={({ pressed }) => [styles.linkBtn, pressed && styles.linkBtnDown]}
-      >
-        <Text style={styles.linkLabel}>BACK</Text>
-      </Pressable>
+
+      <View style={styles.profileBtnRow}>
+        <Pressable
+          onPress={() => setMode('continue')}
+          style={({ pressed }) => [
+            styles.bigBtn,
+            styles.bigBtnSecondary,
+            pressed && styles.bigBtnDown,
+          ]}
+        >
+          <Text style={styles.bigBtnLabel}>BACK</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => beginRunForSave(profile)}
+          style={({ pressed }) => [
+            styles.bigBtn,
+            styles.bigBtnPrimary,
+            pressed && styles.bigBtnDown,
+          ]}
+        >
+          <Text style={styles.bigBtnLabel}>PLAY STAGE {profile.stage}</Text>
+        </Pressable>
+      </View>
     </View>
   );
+}
+
+const STAR_FILLED = '★';
+const STAR_EMPTY = '☆';
+
+function totalStars(s: Save): number {
+  let total = 0;
+  for (const k of Object.keys(s.bestStars)) {
+    total += s.bestStars[Number(k)] | 0;
+  }
+  return total;
 }
 
 const styles = StyleSheet.create({
@@ -682,6 +838,90 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 22,
     fontWeight: '900',
+  },
+
+  // Profile / star board
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 10,
+    paddingHorizontal: 6,
+  },
+  profileFigureFrame: {
+    padding: 6,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 210, 90, 0.95)',
+    backgroundColor: 'rgba(50, 38, 20, 0.85)',
+  },
+  profileHeaderText: {
+    flexShrink: 1,
+  },
+  profileName: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1.0,
+  },
+  profileSubtitle: {
+    color: 'rgba(255, 210, 90, 0.85)',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.0,
+    marginTop: 2,
+  },
+  boardList: {
+    width: '100%',
+    maxWidth: 520,
+    maxHeight: 200,
+  },
+  boardListContent: {
+    paddingVertical: 4,
+  },
+  boardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'center',
+  },
+  boardCell: {
+    width: 76,
+    height: 64,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    backgroundColor: 'rgba(20, 24, 32, 0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  boardCellCleared: {
+    borderColor: 'rgba(255, 210, 90, 0.55)',
+    backgroundColor: 'rgba(50, 38, 20, 0.65)',
+  },
+  boardCellNext: {
+    borderColor: 'rgba(120, 240, 160, 0.85)',
+    backgroundColor: 'rgba(40, 70, 50, 0.85)',
+  },
+  boardCellDown: {
+    opacity: 0.7,
+  },
+  boardStageNum: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '900',
+    letterSpacing: 0.6,
+  },
+  boardStars: {
+    color: '#ffd14a',
+    fontSize: 14,
+    letterSpacing: 2,
+    marginTop: 2,
+  },
+  profileBtnRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
   },
 
   // Back link

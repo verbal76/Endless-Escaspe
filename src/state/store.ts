@@ -55,9 +55,16 @@ type Store = {
   // Lookup key (lowercased name) of the save the current run belongs
   // to. Null between runs / before any save is selected.
   activeSaveName: string | null;
+  // Optional one-shot navigation for the start screen. Pause-menu
+  // "LOAD RUN" sets this to 'continue' so the user lands directly on
+  // the save list instead of the home buttons. StartScreen consumes
+  // it on mount and clears it.
+  pendingStartMode: 'home' | 'continue' | null;
   lastStats: RunStats | null;
-  // Best star score (1..3) ever achieved per stage. Hydrated from
-  // AsyncStorage on app boot; persisted whenever a new high is set.
+  // Best star score (1..3) per stage for the *currently active save*.
+  // Mirrored from save.bestStars when a save is loaded so existing
+  // HUD code (Banner, etc.) can keep reading from the store. Resets
+  // to {} when no save is active.
   bestStars: Record<number, number>;
   setRunState: (s: RunState) => void;
   setHearts: (n: number) => void;
@@ -76,6 +83,7 @@ type Store = {
   upsertSave: (save: Save) => void;
   removeSave: (key: string) => void;
   setActiveSave: (key: string | null) => void;
+  setPendingStartMode: (m: 'home' | 'continue' | null) => void;
   recordSegmentStars: (stage: number, stars: number) => boolean;
   requestRestart: () => void;
   resetForSegment: (seed: number) => void;
@@ -98,6 +106,7 @@ export const useStore = create<Store>((set) => ({
   playerName: '',
   saves: {},
   activeSaveName: null,
+  pendingStartMode: null,
   lastStats: null,
   bestStars: {},
   setRunState: (s) => set({ runState: s }),
@@ -150,6 +159,8 @@ export const useStore = create<Store>((set) => ({
     }),
   setActiveSave: (key) =>
     set((st) => (st.activeSaveName === key ? st : { activeSaveName: key })),
+  setPendingStartMode: (m) =>
+    set((st) => (st.pendingStartMode === m ? st : { pendingStartMode: m })),
   setBestStars: (b) => set({ bestStars: b }),
   // Returns true iff this is a new high score for the stage. Caller
   // can then persist to AsyncStorage (Game.tsx handles that).

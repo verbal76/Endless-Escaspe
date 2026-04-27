@@ -1,39 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const KEY_BEST_STARS = 'endless-escaspe:bestStars:v1';
 const KEY_SETTINGS = 'endless-escaspe:settings:v1';
 const KEY_SAVES = 'endless-escaspe:saves:v1';
 
-// Best stars per stage. Persisted to AsyncStorage so the player
-// keeps their high scores across app restarts. Loading is async;
-// on first boot it returns an empty map.
-
-export type BestStars = Record<number, number>;
-
-export async function loadBestStars(): Promise<BestStars> {
-  try {
-    const raw = await AsyncStorage.getItem(KEY_BEST_STARS);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') return parsed as BestStars;
-  } catch {
-    // Corrupt / missing - treat as empty.
-  }
-  return {};
-}
-
-export async function saveBestStars(b: BestStars): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEY_BEST_STARS, JSON.stringify(b));
-  } catch {
-    // Storage failures are non-fatal; the in-memory copy still works
-    // for the current session.
-  }
-}
-
-// User settings persisted alongside hi-scores. Volume + weather are
-// global; the active prisoner skin lives on the per-character save
-// file (see Save below) and is no longer carried here.
+// User settings persisted globally. Volume + weather are not tied to
+// any specific character; the active prisoner skin and the per-stage
+// star high scores live on the per-character save file (see Save
+// below) and are no longer carried here.
 
 export type Settings = {
   masterVolume: number;
@@ -88,7 +61,13 @@ export type PlayerSkin = 'beige' | 'brown';
 export type Save = {
   name: string;
   skin: PlayerSkin;
+  // Highest stage the player can resume into. Acts as a high-water
+  // mark: replaying a lower stage doesn't roll this back.
   stage: number;
+  // Best stars achieved per cleared stage. Stage keys are numeric; a
+  // missing key means the stage hasn't been cleared with this
+  // character yet.
+  bestStars: Record<number, number>;
   updatedAt: number;
 };
 
@@ -113,10 +92,22 @@ export async function loadSaves(): Promise<SavesMap> {
         (v.skin === 'beige' || v.skin === 'brown') &&
         typeof v.stage === 'number'
       ) {
+        const cleanedStars: Record<number, number> = {};
+        const rawStars = (v as { bestStars?: unknown }).bestStars;
+        if (rawStars && typeof rawStars === 'object') {
+          for (const sk of Object.keys(rawStars as Record<string, unknown>)) {
+            const sv = (rawStars as Record<string, unknown>)[sk];
+            const n = Number(sk);
+            if (Number.isFinite(n) && typeof sv === 'number') {
+              cleanedStars[n] = Math.max(0, Math.min(3, sv | 0));
+            }
+          }
+        }
         out[saveKeyFromName(v.name)] = {
           name: v.name,
           skin: v.skin,
           stage: Math.max(1, v.stage | 0),
+          bestStars: cleanedStars,
           updatedAt:
             typeof v.updatedAt === 'number' ? v.updatedAt : Date.now(),
         };

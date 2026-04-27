@@ -5,7 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Game } from './src/game/Game';
 import { useStore } from './src/state/store';
-import { loadBestStars, loadSaves, loadSettings } from './src/util/storage';
+import { loadSaves, loadSettings } from './src/util/storage';
 
 export default function App() {
   // Keep the screen lit during play.
@@ -16,11 +16,10 @@ export default function App() {
     };
   }, []);
 
-  // Hydrate persistent best-stars, user settings, and character
-  // saves on boot. The active save's skin is applied later, when the
-  // player picks a save (or creates one) on the start screen.
+  // Hydrate user settings and character saves on boot. Per-stage
+  // best-stars live on each Save and are mirrored into the store
+  // when a save is loaded on the start screen.
   useEffect(() => {
-    loadBestStars().then((b) => useStore.getState().setBestStars(b));
     loadSettings().then((s) => {
       useStore.getState().setMasterVolume(s.masterVolume);
       useStore.getState().setWeatherEnabled(s.weatherEnabled);

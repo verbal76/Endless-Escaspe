@@ -82,12 +82,12 @@ export function updateDetection(
     }
   }
 
-  // Per user feedback: discovery ring was filling much too fast for
-  // the player to react. 3x slower across the board (vision + noise
-  // both contribute at one third their previous rate) so the player
-  // has reasonable time to break line of sight or change stance
-  // before the meter peaks.
-  const add = (visionAdd + noiseAdd) / 3;
+  // Per user feedback: discovery ring was filling too fast for the
+  // player to read and react to a threat before peaking. Vision +
+  // noise both contribute at one sixth of their raw rate so the
+  // ring builds as a steady alarm rather than a snap-fill. Spotlight
+  // contributions in Game.tsx are tuned in the same direction.
+  const add = (visionAdd + noiseAdd) / 6;
   if (add > 0) {
     return clamp(prev + add, 0, 1);
   }

@@ -64,7 +64,7 @@ import {
 import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
 import { applyStageLighting } from '../scenes/Lighting';
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
-import { saveBestStars, writeSaves, type Save } from '../util/storage';
+import { writeSaves, type Save } from '../util/storage';
 
 // Stats thresholds. Higher = lenient; lower = stingy.
 const STAT_DETECTED_3 = 3;   // <= seconds detected for 3 stars on this metric
@@ -245,6 +245,7 @@ export function Game() {
 
     const handleWin = () => {
       const st = useStore.getState();
+      const justClearedStage = st.stage;
       const stats: Omit<RunStats, 'stars'> = {
         timesSeen: timesSeenAcc,
         timeDetected: timeDetectedAcc,
@@ -253,26 +254,33 @@ export function Game() {
       };
       const stars = scoreStars(stats);
       st.setLastStats({ ...stats, stars });
-      const isNewHigh = st.recordSegmentStars(st.stage, stars);
-      if (isNewHigh) {
-        // Persist out of band; failure to save is non-fatal (storage
-        // helper swallows errors).
-        saveBestStars(useStore.getState().bestStars);
-      }
-      // Advance to the next stage so the next run is harder (longer
-      // vision, dimmer light, etc.).
-      st.setStage(st.stage + 1);
+      // Mirror the new high (if any) into the in-memory bestStars
+      // map so the post-run banner shows the right number.
+      st.recordSegmentStars(justClearedStage, stars);
 
-      // Mirror stage progress onto the active character save so
-      // "Continue" picks up at the new stage on the next launch.
+      // Advance to the next stage. After replaying a lower stage
+      // this still bumps you forward into linear play, but the save
+      // file's own stage is treated as a high-water mark so we
+      // never roll a returning player's progress backwards.
+      st.setStage(justClearedStage + 1);
+
+      // Mirror stage progress + the new star high onto the active
+      // character save so "Continue" picks up correctly and the
+      // star board on the load screen reflects this run.
       const after = useStore.getState();
       const key = after.activeSaveName;
       if (key) {
         const existing = after.saves[key];
         if (existing) {
+          const oldBest = existing.bestStars[justClearedStage] ?? 0;
+          const newBest = Math.max(oldBest, stars);
           const updated: Save = {
             ...existing,
-            stage: after.stage,
+            stage: Math.max(existing.stage, justClearedStage + 1),
+            bestStars:
+              newBest > oldBest
+                ? { ...existing.bestStars, [justClearedStage]: newBest }
+                : existing.bestStars,
             updatedAt: Date.now(),
           };
           after.upsertSave(updated);
@@ -347,8 +355,9 @@ export function Game() {
       // Standing in a floodlight footprint adds detection directly
       // to every guard, on top of the vision range bonus. Crouching
       // halves the contribution (smaller silhouette). Per-second
-      // rate, scaled by dt.
-      const litRate = lit ? (player.isCrouched ? 0.10 : 0.25) : 0;
+      // rate, scaled by dt. Tuned alongside DetectionSystem's /6 so
+      // the ring fills as a slow alarm rather than a snap-fill.
+      const litRate = lit ? (player.isCrouched ? 0.05 : 0.125) : 0;
       const litAdd = litRate * dt;
 
       let anyDetected = false;

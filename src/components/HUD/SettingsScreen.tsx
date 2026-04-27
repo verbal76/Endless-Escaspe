@@ -104,6 +104,16 @@ export function SettingsScreen() {
     setRunState('idle');
     persistSettings();
   };
+  const onLoadRun = () => {
+    setOpen(false);
+    setPaused(false);
+    // Drop straight into the start screen's save list so the player
+    // can pick another character / replay an earlier stage without
+    // an extra tap on the home buttons.
+    useStore.getState().setPendingStartMode('continue');
+    setRunState('idle');
+    persistSettings();
+  };
 
   return (
     <>
@@ -132,6 +142,12 @@ export function SettingsScreen() {
               onPress={onRestart}
             >
               <Text style={styles.bigLabel}>RESTART</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.bigBtn, styles.btnLoad, pressed && styles.btnPressed]}
+              onPress={onLoadRun}
+            >
+              <Text style={styles.bigLabel}>LOAD RUN</Text>
             </Pressable>
             <Pressable
               style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
@@ -232,6 +248,10 @@ const styles = StyleSheet.create({
   btnRestart: {
     backgroundColor: 'rgba(120, 200, 255, 0.20)',
     borderColor: 'rgba(140, 220, 255, 0.65)',
+  },
+  btnLoad: {
+    backgroundColor: 'rgba(180, 140, 255, 0.20)',
+    borderColor: 'rgba(200, 170, 255, 0.65)',
   },
   btnMain: {
     backgroundColor: 'rgba(255, 210, 90, 0.20)',

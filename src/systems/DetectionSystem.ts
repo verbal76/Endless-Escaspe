@@ -1,14 +1,9 @@
 import type { Guard, Obstacle, Player } from '../types/world';
 import { clamp, dist2 } from '../util/math';
 import { lineOfSightClear, type Circle } from '../util/collision';
-import {
-  DETECTION_DECAY,
-  VISION_CONE_DEG,
-  VISION_RANGE,
-} from '../util/geometry';
+import { DETECTION_DECAY, VISION_CONE_DEG } from '../util/geometry';
 
 const VISION_HALF = (VISION_CONE_DEG * Math.PI) / 180 / 2;
-const VISION_RANGE_SQ = VISION_RANGE * VISION_RANGE;
 
 // How far guards can hear, by how loudly the player is moving.
 // Squared distances; compared against dist2() output directly.
@@ -49,15 +44,17 @@ export function updateDetection(
   obstacles: readonly Obstacle[],
   prev: number,
   dt: number,
+  visionRange: number,
 ): number {
   const dSq = dist2(guard.x, guard.z, player.x, player.z);
+  const visionRangeSq = visionRange * visionRange;
 
   // Stance scales how visible the player is when in the cone.
   const visionScale = player.isProne ? 0.25 : player.isCrouched ? 0.55 : 1.0;
   const hiddenScale = player.isHidden ? 0 : 1; // crawl + cover masks them
 
   let visionAdd = 0;
-  if (dSq <= VISION_RANGE_SQ && hiddenScale > 0) {
+  if (dSq <= visionRangeSq && hiddenScale > 0) {
     const angleToPlayer = Math.atan2(player.z - guard.z, player.x - guard.x);
     if (angleDelta(guard.facing, angleToPlayer) <= VISION_HALF) {
       // Anything that's at or above eye level blocks the guard's
@@ -68,7 +65,7 @@ export function updateDetection(
         .filter((o) => o.isCover || o.kind === 'crate')
         .map((o) => ({ x: o.x, z: o.z, r: o.r * 0.85 }));
       if (lineOfSightClear(guard.x, guard.z, player.x, player.z, blockers)) {
-        const proximity = 1 - dSq / VISION_RANGE_SQ;
+        const proximity = 1 - dSq / visionRangeSq;
         visionAdd = (0.5 + 0.6 * proximity) * visionScale * dt;
       }
     }

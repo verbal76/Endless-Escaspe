@@ -27,7 +27,27 @@ export const GUARD_CHASE_SPEED = 6.5;
 
 // Detection model
 export const VISION_CONE_DEG = 60;
-export const VISION_RANGE = 6;
+// Base vision range in meters. Each stage above 1 adds
+// VISION_RANGE_PER_STAGE meters, so guards see incrementally further
+// as the player progresses. Vision is strictly cone-bound (cone width
+// = VISION_CONE_DEG, length = computed range); guards are blind
+// outside the visible footprint and crates / cover block line of sight.
+export const VISION_RANGE_BASE = 6;
+export const VISION_RANGE_PER_STAGE = 0.5;
+
+// Legacy constant kept for any older imports; equivalent to stage 1.
+export const VISION_RANGE = VISION_RANGE_BASE;
+
+export function getVisionRange(stage: number): number {
+  const s = Math.max(1, stage | 0);
+  return VISION_RANGE_BASE + (s - 1) * VISION_RANGE_PER_STAGE;
+}
+
+// While the player is standing in a floodlight footprint, every
+// guard's effective vision range is multiplied by (1 + this). Starts
+// low so lit areas raise the stakes without instantly dooming the
+// player; tunable upward as later stages get harder.
+export const LIGHT_VISION_BONUS = 0.10;
 export const NOISE_RANGE_RUN = 7;
 export const NOISE_RANGE_WALK = 3;
 export const DETECTION_DECAY = 0.15; // per second when no contribution

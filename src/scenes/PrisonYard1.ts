@@ -5,7 +5,6 @@ import {
   CHUNKS_AHEAD,
   PLAY_HALF_W,
   VISION_CONE_DEG,
-  VISION_RANGE,
 } from '../util/geometry';
 
 export function createPlayer(): Player {
@@ -83,19 +82,18 @@ export function createGuardMesh(): THREE.Mesh {
   return m;
 }
 
-// A flat triangular cone on the ground showing the guard's actual
-// vision footprint: VISION_CONE_DEG wide, VISION_RANGE long. Apex
+// Flat triangular cone on the ground showing the guard's actual
+// vision footprint: VISION_CONE_DEG wide, `visionRange` long. Apex
 // sits at the guard, base spans the full cone angle at max range.
-// Visual now matches DetectionSystem behavior 1:1.
-export function createFacingMarker(): THREE.Mesh {
+// Visual matches DetectionSystem behavior 1:1; guards are blind
+// outside this footprint.
+export function createFacingMarker(visionRange: number): THREE.Mesh {
   const halfAngle = (VISION_CONE_DEG * Math.PI) / 180 / 2;
-  const baseHalfWidth = Math.tan(halfAngle) * VISION_RANGE;
-  // Local frame: apex at origin, cone extends along +Z (forward). The
-  // guard mesh is rotated so its forward axis lines up correctly.
+  const baseHalfWidth = Math.tan(halfAngle) * visionRange;
   const verts = new Float32Array([
     0, 0, 0,
-    -baseHalfWidth, 0, VISION_RANGE,
-    baseHalfWidth, 0, VISION_RANGE,
+    -baseHalfWidth, 0, visionRange,
+    baseHalfWidth, 0, visionRange,
   ]);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));

@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #6 · vision-cone-matches-marker';
+export const OTA_VERSION = 'OTA #7 · stage-vision + light-bonus';

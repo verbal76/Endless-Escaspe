@@ -25,7 +25,13 @@ import {
 } from '../scenes/PrisonYard1';
 import { useStore } from '../state/store';
 import type { Guard } from '../types/world';
-import { CHUNK_LEN, CHUNKS_AHEAD, PLAYER_RADIUS } from '../util/geometry';
+import {
+  CHUNK_LEN,
+  CHUNKS_AHEAD,
+  LIGHT_VISION_BONUS,
+  PLAYER_RADIUS,
+  getVisionRange,
+} from '../util/geometry';
 import { circleHit } from '../util/collision';
 
 import { Joystick } from '../components/HUD/Joystick';
@@ -58,16 +64,17 @@ export function Game() {
     const playerMat = playerMesh.material as THREE.MeshStandardMaterial;
     r.worldRoot.add(playerMesh);
 
+    // Stage-tunable vision range. Re-read on segment init so future
+    // stage progression naturally rebuilds the cones.
+    const baseVisionRange = getVisionRange(useStore.getState().stage);
+
     // Two guards, separate home zones (see createGuardConfigs).
     const guards: Guard[] = createGuardConfigs().map((cfg) => {
       const g = createGuard(cfg);
       g.mesh = createGuardMesh();
       g.mesh.position.set(g.x, 0.7, g.z);
       r.worldRoot.add(g.mesh);
-      g.visionMesh = createFacingMarker();
-      // Apex of the cone is at origin (the guard); cone extends along
-      // its local +Z. Just lift slightly off the ground so it doesn't
-      // z-fight.
+      g.visionMesh = createFacingMarker(baseVisionRange);
       g.visionMesh.position.set(0, 0.05, 0);
       g.mesh.add(g.visionMesh);
       return g;
@@ -137,24 +144,29 @@ export function Game() {
       updateHide(player, procgen.obstacles());
       if (player.stance !== st.stance) st.setStance(player.stance);
 
-      // Light tower scan + lit-detection bump. Walking through a
-      // floodlight footprint accelerates EVERY guard's detection,
-      // even guards without direct line of sight.
+      // Light tower scan. While the player is illuminated, every
+      // guard's effective vision range grows by LIGHT_VISION_BONUS.
+      // Vision is still strictly cone-bound; the bonus just makes
+      // each cone reach a bit further.
       let lit = false;
       for (const t of lightTowers) {
         updateLightTower(t, dt);
         if (!lit && isPlayerLit(t, player.x, player.z)) lit = true;
       }
-      // Soft when crouched / prone (smaller silhouette catches less light),
-      // strong when standing.
-      const litRate = player.isProne ? 0.15 : player.isCrouched ? 0.30 : 0.55;
+      const effectiveVisionRange = lit
+        ? baseVisionRange * (1 + LIGHT_VISION_BONUS)
+        : baseVisionRange;
 
       for (const g of guards) {
         const prev = st.detection[g.id] ?? 0;
-        let next = updateDetection(g, player, procgen.obstacles(), prev, dt);
-        if (lit) {
-          next = Math.min(1, next + litRate * dt);
-        }
+        const next = updateDetection(
+          g,
+          player,
+          procgen.obstacles(),
+          prev,
+          dt,
+          effectiveVisionRange,
+        );
         st.setDetection(g.id, next);
         updateGuard(g, player, next, dt, procgen.obstacles(), (gFiring, tx, tz) => {
           projectiles.spawn(gFiring.x, gFiring.z, tx, tz);

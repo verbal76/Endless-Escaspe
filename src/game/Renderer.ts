@@ -33,13 +33,19 @@ export function createRenderer(gl: ExpoWebGLRenderingContext): GameRenderer {
     antialias: false,
   });
   renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
-  renderer.setClearColor(0x0b0d12, 1);
+  // Dawn / dusk sky so the snow-capped backdrop reads against
+  // something other than pitch black. Fog ramps in late and far
+  // (60 -> 800) so distant mountain meshes stay visible while
+  // the playfield still gets atmospheric depth.
+  renderer.setClearColor(0x4a6178, 1);
 
   const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(0x0b0d12, 25, 70);
+  scene.fog = new THREE.Fog(0x4a6178, 60, 800);
 
   const aspect = gl.drawingBufferWidth / gl.drawingBufferHeight;
-  const camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 200);
+  // Far plane bumped to 1500 so the mountain range at z ~700 is
+  // inside the view frustum.
+  const camera = new THREE.PerspectiveCamera(60, aspect, 0.1, 1500);
   camera.position.set(0, 7, -8);
   camera.lookAt(0, 0, 6);
 

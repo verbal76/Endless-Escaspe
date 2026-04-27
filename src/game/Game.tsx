@@ -52,6 +52,7 @@ import {
   updateFigurePose,
 } from '../scenes/BlockyFigure';
 import { attachGuardEquipment, poseGuardArms, type GuardEquipment } from '../scenes/GuardEquipment';
+import { createBackdrop, updateBackdrop } from '../scenes/Backdrop';
 
 // Stats thresholds. Higher = lenient; lower = stingy.
 const STAT_DETECTED_3 = 3;   // <= seconds detected for 3 stars on this metric
@@ -88,6 +89,13 @@ export function Game() {
 
     const ground = createGround();
     r.worldRoot.add(ground);
+
+    // Layered scenery: snow-capped mountains on the horizon, tree
+    // line flanking the playfield, drifting clouds, flying birds.
+    // Distance + perspective gives the parallax effect for free as
+    // the camera follows the player.
+    const backdrop = createBackdrop();
+    r.worldRoot.add(backdrop.group);
 
     const winLine = createWinLine();
     r.worldRoot.add(winLine);
@@ -237,6 +245,8 @@ export function Game() {
 
       runTime += dt;
       animTime += dt;
+
+      updateBackdrop(backdrop, dt);
 
       updatePlayer(player, procgen.obstacles(), dt, segmentEndZ);
       updateHide(player, procgen.obstacles());

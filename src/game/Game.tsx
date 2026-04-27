@@ -38,6 +38,8 @@ import { HiddenBadge } from '../components/HUD/HiddenBadge';
 import { SettingsScreen } from '../components/HUD/SettingsScreen';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
+import { spawnFences } from '../scenes/Fence';
+import { spawnLightTowers, updateLightTower, isPlayerLit, type LightTower } from '../scenes/LightTower';
 
 export function Game() {
   const loopRef = useRef<LoopHandle | null>(null);
@@ -72,6 +74,13 @@ export function Game() {
     procgen.init();
 
     const projectiles = new ProjectileSystem(r.worldRoot);
+
+    // Side fences (cosmetic; collision is via PlayerController X clamp).
+    spawnFences(r.worldRoot);
+
+    // Scanning floodlight towers; player walking through their lit
+    // footprint adds detection to every guard.
+    const lightTowers: LightTower[] = spawnLightTowers(r.worldRoot);
 
     // 3D radial detection meter parented to the world root and moved
     // to the player each frame.
@@ -125,9 +134,24 @@ export function Game() {
       updateHide(player, procgen.obstacles());
       if (player.stance !== st.stance) st.setStance(player.stance);
 
+      // Light tower scan + lit-detection bump. Walking through a
+      // floodlight footprint accelerates EVERY guard's detection,
+      // even guards without direct line of sight.
+      let lit = false;
+      for (const t of lightTowers) {
+        updateLightTower(t, dt);
+        if (!lit && isPlayerLit(t, player.x, player.z)) lit = true;
+      }
+      // Soft when crouched / prone (smaller silhouette catches less light),
+      // strong when standing.
+      const litRate = player.isProne ? 0.15 : player.isCrouched ? 0.30 : 0.55;
+
       for (const g of guards) {
         const prev = st.detection[g.id] ?? 0;
-        const next = updateDetection(g, player, procgen.obstacles(), prev, dt);
+        let next = updateDetection(g, player, procgen.obstacles(), prev, dt);
+        if (lit) {
+          next = Math.min(1, next + litRate * dt);
+        }
         st.setDetection(g.id, next);
         updateGuard(g, player, next, dt, procgen.obstacles(), (gFiring, tx, tz) => {
           projectiles.spawn(gFiring.x, gFiring.z, tx, tz);

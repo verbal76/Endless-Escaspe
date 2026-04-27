@@ -23,7 +23,7 @@ const coverMat = new THREE.MeshStandardMaterial({ color: 0x2c3a4d, roughness: 0.
 
 const SPAWN_X_MIN = -PLAY_HALF_W + 0.7;
 const SPAWN_X_MAX = PLAY_HALF_W - 0.7;
-const MIN_OBSTACLE_GAP = 1.6;
+const MIN_OBSTACLE_GAP = 2.5;
 const SLAB_STEP = 1.0;
 const SLAB_HALF_DEPTH = 1.2;
 const REQUIRED_GAP_W = PLAYER_RADIUS * 4; // ~1.8m walkable corridor at every Z slab

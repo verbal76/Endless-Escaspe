@@ -28,8 +28,12 @@ export function RunButton() {
 const styles = StyleSheet.create({
   btn: {
     position: 'absolute',
-    left: 50,
-    bottom: 180,
+    // Right of the joystick. Joystick lives at left:30, bottom:40,
+    // size 130 - so its right edge is x=160. Put RUN to its right
+    // and slightly above so it's reachable by the left thumb without
+    // overlapping the joystick gesture area.
+    left: 180,
+    bottom: 60,
     width: 70,
     height: 70,
     borderRadius: 35,

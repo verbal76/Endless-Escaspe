@@ -112,6 +112,7 @@ import {
   updateWeather,
   visionMultiplier,
   type Weather,
+  type WeatherKind,
 } from '../scenes/Weather';
 import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
 import { applyStageLighting } from '../scenes/Lighting';
@@ -209,133 +210,174 @@ export function Game() {
     const smokeClouds: SmokeCloud[] = [];
     const smokeRegions: SmokeRegion[] = [];
 
-    // Per-segment scene-graph root. Every mesh whose count or layout
-    // depends on the current stage gets parented to this Group so we
-    // can swap the entire world by removing it and rebuilding from
-    // scratch on stage advance.
-    const segmentRoot = new THREE.Group();
-    r.worldRoot.add(segmentRoot);
-
-    // ---- Per-segment init -------------------------------------------
-    // Snapshot the stage at scene-init time. Most stage-driven knobs
-    // are resolved once here (so the difficulty doesn't shift mid-
-    // segment) but a few - decay, rate scale, AI tier, etc. - are
-    // re-evaluated each frame because they're cheap.
-    const initialStage = useStore.getState().stage;
-
-    const segLengthMul = segmentLengthMulFor(initialStage);
-    const chunkCount = Math.max(
-      CHUNKS_AHEAD,
-      Math.round(CHUNKS_AHEAD * segLengthMul),
-    );
-    const segLen = chunkCount * CHUNK_LEN;
-
-    const ground = createGround();
-    const groundMat = ground.material as THREE.MeshStandardMaterial;
-    segmentRoot.add(ground);
-
-    // Per-segment weather. Picked deterministically from the segment
-    // seed so a restart of the same segment gets the same conditions.
-    // If the user has weather effects toggled off, force clear and
-    // boost the AI senses (see the update loop below) so toggling
-    // off doesn't hand the player a free pass. From stage 15+, even
-    // the toggle-off path produces a non-clear roll so storms become
-    // a permanent late-game pressure.
-    const weatherEnabledAtInit = useStore.getState().weatherEnabled;
-    const rolledWeatherKind = pickWeather(useStore.getState().segmentSeed);
-    const stormyForced = forceStormyWeatherFor(initialStage);
-    let weatherKind = weatherEnabledAtInit ? rolledWeatherKind : 'clear';
-    if (stormyForced && weatherKind === 'clear') {
-      // Coin flip between rain and snow so late stages don't always
-      // pick the same storm type.
-      weatherKind = (useStore.getState().segmentSeed & 1) === 0 ? 'rain' : 'snow';
-    }
-    useStore.getState().setWeather(weatherKind);
-    const weather: Weather = createWeather(weatherKind, 0, 1);
-    segmentRoot.add(weather.group);
-    if (weatherKind === 'snow') {
-      groundMat.color.setHex(0xc8d6dc);
-    }
-
-    const winLine = createWinLine(segLen);
-    segmentRoot.add(winLine);
-
-    const baseVisionRange = visionRangeFor(initialStage);
-
     type GuardEntry = { guard: Guard; figure: BlockyFigure; equipment: GuardEquipment };
-    const guardCount = guardCountFor(initialStage);
-    const guardEntries: GuardEntry[] = createGuardConfigs(guardCount, segLen).map(
-      (cfg) => {
-        const guard = createGuard(cfg);
-        const figure = createGuardFigure();
-        figure.group.position.set(guard.x, 0, guard.z);
-        segmentRoot.add(figure.group);
-        const equipment = attachGuardEquipment(figure, baseVisionRange);
-        guard.mesh = figure.group;
-        return { guard, figure, equipment };
-      },
-    );
-    const guards: Guard[] = guardEntries.map((e) => e.guard);
 
-    const procgen = new ProcgenSystem(
-      useStore.getState().segmentSeed,
-      segmentRoot,
-      chunkCount,
-    );
-    procgen.init();
+    type Scene = {
+      // Parent Group for every per-segment mesh. Removing this from
+      // r.worldRoot detaches the entire world in one operation; the
+      // next buildScene() call constructs a fresh root.
+      root: THREE.Group;
+      segLen: number;
+      segmentEndZ: number;
+      weatherKind: WeatherKind;
+      weatherEnabledAtInit: boolean;
+      weather: Weather;
+      groundMat: THREE.MeshStandardMaterial;
+      baseVisionRange: number;
+      razorWire: boolean;
+      guardEntries: GuardEntry[];
+      guards: Guard[];
+      procgen: ProcgenSystem;
+      lightTowers: LightTower[];
+      dogs: Dog[];
+      cameras: Camera[];
+      threatArrows: ThreatArrow[];
+      bossStage: boolean;
+      bossGuardId: number;
+    };
 
-    // Snow weather: dust the top of every obstacle with a thin
-    // white cap so the world reads as blanketed.
-    if (weatherKind === 'snow') {
-      dustObstaclesWithSnow(procgen.obstacles());
-    }
+    // ---- Per-segment scene builder ----------------------------------
+    // Constructs a fresh scene root with all stage-driven entities
+    // (guards, dogs, cameras, towers, fences, procgen, weather, etc.)
+    // parented to it. Run once at GLView mount and again every time
+    // the player advances stage or starts a new segment.
+    const buildScene = (stage: number, seed: number): Scene => {
+      const root = new THREE.Group();
+      r.worldRoot.add(root);
+
+      const segLengthMul = segmentLengthMulFor(stage);
+      const chunkCount = Math.max(
+        CHUNKS_AHEAD,
+        Math.round(CHUNKS_AHEAD * segLengthMul),
+      );
+      const segLen = chunkCount * CHUNK_LEN;
+
+      const ground = createGround();
+      const groundMat = ground.material as THREE.MeshStandardMaterial;
+      root.add(ground);
+
+      // Per-segment weather. Picked deterministically from the segment
+      // seed so a restart of the same segment gets the same conditions.
+      // If the user has weather effects toggled off, force clear and
+      // boost the AI senses (see the update loop below) so toggling
+      // off doesn't hand the player a free pass. From stage 15+, even
+      // the toggle-off path produces a non-clear roll so storms become
+      // a permanent late-game pressure.
+      const weatherEnabledAtInit = useStore.getState().weatherEnabled;
+      const rolledWeatherKind = pickWeather(seed);
+      const stormyForced = forceStormyWeatherFor(stage);
+      let weatherKind: WeatherKind = weatherEnabledAtInit ? rolledWeatherKind : 'clear';
+      if (stormyForced && weatherKind === 'clear') {
+        // Coin flip between rain and snow so late stages don't always
+        // pick the same storm type.
+        weatherKind = (seed & 1) === 0 ? 'rain' : 'snow';
+      }
+      useStore.getState().setWeather(weatherKind);
+      const weather: Weather = createWeather(weatherKind, 0, 1);
+      root.add(weather.group);
+      if (weatherKind === 'snow') {
+        groundMat.color.setHex(0xc8d6dc);
+      }
+
+      const winLine = createWinLine(segLen);
+      root.add(winLine);
+
+      const baseVisionRange = visionRangeFor(stage);
+
+      const guardCount = guardCountFor(stage);
+      const guardEntries: GuardEntry[] = createGuardConfigs(guardCount, segLen).map(
+        (cfg) => {
+          const guard = createGuard(cfg);
+          const figure = createGuardFigure();
+          figure.group.position.set(guard.x, 0, guard.z);
+          root.add(figure.group);
+          const equipment = attachGuardEquipment(figure, baseVisionRange);
+          guard.mesh = figure.group;
+          return { guard, figure, equipment };
+        },
+      );
+      const guards: Guard[] = guardEntries.map((e) => e.guard);
+
+      const procgen = new ProcgenSystem(seed, root, chunkCount);
+      procgen.init();
+
+      // Snow weather: dust the top of every obstacle with a thin
+      // white cap so the world reads as blanketed.
+      if (weatherKind === 'snow') {
+        dustObstaclesWithSnow(procgen.obstacles());
+      }
+
+      const razorWire = razorWireEnabledFor(stage);
+      spawnFences(root, stage, weatherKind, segLen, razorWire);
+      const lightTowers: LightTower[] = spawnLightTowers(
+        root,
+        segLen,
+        lightTowerRowsFor(stage),
+        lightScanSpeedMulFor(stage),
+        stage >= 8, // tracking from stage 8+
+      );
+
+      // Dogs: trail a designated handler guard, smell the player at
+      // close range, detach into chase when the handler does. One per
+      // entry in dogCountFor; we pair them with the first N guards.
+      const dogs: Dog[] = [];
+      const dogCount = dogCountFor(stage);
+      for (let i = 0; i < dogCount && i < guards.length; i++) {
+        const handler = guards[i];
+        const d = createDog(i + 1, handler.id, handler.x + 1, handler.z);
+        root.add(d.group);
+        dogs.push(d);
+      }
+
+      const cameras: Camera[] = spawnCameras(root, segLen, cameraCountFor(stage));
+
+      // Boss stage: pump up the lead guard's effective vision so the
+      // segment reads as a tougher fight without changing procgen.
+      // The bonus is multiplied into baseVisionRange at detection time.
+      const bossStage = isBossStage(stage);
+      const bossGuardId = bossStage && guards.length > 0 ? guards[0].id : -1;
+
+      const threatArrows: ThreatArrow[] = guards.map(() => {
+        const a = createThreatArrow();
+        root.add(a.mesh);
+        return a;
+      });
+
+      return {
+        root,
+        segLen,
+        segmentEndZ: segLen,
+        weatherKind,
+        weatherEnabledAtInit,
+        weather,
+        groundMat,
+        baseVisionRange,
+        razorWire,
+        guardEntries,
+        guards,
+        procgen,
+        lightTowers,
+        dogs,
+        cameras,
+        threatArrows,
+        bossStage,
+        bossGuardId,
+      };
+    };
+
+    // ---- Initial scene ----------------------------------------------
+    // Snapshot the stage at scene-init time. Most stage-driven knobs
+    // are resolved once per buildScene; a few (decay, rate scale, AI
+    // tier, slow-mo gate) are re-evaluated each frame because they're
+    // cheap.
+    const initialStage = useStore.getState().stage;
+    let scene: Scene = buildScene(initialStage, useStore.getState().segmentSeed);
 
     // Per-stage scene lighting (day -> dusk -> night). Cycles every
-    // 5 stages and trends darker each cycle (see Lighting.ts).
+    // 5 stages and trends darker each cycle (see Lighting.ts). Re-
+    // applied on every rebuild so loading a save at stage 17 doesn't
+    // keep the bright stage-1 sky.
     applyStageLighting(r.renderer, r.scene, initialStage);
-
-    const razorWire = razorWireEnabledFor(initialStage);
-    spawnFences(segmentRoot, initialStage, weatherKind, segLen, razorWire);
-    const lightTowers: LightTower[] = spawnLightTowers(
-      segmentRoot,
-      segLen,
-      lightTowerRowsFor(initialStage),
-      lightScanSpeedMulFor(initialStage),
-      initialStage >= 8, // tracking from stage 8+
-    );
-
-    // Dogs: trail a designated handler guard, smell the player at
-    // close range, detach into chase when the handler does. One per
-    // entry in dogCountFor; we pair them with the first N guards.
-    const dogs: Dog[] = [];
-    const dogCount = dogCountFor(initialStage);
-    for (let i = 0; i < dogCount && i < guards.length; i++) {
-      const handler = guards[i];
-      const d = createDog(i + 1, handler.id, handler.x + 1, handler.z);
-      segmentRoot.add(d.group);
-      dogs.push(d);
-    }
-
-    const cameras: Camera[] = spawnCameras(
-      segmentRoot,
-      segLen,
-      cameraCountFor(initialStage),
-    );
-
-    // Boss stage: pump up the lead guard's effective vision so the
-    // segment reads as a tougher fight without changing procgen.
-    // The bonus is multiplied into baseVisionRange via the
-    // visionBoostForGuard function below at detection time.
-    const bossStage = isBossStage(initialStage);
-    const bossGuardId = bossStage && guards.length > 0 ? guards[0].id : -1;
-
-    const threatArrows: ThreatArrow[] = guards.map(() => {
-      const a = createThreatArrow();
-      segmentRoot.add(a.mesh);
-      return a;
-    });
-
-    const segmentEndZ = segLen;
 
     // Per-run stats accumulators.
     let runTime = 0;
@@ -362,7 +404,7 @@ export function Game() {
       st.setStance('walk');
       st.setStamina(1);
       st.setAlarmLevel(0);
-      for (const g of guards) {
+      for (const g of scene.guards) {
         g.x = g.homeX;
         g.z = g.homeZ;
         g.state = 'wander';
@@ -375,8 +417,8 @@ export function Game() {
       }
       // Reset dogs to their handler's spawn position and cancel
       // any chase state.
-      for (const d of dogs) {
-        const handler = guards.find((g) => g.id === d.handlerGuardId);
+      for (const d of scene.dogs) {
+        const handler = scene.guards.find((g) => g.id === d.handlerGuardId);
         d.x = handler ? handler.x + 1 : 0;
         d.z = handler ? handler.z : 1;
         d.state = 'leash';
@@ -413,7 +455,7 @@ export function Game() {
       player.stamina = 1;
       st.setStance('walk');
       st.setStamina(1);
-      for (const g of guards) {
+      for (const g of scene.guards) {
         g.x = g.homeX;
         g.z = g.homeZ;
         g.state = 'wander';
@@ -424,8 +466,8 @@ export function Game() {
         g.stunTimer = 0;
         st.setDetection(g.id, 0);
       }
-      for (const d of dogs) {
-        const handler = guards.find((g) => g.id === d.handlerGuardId);
+      for (const d of scene.dogs) {
+        const handler = scene.guards.find((g) => g.id === d.handlerGuardId);
         d.x = handler ? handler.x + 1 : 0;
         d.z = handler ? handler.z : 1;
         d.state = 'leash';
@@ -531,7 +573,7 @@ export function Game() {
       if (slowMoEnabledFor(st.stage)) {
         let closeCall = false;
         const detmap = st.detection;
-        for (const g of guards) {
+        for (const g of scene.guards) {
           const detv = detmap[g.id] ?? 0;
           if (detv >= 0.8) {
             const dx = g.x - player.x;
@@ -547,17 +589,17 @@ export function Game() {
       const effDt = dt * timeScale;
 
       updateBackdrop(backdrop, effDt);
-      updateWeather(weather, effDt, player.x, player.z);
+      updateWeather(scene.weather, effDt, player.x, player.z);
 
       const staminaActive = staminaEnabledFor(st.stage);
-      updatePlayer(player, procgen.obstacles(), effDt, segmentEndZ, staminaActive);
-      updateHide(player, procgen.obstacles());
+      updatePlayer(player, scene.procgen.obstacles(), effDt, scene.segmentEndZ, staminaActive);
+      updateHide(player, scene.procgen.obstacles());
       if (player.stance !== st.stance) st.setStance(player.stance);
       st.setStamina(player.stamina);
 
       // Razor wire: touching the fence at razor-wire stages costs
       // a heart and resets the player to spawn. Treat it as a catch.
-      if (razorWire && isTouchingFence(player.x)) {
+      if (scene.razorWire && isTouchingFence(player.x)) {
         handleCatch();
         return;
       }
@@ -566,7 +608,7 @@ export function Game() {
       // chunk's pickup list and increment the inventory counter; the
       // mesh is removed and the pickup is flagged collected so it
       // isn't double-counted on subsequent frames.
-      for (const p of procgen.pickups()) {
+      for (const p of scene.procgen.pickups()) {
         if (p.collected) continue;
         const dx = p.x - player.x;
         const dz = p.z - player.z;
@@ -574,7 +616,7 @@ export function Game() {
         if (dx * dx + dz * dz <= reach * reach) {
           p.collected = true;
           if (p.mesh) {
-            r.worldRoot.remove(p.mesh);
+            scene.root.remove(p.mesh);
             p.mesh = null;
           }
           st.addPickup(p.kind);
@@ -587,7 +629,7 @@ export function Game() {
       if (input.useCrowbar) {
         input.useCrowbar = false;
         if (st.consumePickup('crowbar')) {
-          applyCrowbarStun(player.x, player.z, guards);
+          applyCrowbarStun(player.x, player.z, scene.guards);
         }
       }
       if (input.useSmokeBomb) {
@@ -620,7 +662,7 @@ export function Game() {
       // has held the player in its beam for long enough, every
       // guard's detection meter takes a single jolt of this size.
       let searchlightBump = 0;
-      for (const t of lightTowers) {
+      for (const t of scene.lightTowers) {
         updateLightTower(t, effDt, player.x, player.z);
         if (!lit && isPlayerLit(t, player.x, player.z)) lit = true;
         if (consumeSearchlightTrigger(t)) {
@@ -638,16 +680,16 @@ export function Game() {
       // toggle. weatherEnabled is fixed for the lifetime of the
       // segment (captured at init); changing the toggle takes effect
       // on the next segment.
-      const weatherVision = weatherEnabledAtInit
-        ? visionMultiplier(weather.kind)
+      const weatherVision = scene.weatherEnabledAtInit
+        ? visionMultiplier(scene.weather.kind)
         : 1.10;
-      const weatherNoise = weatherEnabledAtInit
-        ? noiseMultiplier(weather.kind)
+      const weatherNoise = scene.weatherEnabledAtInit
+        ? noiseMultiplier(scene.weather.kind)
         : 1.0;
       const litBonus = lightVisionBonusFor(st.stage);
       const effectiveVisionRange = (lit
-        ? baseVisionRange * (1 + litBonus)
-        : baseVisionRange) * weatherVision;
+        ? scene.baseVisionRange * (1 + litBonus)
+        : scene.baseVisionRange) * weatherVision;
 
       const litRateBase = lit
         ? player.isCrouched
@@ -670,10 +712,10 @@ export function Game() {
       // that, when full, escalates every guard. Update first so the
       // guard pass below can read the current level.
       const newAlarm =
-        cameras.length > 0
-          ? updateCameraAlarm(cameras, player, procgen.obstacles(), st.alarmLevel, effDt)
+        scene.cameras.length > 0
+          ? updateCameraAlarm(scene.cameras, player, scene.procgen.obstacles(), st.alarmLevel, effDt)
           : 0;
-      if (cameras.length > 0) st.setAlarmLevel(newAlarm);
+      if (scene.cameras.length > 0) st.setAlarmLevel(newAlarm);
       // While the alarm is full, scale every guard's effective
       // vision range up by 25% - readable as "the whole yard is
       // looking for you now."
@@ -688,18 +730,18 @@ export function Game() {
       let anyDetected = false;
       let maxDetection = 0;
       let chaserGuard: Guard | null = null;
-      for (const entry of guardEntries) {
+      for (const entry of scene.guardEntries) {
         const g = entry.guard;
         const prev = st.detection[g.id] ?? 0;
         // Boss guard sees ~50% further than the rest at boss stages.
         const guardRange =
-          g.id === bossGuardId
+          g.id === scene.bossGuardId
             ? effectiveVisionRangeWithAlarm * 1.5
             : effectiveVisionRangeWithAlarm;
         const visionAndNoise = updateDetection(
           g,
           player,
-          procgen.obstacles(),
+          scene.procgen.obstacles(),
           prev,
           effDt,
           guardRange,
@@ -708,7 +750,7 @@ export function Game() {
           smokeRegions,
         );
         let dogSmell = 0;
-        for (const d of dogs) {
+        for (const d of scene.dogs) {
           if (d.handlerGuardId === g.id) {
             dogSmell += updateDog(d, g, player, effDt);
           }
@@ -727,7 +769,7 @@ export function Game() {
       // ordering lets us implement the AI tier-3 broadcast: if any
       // guard has hit chase, point the nearest other non-chase
       // guard at the same investigation target.
-      for (const entry of guardEntries) {
+      for (const entry of scene.guardEntries) {
         const g = entry.guard;
         const next = nextDetection[g.id] ?? 0;
         st.setDetection(g.id, next);
@@ -744,8 +786,8 @@ export function Game() {
             }
           }
         }
-        updateGuard(g, player, next, effDt, procgen.obstacles(), (gFiring, tx, tz) => {
-          const firingEntry = guardEntries.find((e) => e.guard.id === gFiring.id);
+        updateGuard(g, player, next, effDt, scene.procgen.obstacles(), (gFiring, tx, tz) => {
+          const firingEntry = scene.guardEntries.find((e) => e.guard.id === gFiring.id);
           let fx = gFiring.x;
           let fz = gFiring.z;
           if (firingEntry) {
@@ -771,7 +813,7 @@ export function Game() {
       // the handler has been despawned, which can't happen yet but
       // belt-and-braces). Also handle dog->player collision: dogs
       // count as a soft catch identical to a guard touch.
-      for (const d of dogs) {
+      for (const d of scene.dogs) {
         if (d.state === 'chase') {
           updateDog(d, undefined, player, effDt);
         }
@@ -791,9 +833,9 @@ export function Game() {
       // multiplied by the master volume slider in the pause panel.
       updateSiren(siren, maxDetection, st.masterVolume);
 
-      procgen.update(player.z);
+      scene.procgen.update(player.z);
 
-      if (player.z >= segmentEndZ) {
+      if (player.z >= scene.segmentEndZ) {
         handleWin();
         return;
       }
@@ -803,7 +845,7 @@ export function Game() {
         return;
       }
 
-      for (const g of guards) {
+      for (const g of scene.guards) {
         if (
           g.state === 'chase' &&
           circleHit(
@@ -821,7 +863,7 @@ export function Game() {
     const render = (_alpha: number) => {
       // Idle bob/spin on every uncollected pickup. Cheap; only the
       // mesh transform is touched.
-      for (const p of procgen.pickups()) animatePickup(p, animTime);
+      for (const p of scene.procgen.pickups()) animatePickup(p, animTime);
 
       // Player figure pose + position.
       const pSpeed = Math.hypot(player.vx, player.vz);
@@ -840,7 +882,7 @@ export function Game() {
       });
       setFigurePosition(playerFigure, player.x, player.z);
 
-      for (const entry of guardEntries) {
+      for (const entry of scene.guardEntries) {
         const g = entry.guard;
         const fig = entry.figure;
         const moving =
@@ -863,16 +905,16 @@ export function Game() {
       radialMeter.group.position.set(player.x, 0, player.z);
       const detectionMap = useStore.getState().detection;
       let maxDetection = 0;
-      for (let i = 0; i < guards.length; i++) {
-        const v = detectionMap[guards[i].id] ?? 0;
+      for (let i = 0; i < scene.guards.length; i++) {
+        const v = detectionMap[scene.guards[i].id] ?? 0;
         if (v > maxDetection) maxDetection = v;
       }
       updateRadialMeter(radialMeter, maxDetection);
 
-      for (let i = 0; i < guards.length; i++) {
-        const g = guards[i];
+      for (let i = 0; i < scene.guards.length; i++) {
+        const g = scene.guards[i];
         const v = detectionMap[g.id] ?? 0;
-        updateThreatArrow(threatArrows[i], player.x, player.z, g.x, g.z, v);
+        updateThreatArrow(scene.threatArrows[i], player.x, player.z, g.x, g.z, v);
       }
 
       updateCameraRig(r.camera, player, 1 / 60);

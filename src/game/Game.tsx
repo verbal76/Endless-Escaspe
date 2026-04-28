@@ -183,6 +183,40 @@ export function Game() {
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
     const r = createRenderer(gl);
 
+    // ---- Mount-once entities ----------------------------------------
+    // These survive the lifetime of the GLView and are NOT rebuilt
+    // when the player advances stage. Anything that depends on the
+    // current stage / segment seed lives below, on segmentRoot, and
+    // gets torn down + reconstructed by buildScene().
+
+    const player = createPlayer();
+    const playerFigure = createPlayerFigure(useStore.getState().playerSkin);
+    r.worldRoot.add(playerFigure.group);
+
+    const backdrop = createBackdrop();
+    r.worldRoot.add(backdrop.group);
+
+    const radialMeter = createRadialMeter();
+    r.worldRoot.add(radialMeter.group);
+
+    const siren: SirenHandle = createSiren();
+    const projectiles = new ProjectileSystem(r.worldRoot);
+
+    // Active smoke clouds dropped by the player. Each cloud lives for
+    // SMOKE_LIFETIME seconds and blocks vision of guards inside its
+    // radius. Owned by the GLView (not the segment) so a cloud thrown
+    // a frame before a stage advance still gets cleanly disposed.
+    const smokeClouds: SmokeCloud[] = [];
+    const smokeRegions: SmokeRegion[] = [];
+
+    // Per-segment scene-graph root. Every mesh whose count or layout
+    // depends on the current stage gets parented to this Group so we
+    // can swap the entire world by removing it and rebuilding from
+    // scratch on stage advance.
+    const segmentRoot = new THREE.Group();
+    r.worldRoot.add(segmentRoot);
+
+    // ---- Per-segment init -------------------------------------------
     // Snapshot the stage at scene-init time. Most stage-driven knobs
     // are resolved once here (so the difficulty doesn't shift mid-
     // segment) but a few - decay, rate scale, AI tier, etc. - are
@@ -198,10 +232,7 @@ export function Game() {
 
     const ground = createGround();
     const groundMat = ground.material as THREE.MeshStandardMaterial;
-    r.worldRoot.add(ground);
-
-    const backdrop = createBackdrop();
-    r.worldRoot.add(backdrop.group);
+    segmentRoot.add(ground);
 
     // Per-segment weather. Picked deterministically from the segment
     // seed so a restart of the same segment gets the same conditions.
@@ -221,17 +252,13 @@ export function Game() {
     }
     useStore.getState().setWeather(weatherKind);
     const weather: Weather = createWeather(weatherKind, 0, 1);
-    r.worldRoot.add(weather.group);
+    segmentRoot.add(weather.group);
     if (weatherKind === 'snow') {
       groundMat.color.setHex(0xc8d6dc);
     }
 
     const winLine = createWinLine(segLen);
-    r.worldRoot.add(winLine);
-
-    const player = createPlayer();
-    const playerFigure = createPlayerFigure(useStore.getState().playerSkin);
-    r.worldRoot.add(playerFigure.group);
+    segmentRoot.add(winLine);
 
     const baseVisionRange = visionRangeFor(initialStage);
 
@@ -242,7 +269,7 @@ export function Game() {
         const guard = createGuard(cfg);
         const figure = createGuardFigure();
         figure.group.position.set(guard.x, 0, guard.z);
-        r.worldRoot.add(figure.group);
+        segmentRoot.add(figure.group);
         const equipment = attachGuardEquipment(figure, baseVisionRange);
         guard.mesh = figure.group;
         return { guard, figure, equipment };
@@ -252,7 +279,7 @@ export function Game() {
 
     const procgen = new ProcgenSystem(
       useStore.getState().segmentSeed,
-      r.worldRoot,
+      segmentRoot,
       chunkCount,
     );
     procgen.init();
@@ -267,14 +294,10 @@ export function Game() {
     // 5 stages and trends darker each cycle (see Lighting.ts).
     applyStageLighting(r.renderer, r.scene, initialStage);
 
-    const siren: SirenHandle = createSiren();
-
-    const projectiles = new ProjectileSystem(r.worldRoot);
-
     const razorWire = razorWireEnabledFor(initialStage);
-    spawnFences(r.worldRoot, initialStage, weatherKind, segLen, razorWire);
+    spawnFences(segmentRoot, initialStage, weatherKind, segLen, razorWire);
     const lightTowers: LightTower[] = spawnLightTowers(
-      r.worldRoot,
+      segmentRoot,
       segLen,
       lightTowerRowsFor(initialStage),
       lightScanSpeedMulFor(initialStage),
@@ -289,12 +312,12 @@ export function Game() {
     for (let i = 0; i < dogCount && i < guards.length; i++) {
       const handler = guards[i];
       const d = createDog(i + 1, handler.id, handler.x + 1, handler.z);
-      r.worldRoot.add(d.group);
+      segmentRoot.add(d.group);
       dogs.push(d);
     }
 
     const cameras: Camera[] = spawnCameras(
-      r.worldRoot,
+      segmentRoot,
       segLen,
       cameraCountFor(initialStage),
     );
@@ -306,22 +329,13 @@ export function Game() {
     const bossStage = isBossStage(initialStage);
     const bossGuardId = bossStage && guards.length > 0 ? guards[0].id : -1;
 
-    const radialMeter = createRadialMeter();
-    r.worldRoot.add(radialMeter.group);
-
     const threatArrows: ThreatArrow[] = guards.map(() => {
       const a = createThreatArrow();
-      r.worldRoot.add(a.mesh);
+      segmentRoot.add(a.mesh);
       return a;
     });
 
     const segmentEndZ = segLen;
-
-    // Active smoke clouds dropped by the player. Each cloud lives for
-    // SMOKE_LIFETIME seconds and blocks vision of guards inside its
-    // radius. Ordered list so we can sweep linearly each frame.
-    const smokeClouds: SmokeCloud[] = [];
-    const smokeRegions: SmokeRegion[] = [];
 
     // Per-run stats accumulators.
     let runTime = 0;

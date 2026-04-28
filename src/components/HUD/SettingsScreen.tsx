@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
 import { BUILD_VERSION, OTA_VERSION } from '../../version';
@@ -67,6 +68,7 @@ function Toggle({
 
 export function SettingsScreen() {
   const [open, setOpen] = useState(false);
+  const insets = useSafeAreaInsets();
   const setPaused = useStore((s) => s.setPaused);
   const setRunState = useStore((s) => s.setRunState);
   const requestRestart = useStore((s) => s.requestRestart);
@@ -119,7 +121,11 @@ export function SettingsScreen() {
     <>
       <Pressable
         accessibilityLabel="Settings"
-        style={({ pressed }) => [styles.gearWrap, pressed && styles.gearPressed]}
+        style={({ pressed }) => [
+          styles.gearWrap,
+          { top: Math.max(8, insets.top) + 4, left: Math.max(12, insets.left) },
+          pressed && styles.gearPressed,
+        ]}
         onPress={openPanel}
         hitSlop={10}
       >
@@ -190,8 +196,6 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   gearWrap: {
     position: 'absolute',
-    top: 12,
-    left: 12,
     width: 40,
     height: 40,
     borderRadius: 20,

@@ -8,6 +8,7 @@ import Animated, {
   withRepeat,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { cameraCountFor } from '../../scenes/Camera';
 
@@ -23,6 +24,7 @@ export function AlarmBar() {
   const alarmLevel = useStore((s) => s.alarmLevel);
   const stage = useStore((s) => s.stage);
   const runState = useStore((s) => s.runState);
+  const insets = useSafeAreaInsets();
 
   const pct = Math.max(0, Math.min(1, alarmLevel));
   const isHigh = pct >= 0.6;
@@ -52,7 +54,10 @@ export function AlarmBar() {
   if (runState !== 'playing') return null;
 
   return (
-    <Animated.View style={[styles.wrap, wrapStyle]} pointerEvents="none">
+    <Animated.View
+      style={[styles.wrap, { top: Math.max(8, insets.top) + 4 }, wrapStyle]}
+      pointerEvents="none"
+    >
       <Text style={[styles.label, isHigh && styles.labelHot]}>YARD ALARM</Text>
       <View style={styles.track}>
         <View
@@ -71,7 +76,6 @@ export function AlarmBar() {
 const styles = StyleSheet.create({
   wrap: {
     position: 'absolute',
-    top: 14,
     alignSelf: 'center',
     width: 220,
     alignItems: 'center',

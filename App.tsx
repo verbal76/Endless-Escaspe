@@ -23,12 +23,6 @@ export default function App() {
     loadSettings().then((s) => {
       useStore.getState().setMasterVolume(s.masterVolume);
       useStore.getState().setWeatherEnabled(s.weatherEnabled);
-      // First-launch tutorial: auto-open the intro cutscene if the
-      // settings file says we haven't shown it yet. The Tutorial
-      // component itself flips tutorialSeen=true on dismiss/skip.
-      if (!s.tutorialSeen) {
-        useStore.getState().setShowTutorial(true);
-      }
     });
     loadSaves().then((m) => useStore.getState().setSaves(m));
   }, []);

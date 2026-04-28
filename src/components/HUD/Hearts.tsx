@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -7,6 +7,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { startingHeartsFor } from '../../util/progression';
 
@@ -66,12 +67,20 @@ function HeartSlot({ alive }: { alive: boolean }) {
 export function Hearts() {
   const hearts = useStore((s) => s.hearts);
   const stage = useStore((s) => s.stage);
+  const runState = useStore((s) => s.runState);
+  const insets = useSafeAreaInsets();
   // Late stages start the player with fewer hearts; only render
   // that many slots so the HUD doesn't lie about how much margin
   // is left.
   const max = startingHeartsFor(stage);
+  // Hidden between runs (idle / cleared / caught) so the start
+  // screen doesn't carry a stale heart count over the title art.
+  if (runState !== 'playing') return null;
+  // Push down past the device's top safe-area inset (notch / status
+  // bar) so the row never gets clipped behind a cutout.
+  const top = Math.max(8, insets.top) + 8;
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, { top }]}>
       {Array.from({ length: max }).map((_, i) => (
         <HeartSlot key={i} alive={i < hearts} />
       ))}
@@ -82,7 +91,6 @@ export function Hearts() {
 const styles = StyleSheet.create({
   row: {
     position: 'absolute',
-    top: 50,
     left: 24,
     flexDirection: 'row',
     gap: 4,

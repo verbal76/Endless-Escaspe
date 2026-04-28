@@ -124,7 +124,7 @@ function FigurePickButton({
   );
 }
 
-type Mode = 'home' | 'pick' | 'name' | 'continue' | 'profile';
+type Mode = 'home' | 'pick' | 'name' | 'tutorialPrompt' | 'continue' | 'profile';
 
 export function StartScreen() {
   const runState = useStore((s) => s.runState);
@@ -140,11 +140,16 @@ export function StartScreen() {
   const pendingStartMode = useStore((s) => s.pendingStartMode);
   const setPendingStartMode = useStore((s) => s.setPendingStartMode);
   const setShowTutorial = useStore((s) => s.setShowTutorial);
+  const showTutorial = useStore((s) => s.showTutorial);
 
   const [mode, setMode] = useState<Mode>('home');
   const [pickedSkin, setPickedSkin] = useState<PlayerSkin | null>(null);
   const [nameDraft, setNameDraft] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
+  // Set true when the tutorial-prompt step launches the cutscene; the
+  // effect below watches for the cutscene to flip back to false and
+  // then starts the run, so YES → demo → game flows automatically.
+  const [pendingRunAfterTutorial, setPendingRunAfterTutorial] = useState(false);
   // The save key currently being viewed in 'profile' mode. Decoupled
   // from activeSaveName so we can browse a save's star board without
   // committing to load it until the player taps a stage / PLAY.
@@ -191,6 +196,16 @@ export function StartScreen() {
       setProfileKey(null);
     }
   }, [mode, profileKey, saves]);
+
+  // After the tutorial cutscene closes, if it was launched from the
+  // post-name prompt, start the run automatically so the player
+  // doesn't have to tap again.
+  useEffect(() => {
+    if (pendingRunAfterTutorial && !showTutorial) {
+      setPendingRunAfterTutorial(false);
+      startRun();
+    }
+  }, [pendingRunAfterTutorial, showTutorial, startRun]);
 
   if (runState !== 'idle') return null;
 
@@ -250,7 +265,9 @@ export function StartScreen() {
     setBestStars({});
     const next: SavesMap = { ...saves, [key]: save };
     writeSaves(next);
-    startRun();
+    // Don't drop straight into gameplay - offer the intro cutscene
+    // first so first-time players get a quick demo of the rules.
+    setMode('tutorialPrompt');
   };
 
   // Load the active save, optionally jumping into a specific stage
@@ -374,12 +391,14 @@ export function StartScreen() {
   }
 
   if (mode === 'name') {
+    // Compact layout: the title row is dropped and every element is
+    // ~20% smaller than the home / picker screens so the OS keyboard
+    // never crowds the BACK / START buttons in landscape.
     return (
       <View pointerEvents="box-none" style={styles.root}>
-        <TitleRow />
-        <Text style={styles.tagline}>Name your save</Text>
+        <Text style={styles.taglineCompact}>Name your save</Text>
         {pickedSkin ? (
-          <View style={styles.namePreviewWrap}>
+          <View style={styles.namePreviewWrapCompact}>
             <PrisonerFigure skin={pickedSkin} size="sm" />
           </View>
         ) : null}
@@ -391,7 +410,7 @@ export function StartScreen() {
           }}
           placeholder="Enter a name"
           placeholderTextColor="rgba(255,255,255,0.35)"
-          style={styles.nameInput}
+          style={styles.nameInputCompact}
           autoFocus
           autoCorrect={false}
           autoCapitalize="words"
@@ -400,26 +419,63 @@ export function StartScreen() {
           onSubmitEditing={onConfirmName}
         />
         {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
-        <View style={styles.nameBtnRow}>
+        <View style={styles.nameBtnRowCompact}>
           <Pressable
             onPress={() => setMode('pick')}
+            style={({ pressed }) => [
+              styles.bigBtnCompact,
+              styles.bigBtnSecondary,
+              pressed && styles.bigBtnDown,
+            ]}
+          >
+            <Text style={styles.bigBtnLabelCompact}>BACK</Text>
+          </Pressable>
+          <Pressable
+            onPress={onConfirmName}
+            style={({ pressed }) => [
+              styles.bigBtnCompact,
+              styles.bigBtnPrimary,
+              pressed && styles.bigBtnDown,
+            ]}
+          >
+            <Text style={styles.bigBtnLabelCompact}>START</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  if (mode === 'tutorialPrompt') {
+    return (
+      <View pointerEvents="box-none" style={styles.root}>
+        <TitleRow />
+        <Text style={styles.tagline}>Quick demo?</Text>
+        <Text style={styles.promptBody}>
+          Show you the basics in 14 seconds, or jump straight in?
+        </Text>
+        <View style={styles.nameBtnRow}>
+          <Pressable
+            onPress={() => startRun()}
             style={({ pressed }) => [
               styles.bigBtn,
               styles.bigBtnSecondary,
               pressed && styles.bigBtnDown,
             ]}
           >
-            <Text style={styles.bigBtnLabel}>BACK</Text>
+            <Text style={styles.bigBtnLabel}>SKIP</Text>
           </Pressable>
           <Pressable
-            onPress={onConfirmName}
+            onPress={() => {
+              setPendingRunAfterTutorial(true);
+              setShowTutorial(true);
+            }}
             style={({ pressed }) => [
               styles.bigBtn,
               styles.bigBtnPrimary,
               pressed && styles.bigBtnDown,
             ]}
           >
-            <Text style={styles.bigBtnLabel}>START</Text>
+            <Text style={styles.bigBtnLabel}>SHOW ME</Text>
           </Pressable>
         </View>
       </View>
@@ -611,6 +667,14 @@ const styles = StyleSheet.create({
     letterSpacing: 1.5,
     marginBottom: 14,
   },
+  promptBody: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+    marginBottom: 16,
+    lineHeight: 17,
+  },
 
   // Home buttons
   homeBtnRow: {
@@ -758,6 +822,26 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 210, 90, 0.95)',
     backgroundColor: 'rgba(50, 38, 20, 0.85)',
   },
+  // Compact (~20% smaller) versions used on the name-entry screen
+  // so they still fit when the OS keyboard slides up. The non-
+  // compact versions stay around for any future surface that needs
+  // the larger size.
+  taglineCompact: {
+    color: 'rgba(255,255,255,0.85)',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+    marginBottom: 8,
+  },
+  namePreviewWrapCompact: {
+    marginBottom: 8,
+    padding: 4,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 210, 90, 0.95)',
+    backgroundColor: 'rgba(50, 38, 20, 0.85)',
+    transform: [{ scale: 0.8 }],
+  },
   nameInput: {
     width: 260,
     paddingHorizontal: 14,
@@ -772,6 +856,20 @@ const styles = StyleSheet.create({
     letterSpacing: 1.0,
     textAlign: 'center',
   },
+  nameInputCompact: {
+    width: 208,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.20)',
+    backgroundColor: 'rgba(20, 24, 32, 0.85)',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 1.0,
+    textAlign: 'center',
+  },
   errorText: {
     color: '#ff8a8a',
     fontSize: 12,
@@ -782,6 +880,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 14,
+  },
+  nameBtnRowCompact: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  bigBtnCompact: {
+    paddingHorizontal: 22,
+    paddingVertical: 9,
+    borderRadius: 22,
+    borderWidth: 2,
+    minWidth: 112,
+    alignItems: 'center',
+  },
+  bigBtnLabelCompact: {
+    color: '#1b1206',
+    fontWeight: '900',
+    letterSpacing: 1.4,
+    fontSize: 13,
   },
 
   // Continue list

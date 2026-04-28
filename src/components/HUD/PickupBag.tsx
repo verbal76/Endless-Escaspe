@@ -1,13 +1,25 @@
-import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useStore } from '../../state/store';
 import { input } from '../../systems/InputSystem';
 import type { PickupKind } from '../../types/world';
 
 // Stack of pickup-use buttons sitting above the stance column on the
-// right edge of the screen. Each button shows its remaining count and
-// is dimmed when empty; tapping it sets the matching one-shot input
-// flag, which Game.tsx consumes on the next update tick.
+// right edge of the screen. Each button shows its remaining count
+// and is dimmed when empty; tapping it sets the matching one-shot
+// input flag, which Game.tsx consumes on the next update tick.
+//
+// Buttons use Gesture.Tap (not Pressable) so they cooperate with
+// the joystick's Pan gesture - the player can pop a smoke bomb or
+// swing the crowbar while still moving.
 
 type Slot = {
   kind: PickupKind;
@@ -34,6 +46,62 @@ const SLOTS: Slot[] = [
   },
 ];
 
+function PickupSlot({ slot, count }: { slot: Slot; count: number }) {
+  const empty = count <= 0;
+  const pressed = useSharedValue(0);
+
+  const fire = () => {
+    if (empty) return;
+    if (slot.kind === 'crowbar') input.useCrowbar = true;
+    else input.useSmokeBomb = true;
+  };
+
+  const tap = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDistance(99999)
+        .onBegin(() => {
+          'worklet';
+          pressed.value = withTiming(1, { duration: 80, easing: Easing.out(Easing.quad) });
+        })
+        .onEnd(() => {
+          'worklet';
+          runOnJS(fire)();
+        })
+        .onFinalize(() => {
+          'worklet';
+          pressed.value = withTiming(0, { duration: 140, easing: Easing.in(Easing.quad) });
+        }),
+    // fire closes over `empty` + `slot.kind`; recreate per change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [slot.kind, empty, pressed],
+  );
+
+  const style = useAnimatedStyle(() => {
+    if (empty) return { opacity: 0.45 };
+    return {
+      transform: [{ scale: 1 - pressed.value * 0.06 }],
+      opacity: 1 - pressed.value * 0.15,
+    };
+  });
+
+  return (
+    <GestureDetector gesture={tap}>
+      <Animated.View
+        style={[
+          styles.btn,
+          !empty && { borderColor: slot.border, backgroundColor: slot.active },
+          style,
+        ]}
+      >
+        <Text style={[styles.glyph, empty && styles.glyphEmpty]}>{slot.glyph}</Text>
+        <Text style={[styles.count, empty && styles.countEmpty]}>{count}</Text>
+        <Text style={[styles.label, empty && styles.labelEmpty]}>{slot.label}</Text>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
 export function PickupBag() {
   const inventory = useStore((s) => s.inventory);
   const runState = useStore((s) => s.runState);
@@ -41,37 +109,9 @@ export function PickupBag() {
 
   return (
     <View style={styles.col}>
-      {SLOTS.map((slot) => {
-        const count = inventory[slot.kind];
-        const empty = count <= 0;
-        return (
-          <Pressable
-            key={slot.kind}
-            onPress={() => {
-              if (empty) return;
-              if (slot.kind === 'crowbar') input.useCrowbar = true;
-              else input.useSmokeBomb = true;
-            }}
-            hitSlop={4}
-            style={({ pressed }) => [
-              styles.btn,
-              !empty && { borderColor: slot.border, backgroundColor: slot.active },
-              empty && styles.btnEmpty,
-              pressed && !empty && styles.btnPressed,
-            ]}
-          >
-            <Text style={[styles.glyph, empty && styles.glyphEmpty]}>
-              {slot.glyph}
-            </Text>
-            <Text style={[styles.count, empty && styles.countEmpty]}>
-              {count}
-            </Text>
-            <Text style={[styles.label, empty && styles.labelEmpty]}>
-              {slot.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {SLOTS.map((slot) => (
+        <PickupSlot key={slot.kind} slot={slot} count={inventory[slot.kind]} />
+      ))}
     </View>
   );
 }
@@ -97,13 +137,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  btnEmpty: {
-    opacity: 0.45,
-  },
-  btnPressed: {
-    transform: [{ scale: 0.94 }],
-    opacity: 0.85,
   },
   glyph: {
     color: 'rgba(255,255,255,0.95)',

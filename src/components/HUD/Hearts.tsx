@@ -96,16 +96,27 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   slot: {
-    width: 28,
+    width: 32,
     height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },
   heart: {
+    // Stretched to fill the slot so the glyph centres horizontally
+    // even when its rendered width exceeds the slot's intrinsic
+    // width (some font metrics push the heart 1-2px past 28px and
+    // were clipping the right edge before we used textAlign).
     fontSize: 28,
     textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowRadius: 3,
     position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   filled: {
     color: FILLED_COLOR,

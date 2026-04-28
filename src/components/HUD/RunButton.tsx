@@ -1,31 +1,64 @@
-import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { StyleSheet, Text } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
 
 // RUN is a speed-toggle that doubles whatever stance speed is active.
 // Placed up-and-left of the joystick so the player's left thumb can
 // reach it without their eye leaving the action.
+//
+// Uses Gesture.Tap so a second-finger tap during a joystick Pan
+// fires reliably; Pressable shares the responder pipeline with the
+// active Pan and would drop the toggle when the player is moving.
 export function RunButton() {
   const [running, setRunning] = useState(false);
+  const pressed = useSharedValue(0);
 
   const toggle = () => {
-    const next = !running;
-    input.run = next;
-    setRunning(next);
+    setRunning((prev) => {
+      const next = !prev;
+      input.run = next;
+      return next;
+    });
   };
 
+  const tap = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDistance(99999)
+        .onBegin(() => {
+          'worklet';
+          pressed.value = withTiming(1, { duration: 80, easing: Easing.out(Easing.quad) });
+        })
+        .onEnd(() => {
+          'worklet';
+          runOnJS(toggle)();
+        })
+        .onFinalize(() => {
+          'worklet';
+          pressed.value = withTiming(0, { duration: 140, easing: Easing.in(Easing.quad) });
+        }),
+    [pressed],
+  );
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - pressed.value * 0.06 }],
+    opacity: 1 - pressed.value * 0.15,
+  }));
+
   return (
-    <Pressable
-      onPress={toggle}
-      hitSlop={8}
-      style={({ pressed }) => [
-        styles.btn,
-        running && styles.btnActive,
-        pressed && styles.btnPressed,
-      ]}
-    >
-      <Text style={[styles.label, running && styles.labelActive]}>RUN</Text>
-    </Pressable>
+    <GestureDetector gesture={tap}>
+      <Animated.View style={[styles.btn, running && styles.btnActive, style]}>
+        <Text style={[styles.label, running && styles.labelActive]}>RUN</Text>
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -50,10 +83,6 @@ const styles = StyleSheet.create({
   btnActive: {
     backgroundColor: 'rgba(120,200,255,0.45)',
     borderColor: 'rgba(140,220,255,0.85)',
-  },
-  btnPressed: {
-    transform: [{ scale: 0.94 }],
-    opacity: 0.85,
   },
   label: {
     color: 'rgba(255,255,255,0.92)',

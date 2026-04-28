@@ -55,7 +55,7 @@ export function AlarmBar() {
 
   return (
     <Animated.View
-      style={[styles.wrap, { top: Math.max(20, insets.top + 8) }, wrapStyle]}
+      style={[styles.wrap, { top: Math.max(32, insets.top + 16) }, wrapStyle]}
       pointerEvents="none"
     >
       <Text style={[styles.label, isHigh && styles.labelHot]}>YARD ALARM</Text>

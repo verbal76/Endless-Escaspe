@@ -5,7 +5,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import Animated, {
@@ -22,6 +21,7 @@ import {
   type Save,
   type SavesMap,
 } from '../../util/storage';
+import { NameKeyboard } from './NameKeyboard';
 
 const TITLE = 'ENDLESS ESCASPE';
 
@@ -391,33 +391,49 @@ export function StartScreen() {
   }
 
   if (mode === 'name') {
-    // Compact layout: the title row is dropped and every element is
-    // ~20% smaller than the home / picker screens so the OS keyboard
-    // never crowds the BACK / START buttons in landscape.
+    // Custom in-app keyboard - the system soft keyboard takes ~half
+    // the landscape screen and ships in light theme. NameKeyboard
+    // matches the dark UI, multi-touch friendly, and stays compact
+    // enough to leave the input + BACK / START buttons fully visible.
+    //
+    // appendChar handles auto-capitalisation: the first character of
+    // each space-separated word is uppercase, the rest are lowercase
+    // (matches what the system keyboard's autoCapitalize="words"
+    // gave us before the swap).
+    const appendChar = (c: string) => {
+      if (nameDraft.length >= 20) return;
+      const isFirstOfWord = nameDraft.length === 0 || nameDraft.endsWith(' ');
+      const ch = isFirstOfWord ? c.toUpperCase() : c.toLowerCase();
+      setNameDraft(nameDraft + ch);
+      if (nameError) setNameError(null);
+    };
+    const backspace = () => {
+      if (nameDraft.length === 0) return;
+      setNameDraft(nameDraft.slice(0, -1));
+      if (nameError) setNameError(null);
+    };
+
     return (
       <View pointerEvents="box-none" style={styles.root}>
-        <Text style={styles.taglineCompact}>Name your save</Text>
-        {pickedSkin ? (
-          <View style={styles.namePreviewWrapCompact}>
-            <PrisonerFigure skin={pickedSkin} size="sm" />
+        <View style={styles.nameTopRow}>
+          {pickedSkin ? (
+            <View style={styles.namePreviewWrapCompact}>
+              <PrisonerFigure skin={pickedSkin} size="sm" />
+            </View>
+          ) : null}
+          <View style={styles.nameDisplay}>
+            <Text style={styles.taglineCompact}>Name your save</Text>
+            <Text
+              style={[
+                styles.nameValueText,
+                nameDraft.length === 0 && styles.nameValuePlaceholder,
+              ]}
+              numberOfLines={1}
+            >
+              {nameDraft.length > 0 ? nameDraft : 'Enter a name'}
+            </Text>
           </View>
-        ) : null}
-        <TextInput
-          value={nameDraft}
-          onChangeText={(v) => {
-            setNameDraft(v);
-            if (nameError) setNameError(null);
-          }}
-          placeholder="Enter a name"
-          placeholderTextColor="rgba(255,255,255,0.35)"
-          style={styles.nameInputCompact}
-          autoFocus
-          autoCorrect={false}
-          autoCapitalize="words"
-          maxLength={20}
-          returnKeyType="done"
-          onSubmitEditing={onConfirmName}
-        />
+        </View>
         {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
         <View style={styles.nameBtnRowCompact}>
           <Pressable
@@ -440,6 +456,14 @@ export function StartScreen() {
           >
             <Text style={styles.bigBtnLabelCompact}>START</Text>
           </Pressable>
+        </View>
+        <View style={styles.nameKeyboardWrap}>
+          <NameKeyboard
+            onKey={appendChar}
+            onBackspace={backspace}
+            onDone={onConfirmName}
+            doneEnabled={nameDraft.trim().length > 0}
+          />
         </View>
       </View>
     );
@@ -826,12 +850,38 @@ const styles = StyleSheet.create({
   // so they still fit when the OS keyboard slides up. The non-
   // compact versions stay around for any future surface that needs
   // the larger size.
+  nameTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  nameDisplay: {
+    minWidth: 220,
+    alignItems: 'flex-start',
+  },
+  nameValueText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 1,
+    minHeight: 22,
+  },
+  nameValuePlaceholder: {
+    color: 'rgba(255,255,255,0.35)',
+    fontWeight: '600',
+  },
+  nameKeyboardWrap: {
+    width: '100%',
+    marginTop: 10,
+    paddingHorizontal: 12,
+  },
   taglineCompact: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 11,
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 10,
     fontWeight: '700',
     letterSpacing: 1.5,
-    marginBottom: 8,
+    marginBottom: 2,
   },
   namePreviewWrapCompact: {
     marginBottom: 8,

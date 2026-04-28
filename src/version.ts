@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #21 · pickups + scene rebuild + polish + tutorial + HUD fix';
+export const OTA_VERSION = 'OTA #22 · custom name keyboard + HUD top-floor bump';

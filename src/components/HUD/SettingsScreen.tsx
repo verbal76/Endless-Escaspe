@@ -125,8 +125,10 @@ export function SettingsScreen() {
           styles.gearWrap,
           // Larger floor than the inset alone so the gear clears the
           // rounded screen corner on devices that hide the status
-          // bar (insets.top reports 0 in that config).
-          { top: Math.max(16, insets.top + 4), left: Math.max(12, insets.left) },
+          // bar (insets.top reports 0 in that config). 28 was the
+          // smallest value that fully cleared the curved-display
+          // mask on the test phone.
+          { top: Math.max(28, insets.top + 12), left: Math.max(12, insets.left) },
           pressed && styles.gearPressed,
         ]}
         onPress={openPanel}

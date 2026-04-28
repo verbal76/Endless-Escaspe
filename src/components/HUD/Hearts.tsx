@@ -81,10 +81,11 @@ export function Hearts() {
   // gives a ~12 px gap, so the gear and the heart row never share
   // pixels even when insets.left is 0.
   //
-  // The top offset uses a larger minimum than the gear so that on
-  // devices that hide the status bar (insets.top reports 0) the
-  // glyphs still clear rounded screen corners.
-  const top = Math.max(20, insets.top + 8);
+  // Top floor pushed to 32 because devices with hidden status bars
+  // and curved screen corners report insets.top:0 yet still mask
+  // the first ~28 px - the previous 20 floor was clipping the
+  // glyph caps on those screens.
+  const top = Math.max(32, insets.top + 16);
   return (
     <View style={[styles.row, { top }]}>
       {Array.from({ length: max }).map((_, i) => (

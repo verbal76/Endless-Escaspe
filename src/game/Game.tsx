@@ -95,6 +95,7 @@ import { AlarmOverlay } from '../components/HUD/AlarmOverlay';
 import { SettingsScreen } from '../components/HUD/SettingsScreen';
 import { PickupBag } from '../components/HUD/PickupBag';
 import { EventFlash } from '../components/HUD/EventFlash';
+import { Tutorial } from '../components/HUD/Tutorial';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
 import { spawnFences } from '../scenes/Fence';
@@ -1165,6 +1166,7 @@ export function Game() {
       <Banner />
       <StartScreen />
       <SettingsScreen />
+      <Tutorial />
     </View>
   );
 }

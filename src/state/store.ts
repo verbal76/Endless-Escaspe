@@ -55,6 +55,10 @@ type Store = {
   // the AI gets a sense boost so the player doesn't get an easier
   // game by disabling effects. Persisted via AsyncStorage.
   weatherEnabled: boolean;
+  // Visibility of the intro tutorial overlay. Set true on first
+  // launch and from the start-screen "How to play" button; flips
+  // back to false when the cutscene finishes or the player skips.
+  showTutorial: boolean;
   // Master audio volume 0..1, applied on top of the siren's
   // detection-driven volume curve. Persisted via AsyncStorage.
   masterVolume: number;
@@ -98,6 +102,7 @@ type Store = {
   setWeather: (w: WeatherKind) => void;
   setBestStars: (b: Record<number, number>) => void;
   setWeatherEnabled: (b: boolean) => void;
+  setShowTutorial: (b: boolean) => void;
   setMasterVolume: (v: number) => void;
   setPlayerSkin: (s: PlayerSkin) => void;
   setPlayerName: (n: string) => void;
@@ -128,6 +133,7 @@ export const useStore = create<Store>((set) => ({
   restartCounter: 0,
   weather: 'clear',
   weatherEnabled: true,
+  showTutorial: false,
   masterVolume: 0.7,
   playerSkin: 'beige',
   playerName: '',
@@ -168,6 +174,8 @@ export const useStore = create<Store>((set) => ({
   setWeather: (w) => set((st) => (st.weather === w ? st : { weather: w })),
   setWeatherEnabled: (b) =>
     set((st) => (st.weatherEnabled === b ? st : { weatherEnabled: b })),
+  setShowTutorial: (b) =>
+    set((st) => (st.showTutorial === b ? st : { showTutorial: b })),
   setMasterVolume: (v) =>
     set((st) => {
       const clamped = Math.max(0, Math.min(1, v));

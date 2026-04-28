@@ -11,11 +11,16 @@ const KEY_SAVES = 'endless-escaspe:saves:v1';
 export type Settings = {
   masterVolume: number;
   weatherEnabled: boolean;
+  // True once the player has seen (or skipped) the intro tutorial,
+  // so we don't replay it every cold launch. The "How to play"
+  // entry on the start screen still re-shows it on demand.
+  tutorialSeen: boolean;
 };
 
 const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.7,
   weatherEnabled: true,
+  tutorialSeen: false,
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -33,6 +38,10 @@ export async function loadSettings(): Promise<Settings> {
           typeof parsed.weatherEnabled === 'boolean'
             ? parsed.weatherEnabled
             : DEFAULT_SETTINGS.weatherEnabled,
+        tutorialSeen:
+          typeof parsed.tutorialSeen === 'boolean'
+            ? parsed.tutorialSeen
+            : DEFAULT_SETTINGS.tutorialSeen,
       };
     }
   } catch {
@@ -41,9 +50,14 @@ export async function loadSettings(): Promise<Settings> {
   return DEFAULT_SETTINGS;
 }
 
-export async function saveSettings(s: Settings): Promise<void> {
+// Persist a settings patch. Reads the existing file first so callers
+// only need to specify the fields they're changing - SettingsScreen
+// doesn't have to know about flags it never edits (e.g. tutorialSeen).
+export async function saveSettings(patch: Partial<Settings>): Promise<void> {
   try {
-    await AsyncStorage.setItem(KEY_SETTINGS, JSON.stringify(s));
+    const existing = await loadSettings();
+    const next: Settings = { ...existing, ...patch };
+    await AsyncStorage.setItem(KEY_SETTINGS, JSON.stringify(next));
   } catch {
     // ignore
   }

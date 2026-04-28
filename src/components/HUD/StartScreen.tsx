@@ -139,6 +139,7 @@ export function StartScreen() {
   const setPlayerName = useStore((s) => s.setPlayerName);
   const pendingStartMode = useStore((s) => s.pendingStartMode);
   const setPendingStartMode = useStore((s) => s.setPendingStartMode);
+  const setShowTutorial = useStore((s) => s.setShowTutorial);
 
   const [mode, setMode] = useState<Mode>('home');
   const [pickedSkin, setPickedSkin] = useState<PlayerSkin | null>(null);
@@ -335,6 +336,12 @@ export function StartScreen() {
             </Pressable>
           ) : null}
         </View>
+        <Pressable
+          onPress={() => setShowTutorial(true)}
+          style={({ pressed }) => [styles.linkBtn, pressed && styles.linkBtnDown]}
+        >
+          <Text style={styles.linkLabel}>HOW TO PLAY</Text>
+        </Pressable>
       </View>
     );
   }

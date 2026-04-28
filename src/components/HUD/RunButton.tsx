@@ -18,7 +18,11 @@ export function RunButton() {
     <Pressable
       onPress={toggle}
       hitSlop={8}
-      style={[styles.btn, running && styles.btnActive]}
+      style={({ pressed }) => [
+        styles.btn,
+        running && styles.btnActive,
+        pressed && styles.btnPressed,
+      ]}
     >
       <Text style={[styles.label, running && styles.labelActive]}>RUN</Text>
     </Pressable>
@@ -46,6 +50,10 @@ const styles = StyleSheet.create({
   btnActive: {
     backgroundColor: 'rgba(120,200,255,0.45)',
     borderColor: 'rgba(140,220,255,0.85)',
+  },
+  btnPressed: {
+    transform: [{ scale: 0.94 }],
+    opacity: 0.85,
   },
   label: {
     color: 'rgba(255,255,255,0.92)',

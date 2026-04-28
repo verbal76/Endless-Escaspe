@@ -88,6 +88,7 @@ import { StartScreen } from '../components/HUD/StartScreen';
 import { AlarmOverlay } from '../components/HUD/AlarmOverlay';
 import { SettingsScreen } from '../components/HUD/SettingsScreen';
 import { PickupBag } from '../components/HUD/PickupBag';
+import { EventFlash } from '../components/HUD/EventFlash';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
 import { spawnFences } from '../scenes/Fence';
@@ -118,6 +119,7 @@ import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
 import { applyStageLighting } from '../scenes/Lighting';
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
 import { writeSaves, type Save } from '../util/storage';
+import { haptics } from '../util/haptics';
 
 // Stats thresholds. Higher = lenient; lower = stingy.
 const STAT_DETECTED_3 = 3;   // <= seconds detected for 3 stars on this metric
@@ -463,9 +465,11 @@ export function Game() {
       st.setHearts(remaining);
       projectiles.clear();
       if (remaining <= 0) {
+        haptics.caught();
         st.setRunState('caught');
         return;
       }
+      haptics.heartLost();
       // Soft restart inside the segment - keep run stats so the
       // end-of-segment board reflects all attempts in this run.
       player.x = 0;
@@ -491,6 +495,10 @@ export function Game() {
         d.x = handler ? handler.x + 1 : 0;
         d.z = handler ? handler.z : 1;
         d.state = 'leash';
+        // Snap the mesh to the new home position so the player
+        // doesn't see the dog "teleport" a frame later when the
+        // update loop's render pass picks up the change.
+        setDogTransform(d);
       }
       // Despawn any active smoke and consume queued use-flags so the
       // soft-restart starts cleanly from spawn. Inventory counts are
@@ -550,6 +558,7 @@ export function Game() {
       }
 
       st.setRunState('cleared');
+      haptics.cleared();
       // Hearts count for the *next* segment (post-Banner) is the
       // stage-driven starting count. Game.tsx's startRun and the
       // restart path use this same helper.
@@ -649,6 +658,7 @@ export function Game() {
             p.mesh = null;
           }
           st.addPickup(p.kind);
+          haptics.pickupGrab();
         }
       }
 
@@ -659,6 +669,7 @@ export function Game() {
         input.useCrowbar = false;
         if (st.consumePickup('crowbar')) {
           applyCrowbarStun(player.x, player.z, scene.guards);
+          haptics.pickupUse();
         }
       }
       if (input.useSmokeBomb) {
@@ -667,6 +678,7 @@ export function Game() {
           const cloud = createSmokeCloud(player.x, player.z);
           r.worldRoot.add(cloud.group);
           smokeClouds.push(cloud);
+          haptics.pickupUse();
         }
       }
 
@@ -965,6 +977,7 @@ export function Game() {
       <Hearts />
       <StaminaBar />
       <AlarmBar />
+      <EventFlash />
       <Banner />
       <StartScreen />
       <SettingsScreen />

@@ -1,5 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Easing,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useStore } from '../../state/store';
 
 const STAR_FILLED = '★';
@@ -20,8 +26,26 @@ export function Banner() {
     (s) => s.bestStars[justClearedStage] ?? 0,
   );
 
-  // Idle (initial app launch) is handled by StartScreen now; the
-  // Banner only renders the post-run states.
+  // Card entry animation: scales up from 90% with a fade-in each
+  // time runState transitions into a banner-visible state. The
+  // component itself stays mounted across runs (parent renders it
+  // unconditionally), so we re-run the timing on every transition
+  // rather than relying on mount-time hooks.
+  const t = useSharedValue(0);
+  useEffect(() => {
+    if (runState === 'caught' || runState === 'cleared') {
+      t.value = 0;
+      t.value = withTiming(1, {
+        duration: 320,
+        easing: Easing.out(Easing.cubic),
+      });
+    }
+  }, [runState, t]);
+  const cardStyle = useAnimatedStyle(() => ({
+    opacity: t.value,
+    transform: [{ scale: 0.9 + 0.1 * t.value }],
+  }));
+
   // Idle (initial app launch) is handled by StartScreen now; the
   // Banner only renders the post-run states.
   if (runState === 'playing' || runState === 'idle') return null;
@@ -36,7 +60,7 @@ export function Banner() {
 
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
-      <View style={styles.card}>
+      <Animated.View style={[styles.card, cardStyle]}>
         <Text style={styles.title}>{title}</Text>
 
         {isCleared && (
@@ -77,7 +101,7 @@ export function Banner() {
         >
           <Text style={styles.btnLabel}>{cta}</Text>
         </Pressable>
-      </View>
+      </Animated.View>
     </View>
   );
 }

@@ -53,10 +53,11 @@ export function PickupBag() {
               else input.useSmokeBomb = true;
             }}
             hitSlop={4}
-            style={[
+            style={({ pressed }) => [
               styles.btn,
               !empty && { borderColor: slot.border, backgroundColor: slot.active },
               empty && styles.btnEmpty,
+              pressed && !empty && styles.btnPressed,
             ]}
           >
             <Text style={[styles.glyph, empty && styles.glyphEmpty]}>
@@ -99,6 +100,10 @@ const styles = StyleSheet.create({
   },
   btnEmpty: {
     opacity: 0.45,
+  },
+  btnPressed: {
+    transform: [{ scale: 0.94 }],
+    opacity: 0.85,
   },
   glyph: {
     color: 'rgba(255,255,255,0.95)',

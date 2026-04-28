@@ -1,7 +1,13 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
+import Animated, {
+  Easing,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
 
 // Hold-to-look arrows. Use react-native-gesture-handler instead of
@@ -9,6 +15,10 @@ import { input } from '../../systems/InputSystem';
 // Pressable, the React Native responder system would lock movement
 // while a look arrow was held. Gesture.LongPress with minDuration:0
 // fires immediately on touch and cooperates with sibling gestures.
+//
+// Each arrow runs its own pressed-state shared value so we can scale
+// it down briefly on press as a tactile cue (the joystick also picks
+// up the touch but that's fine - the visual still reads).
 
 const LOOK_YAW_DEG = 45;
 const LOOK_YAW_RAD = (LOOK_YAW_DEG * Math.PI) / 180;
@@ -18,50 +28,47 @@ function setYaw(v: number) {
   input.viewYaw = v;
 }
 
-export function LookButtons() {
-  const leftGesture = React.useMemo(
+function useLookButton(yaw: number) {
+  const pressed = useSharedValue(0);
+  const gesture = React.useMemo(
     () =>
       Gesture.LongPress()
         .minDuration(0)
         .maxDistance(99999)
         .onStart(() => {
           'worklet';
-          runOnJS(setYaw)(LOOK_YAW_RAD);
+          pressed.value = withTiming(1, { duration: 90, easing: Easing.out(Easing.quad) });
+          runOnJS(setYaw)(yaw);
         })
         .onFinalize(() => {
           'worklet';
+          pressed.value = withTiming(0, { duration: 140, easing: Easing.in(Easing.quad) });
           runOnJS(setYaw)(0);
         }),
-    [],
+    [yaw, pressed],
   );
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - pressed.value * 0.06 }],
+    opacity: 1 - pressed.value * 0.15,
+  }));
+  return { gesture, style };
+}
 
-  const rightGesture = React.useMemo(
-    () =>
-      Gesture.LongPress()
-        .minDuration(0)
-        .maxDistance(99999)
-        .onStart(() => {
-          'worklet';
-          runOnJS(setYaw)(-LOOK_YAW_RAD);
-        })
-        .onFinalize(() => {
-          'worklet';
-          runOnJS(setYaw)(0);
-        }),
-    [],
-  );
+export function LookButtons() {
+  const left = useLookButton(LOOK_YAW_RAD);
+  const right = useLookButton(-LOOK_YAW_RAD);
 
   return (
     <>
-      <GestureDetector gesture={leftGesture}>
-        <View style={styles.left}>
+      <GestureDetector gesture={left.gesture}>
+        <Animated.View style={[styles.left, left.style]}>
           <Text style={styles.glyph}>‹</Text>
-        </View>
+        </Animated.View>
       </GestureDetector>
-      <GestureDetector gesture={rightGesture}>
-        <View style={styles.right}>
+      <GestureDetector gesture={right.gesture}>
+        <Animated.View style={[styles.right, right.style]}>
           <Text style={styles.glyph}>›</Text>
-        </View>
+        </Animated.View>
       </GestureDetector>
     </>
   );

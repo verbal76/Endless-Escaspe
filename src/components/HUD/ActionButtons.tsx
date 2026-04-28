@@ -25,7 +25,11 @@ export function ActionButtons() {
         <Pressable
           key={s.value}
           onPress={() => pickStance(s.value)}
-          style={[styles.btn, stance === s.value && styles.btnActive]}
+          style={({ pressed }) => [
+            styles.btn,
+            stance === s.value && styles.btnActive,
+            pressed && styles.btnPressed,
+          ]}
         >
           <Text style={styles.label}>{s.label}</Text>
         </Pressable>
@@ -58,6 +62,10 @@ const styles = StyleSheet.create({
   btnActive: {
     backgroundColor: 'rgba(255,210,90,0.35)',
     borderColor: 'rgba(255,210,90,0.65)',
+  },
+  btnPressed: {
+    transform: [{ scale: 0.94 }],
+    opacity: 0.85,
   },
   label: {
     color: 'rgba(255,255,255,0.92)',

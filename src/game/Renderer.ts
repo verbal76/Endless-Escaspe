@@ -33,8 +33,9 @@ export function createRenderer(gl: ExpoWebGLRenderingContext): GameRenderer {
     antialias: false,
   });
   renderer.setSize(gl.drawingBufferWidth, gl.drawingBufferHeight);
-  // Daylight sky for stage 1. Later stages will dim toward dusk and
-  // night via a runtime tint applied from Game.tsx (TODO).
+  // Daylight sky baseline for stage 1. applyStageLighting (called
+  // from Game.tsx after each scene rebuild) re-tints the clear
+  // colour, fog, and lights to the stage's sky / dusk / night look.
   renderer.setClearColor(0x88b4d8, 1);
 
   const scene = new THREE.Scene();

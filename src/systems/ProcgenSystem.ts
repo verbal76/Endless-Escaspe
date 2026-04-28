@@ -116,7 +116,11 @@ function generateChunkContents(rng: Rng, startZ: number): Obstacle[] {
   return obstacles;
 }
 
-const PICKUP_KINDS: PickupKind[] = ['crowbar', 'smokebomb'];
+// Crowbar drops are scaled to 90% of an even split with smoke bombs,
+// so the kind-pick lands on crowbar 45% of the time and smoke bomb
+// 55%. Smoke bombs (vision blocker) are slightly more useful in the
+// general case, so weighting them up reads correctly to the player.
+const CROWBAR_PICK_THRESHOLD = 0.45;
 
 // Pickups: roll a small count per chunk; place where they don't
 // overlap obstacles. Skip the first chunk so the player isn't
@@ -131,7 +135,8 @@ function placePickups(rng: Rng, chunkIndex: number, obstacles: Obstacle[], start
   for (let i = 0; i < count; i++) {
     let placed = false;
     for (let attempt = 0; attempt < 14 && !placed; attempt++) {
-      const kind = pick(rng, PICKUP_KINDS);
+      const kind: PickupKind =
+        rng() < CROWBAR_PICK_THRESHOLD ? 'crowbar' : 'smokebomb';
       const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
       const z = startZ + 2 + rng() * (CHUNK_LEN - 4);
       // Don't drop a pickup on top of an obstacle. We treat the

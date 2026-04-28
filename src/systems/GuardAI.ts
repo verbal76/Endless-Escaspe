@@ -101,6 +101,15 @@ export function updateGuard(
   obstacles: readonly Obstacle[],
   onFire?: GuardFireFn,
 ) {
+  // Crowbar stun: the guard freezes in place, no AI tick, no firing.
+  // We still drain the cooldown timers and the stun itself so the
+  // unstun path is automatic.
+  if (g.stunTimer > 0) {
+    g.stunTimer = Math.max(0, g.stunTimer - dt);
+    g.fireCooldown = Math.max(0, g.fireCooldown - dt);
+    return;
+  }
+
   g.behaviorTimer += dt;
   g.wanderTimer += dt;
   g.fireCooldown = Math.max(0, g.fireCooldown - dt);

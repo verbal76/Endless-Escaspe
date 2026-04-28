@@ -35,6 +35,12 @@ export type DetectionTuning = {
   noiseRangeCrouchSq: number;
 };
 
+// Optional sphere of vision-blocking smoke. The game loop builds the
+// list of active clouds and passes it in; DetectionSystem treats any
+// guard inside one of these as having no visual contact (noise still
+// counts - smoke covers eyes, not ears).
+export type SmokeRegion = { x: number; z: number; radius: number };
+
 export function updateDetection(
   guard: Guard,
   player: Player,
@@ -44,7 +50,27 @@ export function updateDetection(
   visionRange: number,
   tuning: DetectionTuning,
   noiseScale: number = 1,
+  smokeRegions: readonly SmokeRegion[] = [],
 ): number {
+  // Stunned guards stop contributing to detection while frozen by a
+  // crowbar hit. Their meter still decays naturally so the player
+  // gets a real reset window from a stun.
+  if (guard.stunTimer > 0) {
+    return clamp(prev - tuning.decay * dt, 0, 1);
+  }
+
+  // Smoke cover: if the guard is inside any active cloud, treat
+  // their vision as fully blocked for this frame.
+  let visionBlocked = false;
+  for (const sr of smokeRegions) {
+    const dx = guard.x - sr.x;
+    const dz = guard.z - sr.z;
+    if (dx * dx + dz * dz <= sr.radius * sr.radius) {
+      visionBlocked = true;
+      break;
+    }
+  }
+
   const dSq = dist2(guard.x, guard.z, player.x, player.z);
   const visionRangeSq = visionRange * visionRange;
 
@@ -55,7 +81,7 @@ export function updateDetection(
   const hiddenScale = player.isHidden ? 0 : 1; // crouch + cover masks them
 
   let visionAdd = 0;
-  if (dSq <= visionRangeSq && hiddenScale > 0) {
+  if (!visionBlocked && dSq <= visionRangeSq && hiddenScale > 0) {
     const angleToPlayer = Math.atan2(player.z - guard.z, player.x - guard.x);
     if (angleDelta(guard.facing, angleToPlayer) <= VISION_HALF) {
       // Per-stance cover threshold. Crouched (the on-hands-and-knees

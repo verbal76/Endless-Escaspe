@@ -63,6 +63,7 @@ export function createGuard(cfg: GuardConfig): Guard {
     behaviorTimer: 0,
     investigationTarget: null,
     fireCooldown: 0,
+    stunTimer: 0,
     mesh: null,
     visionMesh: null,
   };

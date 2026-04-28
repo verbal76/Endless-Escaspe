@@ -40,11 +40,30 @@ export type Projectile = {
   mesh: Object3D | null;
 };
 
+// Items the player can grab off the ground and use later.
+//   crowbar    - melee stun on the nearest guard within range.
+//   smokebomb  - drops a vision-blocking cloud at the player's feet
+//                that hides them from any guard inside the radius.
+export type PickupKind = 'crowbar' | 'smokebomb';
+
+export type Pickup = {
+  id: number;
+  kind: PickupKind;
+  x: number;
+  z: number;
+  // Pickup overlap radius. Larger than the visual mesh so the player
+  // doesn't have to thread the needle to grab it on the run.
+  r: number;
+  collected: boolean;
+  mesh: Object3D | null;
+};
+
 export type Chunk = {
   id: number;
   startZ: number;
   endZ: number;
   obstacles: Obstacle[];
+  pickups: Pickup[];
 };
 
 // Player movement mode. RUN is a separate, orthogonal speed multiplier
@@ -104,6 +123,10 @@ export type Guard = {
   // detection contributes mass). Cleared on transition back to wander.
   investigationTarget: { x: number; z: number } | null;
   fireCooldown: number;
+  // Seconds remaining of crowbar-induced stun. While > 0 the AI does
+  // not transition state, does not move, and DetectionSystem skips
+  // its vision contribution. Decays in the AI update tick.
+  stunTimer: number;
   mesh: Object3D | null;
   visionMesh: Object3D | null;
 };

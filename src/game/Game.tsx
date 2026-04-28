@@ -24,6 +24,15 @@ import {
 } from '../scenes/PrisonYard1';
 import { useStore, type RunStats } from '../state/store';
 import type { Guard } from '../types/world';
+import { input } from '../systems/InputSystem';
+import { animatePickup } from '../scenes/Pickup';
+import {
+  createSmokeCloud,
+  disposeSmokeCloud,
+  updateSmokeCloud,
+  type SmokeCloud,
+} from '../scenes/SmokeCloud';
+import type { SmokeRegion } from '../systems/DetectionSystem';
 import {
   CHUNK_LEN,
   CHUNKS_AHEAD,
@@ -78,6 +87,7 @@ import { Banner } from '../components/HUD/Banner';
 import { StartScreen } from '../components/HUD/StartScreen';
 import { AlarmOverlay } from '../components/HUD/AlarmOverlay';
 import { SettingsScreen } from '../components/HUD/SettingsScreen';
+import { PickupBag } from '../components/HUD/PickupBag';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
 import { spawnFences } from '../scenes/Fence';
@@ -117,6 +127,38 @@ const STAT_TIME_3 = 60;
 const STAT_TIME_2 = 120;
 const SEEN_THRESHOLD = 0.5;
 const DETECTED_THRESHOLD = 0.3;
+
+// Crowbar tuning. Range is intentionally short so the player has to
+// commit to a melee approach; duration is long enough to clear a
+// chase past a chokepoint but not so long it's a free pass.
+const CROWBAR_RANGE = 3.0;
+const CROWBAR_RANGE_SQ = CROWBAR_RANGE * CROWBAR_RANGE;
+const CROWBAR_STUN_DURATION = 4.0;
+
+// Stun the nearest non-stunned guard within CROWBAR_RANGE of (px, pz).
+// No-op if no guard is in range. Resets that guard's investigation
+// state so the unstun re-enters wander rather than re-aggroing the
+// player from where they were standing when they swung.
+function applyCrowbarStun(px: number, pz: number, guards: readonly Guard[]) {
+  let nearest: Guard | null = null;
+  let nearestDistSq = CROWBAR_RANGE_SQ;
+  for (const g of guards) {
+    if (g.stunTimer > 0) continue;
+    const dx = g.x - px;
+    const dz = g.z - pz;
+    const dSq = dx * dx + dz * dz;
+    if (dSq <= nearestDistSq) {
+      nearestDistSq = dSq;
+      nearest = g;
+    }
+  }
+  if (!nearest) return;
+  nearest.stunTimer = CROWBAR_STUN_DURATION;
+  nearest.state = 'wander';
+  nearest.investigationTarget = null;
+  nearest.behaviorTimer = 0;
+  nearest.fireCooldown = Math.max(nearest.fireCooldown, 0.5);
+}
 
 function scoreStars(s: Omit<RunStats, 'stars'>): number {
   let pts = 0;
@@ -275,6 +317,12 @@ export function Game() {
 
     const segmentEndZ = segLen;
 
+    // Active smoke clouds dropped by the player. Each cloud lives for
+    // SMOKE_LIFETIME seconds and blocks vision of guards inside its
+    // radius. Ordered list so we can sweep linearly each frame.
+    const smokeClouds: SmokeCloud[] = [];
+    const smokeRegions: SmokeRegion[] = [];
+
     // Per-run stats accumulators.
     let runTime = 0;
     let timeDetectedAcc = 0;
@@ -308,6 +356,7 @@ export function Game() {
         g.wanderTimer = 0;
         g.investigationTarget = null;
         g.fireCooldown = 0;
+        g.stunTimer = 0;
         st.setDetection(g.id, 0);
       }
       // Reset dogs to their handler's spawn position and cancel
@@ -320,6 +369,16 @@ export function Game() {
         setDogTransform(d);
       }
       projectiles.clear();
+      // Clear active smoke clouds and consume any pending pickup-use
+      // flags so a tap right before a segment boundary doesn't
+      // discharge into the new segment.
+      for (const c of smokeClouds) {
+        r.worldRoot.remove(c.group);
+        disposeSmokeCloud(c);
+      }
+      smokeClouds.length = 0;
+      input.useCrowbar = false;
+      input.useSmokeBomb = false;
     };
 
     const handleCatch = () => {
@@ -348,6 +407,7 @@ export function Game() {
         g.wanderTimer = 0;
         g.investigationTarget = null;
         g.fireCooldown = 0;
+        g.stunTimer = 0;
         st.setDetection(g.id, 0);
       }
       for (const d of dogs) {
@@ -356,6 +416,16 @@ export function Game() {
         d.z = handler ? handler.z : 1;
         d.state = 'leash';
       }
+      // Despawn any active smoke and consume queued use-flags so the
+      // soft-restart starts cleanly from spawn. Inventory counts are
+      // intentionally preserved across catches inside a segment.
+      for (const c of smokeClouds) {
+        r.worldRoot.remove(c.group);
+        disposeSmokeCloud(c);
+      }
+      smokeClouds.length = 0;
+      input.useCrowbar = false;
+      input.useSmokeBomb = false;
     };
 
     const handleWin = () => {
@@ -478,6 +548,59 @@ export function Game() {
         return;
       }
 
+      // Pickup overlap: walk over a pickup to grab it. Iterate the
+      // chunk's pickup list and increment the inventory counter; the
+      // mesh is removed and the pickup is flagged collected so it
+      // isn't double-counted on subsequent frames.
+      for (const p of procgen.pickups()) {
+        if (p.collected) continue;
+        const dx = p.x - player.x;
+        const dz = p.z - player.z;
+        const reach = p.r + PLAYER_RADIUS;
+        if (dx * dx + dz * dz <= reach * reach) {
+          p.collected = true;
+          if (p.mesh) {
+            r.worldRoot.remove(p.mesh);
+            p.mesh = null;
+          }
+          st.addPickup(p.kind);
+        }
+      }
+
+      // Pickup-use one-shot flags. Crowbar stuns the nearest unstunned
+      // guard within range; smoke bomb spawns a vision-blocking cloud
+      // at the player's feet. Each consumes one item from inventory.
+      if (input.useCrowbar) {
+        input.useCrowbar = false;
+        if (st.consumePickup('crowbar')) {
+          applyCrowbarStun(player.x, player.z, guards);
+        }
+      }
+      if (input.useSmokeBomb) {
+        input.useSmokeBomb = false;
+        if (st.consumePickup('smokebomb')) {
+          const cloud = createSmokeCloud(player.x, player.z);
+          r.worldRoot.add(cloud.group);
+          smokeClouds.push(cloud);
+        }
+      }
+
+      // Advance smoke clouds; rebuild the per-frame list of vision-
+      // blocking regions DetectionSystem reads. Walk backwards so we
+      // can splice expired clouds without shifting indices.
+      smokeRegions.length = 0;
+      for (let i = smokeClouds.length - 1; i >= 0; i--) {
+        const c = smokeClouds[i];
+        const alive = updateSmokeCloud(c, effDt);
+        if (!alive) {
+          r.worldRoot.remove(c.group);
+          disposeSmokeCloud(c);
+          smokeClouds.splice(i, 1);
+          continue;
+        }
+        smokeRegions.push({ x: c.x, z: c.z, radius: c.radius });
+      }
+
       let lit = false;
       // Searchlight one-shot bump: when a tracking-capable tower
       // has held the player in its beam for long enough, every
@@ -568,6 +691,7 @@ export function Game() {
           guardRange,
           tuning,
           weatherNoise,
+          smokeRegions,
         );
         let dogSmell = 0;
         for (const d of dogs) {
@@ -681,6 +805,10 @@ export function Game() {
 
 
     const render = (_alpha: number) => {
+      // Idle bob/spin on every uncollected pickup. Cheap; only the
+      // mesh transform is touched.
+      for (const p of procgen.pickups()) animatePickup(p, animTime);
+
       // Player figure pose + position.
       const pSpeed = Math.hypot(player.vx, player.vz);
       // Facing matches movement direction; if standing still, keep
@@ -747,6 +875,7 @@ export function Game() {
       <Joystick />
       <RunButton />
       <ActionButtons />
+      <PickupBag />
       <LookButtons />
       <Hearts />
       <StaminaBar />

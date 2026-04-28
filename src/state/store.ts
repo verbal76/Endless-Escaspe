@@ -1,8 +1,15 @@
 import { create } from 'zustand';
-import type { RunState, Stance } from '../types/world';
+import type { PickupKind, RunState, Stance } from '../types/world';
 import type { WeatherKind } from '../scenes/Weather';
 import type { Save, SavesMap } from '../util/storage';
 import { startingHeartsFor } from '../util/progression';
+
+// How many of each pickup the player is currently carrying. Counts
+// reset to zero on each segment start. The HUD's PickupBag reads
+// from here; Game.tsx's update loop writes when a pickup is grabbed
+// or used.
+export type Inventory = Record<PickupKind, number>;
+const EMPTY_INVENTORY: Inventory = { crowbar: 0, smokebomb: 0 };
 
 export type PlayerSkin = 'beige' | 'brown';
 
@@ -75,6 +82,10 @@ type Store = {
   // HUD code (Banner, etc.) can keep reading from the store. Resets
   // to {} when no save is active.
   bestStars: Record<number, number>;
+  // Per-segment pickup inventory (crowbar, smoke bomb). Resets when
+  // a new segment starts; mirrored to / from the game loop via the
+  // setters below.
+  inventory: Inventory;
   setRunState: (s: RunState) => void;
   setHearts: (n: number) => void;
   setDetection: (id: number, v: number) => void;
@@ -96,6 +107,9 @@ type Store = {
   setActiveSave: (key: string | null) => void;
   setPendingStartMode: (m: 'home' | 'continue' | null) => void;
   recordSegmentStars: (stage: number, stars: number) => boolean;
+  setInventory: (inv: Inventory) => void;
+  addPickup: (kind: PickupKind) => void;
+  consumePickup: (kind: PickupKind) => boolean;
   requestRestart: () => void;
   resetForSegment: (seed: number) => void;
   startRun: () => void;
@@ -122,6 +136,7 @@ export const useStore = create<Store>((set) => ({
   pendingStartMode: null,
   lastStats: null,
   bestStars: {},
+  inventory: { ...EMPTY_INVENTORY },
   setRunState: (s) => set({ runState: s }),
   setHearts: (n) => set({ hearts: n }),
   setDetection: (id, v) =>
@@ -201,6 +216,31 @@ export const useStore = create<Store>((set) => ({
     });
     return isNewHigh;
   },
+  setInventory: (inv) =>
+    set((st) =>
+      st.inventory.crowbar === inv.crowbar &&
+      st.inventory.smokebomb === inv.smokebomb
+        ? st
+        : { inventory: { ...inv } },
+    ),
+  addPickup: (kind) =>
+    set((st) => ({
+      inventory: { ...st.inventory, [kind]: st.inventory[kind] + 1 },
+    })),
+  // Returns true if a pickup was actually consumed; lets callers
+  // gate their effect on a successful decrement so spamming the
+  // button on an empty slot is a no-op.
+  consumePickup: (kind) => {
+    let consumed = false;
+    set((st) => {
+      if (st.inventory[kind] <= 0) return st;
+      consumed = true;
+      return {
+        inventory: { ...st.inventory, [kind]: st.inventory[kind] - 1 },
+      };
+    });
+    return consumed;
+  },
   requestRestart: () =>
     set((st) => ({
       restartCounter: st.restartCounter + 1,
@@ -217,6 +257,7 @@ export const useStore = create<Store>((set) => ({
       stance: 'walk',
       paused: false,
       lastStats: null,
+      inventory: { ...EMPTY_INVENTORY },
     }),
   startRun: () =>
     set((st) => ({
@@ -228,5 +269,6 @@ export const useStore = create<Store>((set) => ({
       stance: 'walk',
       paused: false,
       lastStats: null,
+      inventory: { ...EMPTY_INVENTORY },
     })),
 }));

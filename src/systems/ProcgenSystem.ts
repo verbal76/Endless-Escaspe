@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Chunk, Obstacle, ObstacleKind } from '../types/world';
+import type { Chunk, Obstacle, ObstacleKind, Pickup, PickupKind } from '../types/world';
 import { mulberry32, pick, randInt, type Rng } from '../util/rng';
 import {
   CHUNK_LEN,
@@ -14,9 +14,11 @@ import {
   OBSTACLE_RADIUS,
   buildObstacleMesh,
 } from '../scenes/Obstacles';
+import { PICKUP_RADIUS, buildPickupMesh } from '../scenes/Pickup';
 
 let nextObstacleId = 1;
 let nextChunkId = 1;
+let nextPickupId = 1;
 
 const SPAWN_X_MIN = -PLAY_HALF_W + 0.7;
 const SPAWN_X_MAX = PLAY_HALF_W - 0.7;
@@ -114,7 +116,57 @@ function generateChunkContents(rng: Rng, startZ: number): Obstacle[] {
   return obstacles;
 }
 
-export function generateChunk(rng: Rng, startZ: number): Chunk {
+const PICKUP_KINDS: PickupKind[] = ['crowbar', 'smokebomb'];
+
+// Pickups: roll a small count per chunk; place where they don't
+// overlap obstacles. Skip the first chunk so the player isn't
+// handed a freebie at spawn (and so the very first segment ramps
+// the player past at least one bare-handed encounter).
+function placePickups(rng: Rng, chunkIndex: number, obstacles: Obstacle[], startZ: number): Pickup[] {
+  if (chunkIndex === 0) return [];
+  // Roll: ~70% chance of one pickup, ~25% chance of two, rest none.
+  const roll = rng();
+  const count = roll < 0.05 ? 0 : roll < 0.75 ? 1 : 2;
+  const pickups: Pickup[] = [];
+  for (let i = 0; i < count; i++) {
+    let placed = false;
+    for (let attempt = 0; attempt < 14 && !placed; attempt++) {
+      const kind = pick(rng, PICKUP_KINDS);
+      const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
+      const z = startZ + 2 + rng() * (CHUNK_LEN - 4);
+      // Don't drop a pickup on top of an obstacle. We treat the
+      // pickup as having radius PICKUP_RADIUS for spacing too so
+      // the player can grab it without being stuck inside a crate.
+      if (tooClose(obstacles, x, z, PICKUP_RADIUS)) continue;
+      // Also don't bunch two pickups on top of each other in the
+      // same chunk - cheap distance check against the ones we've
+      // already placed in this pass.
+      let bunched = false;
+      for (const existing of pickups) {
+        const dx = existing.x - x;
+        const dz = existing.z - z;
+        if (dx * dx + dz * dz < 4 * 4) {
+          bunched = true;
+          break;
+        }
+      }
+      if (bunched) continue;
+      pickups.push({
+        id: nextPickupId++,
+        kind,
+        x,
+        z,
+        r: PICKUP_RADIUS,
+        collected: false,
+        mesh: null,
+      });
+      placed = true;
+    }
+  }
+  return pickups;
+}
+
+export function generateChunk(rng: Rng, startZ: number, chunkIndex: number): Chunk {
   for (let attempt = 0; attempt < 5; attempt++) {
     const obstacles = generateChunkContents(rng, startZ);
     if (isSolvable(obstacles, startZ, startZ + CHUNK_LEN)) {
@@ -123,6 +175,7 @@ export function generateChunk(rng: Rng, startZ: number): Chunk {
         startZ,
         endZ: startZ + CHUNK_LEN,
         obstacles,
+        pickups: placePickups(rng, chunkIndex, obstacles, startZ),
       };
     }
   }
@@ -131,6 +184,7 @@ export function generateChunk(rng: Rng, startZ: number): Chunk {
     startZ,
     endZ: startZ + CHUNK_LEN,
     obstacles: [],
+    pickups: [],
   };
 }
 
@@ -152,15 +206,21 @@ export class ProcgenSystem {
 
   init() {
     for (let i = 0; i < this.chunkCount; i++) {
-      this.spawnChunk(i * CHUNK_LEN);
+      this.spawnChunk(i, i * CHUNK_LEN);
     }
   }
 
-  private spawnChunk(startZ: number) {
-    const chunk = generateChunk(this.rng, startZ);
+  private spawnChunk(chunkIndex: number, startZ: number) {
+    const chunk = generateChunk(this.rng, startZ, chunkIndex);
     for (const o of chunk.obstacles) {
       const m = buildObstacleMesh(o);
       o.mesh = m;
+      this.worldRoot.add(m);
+    }
+    for (const p of chunk.pickups) {
+      const m = buildPickupMesh(p.kind);
+      m.position.set(p.x, 0.08, p.z);
+      p.mesh = m;
       this.worldRoot.add(m);
     }
     this.chunks.push(chunk);
@@ -170,6 +230,9 @@ export class ProcgenSystem {
     for (const o of chunk.obstacles) {
       if (o.mesh) this.worldRoot.remove(o.mesh);
     }
+    for (const p of chunk.pickups) {
+      if (p.mesh) this.worldRoot.remove(p.mesh);
+    }
   }
 
   // v1: fixed 5-chunk segment, no recycling.
@@ -178,6 +241,12 @@ export class ProcgenSystem {
   obstacles(): Obstacle[] {
     const out: Obstacle[] = [];
     for (const c of this.chunks) for (const o of c.obstacles) out.push(o);
+    return out;
+  }
+
+  pickups(): Pickup[] {
+    const out: Pickup[] = [];
+    for (const c of this.chunks) for (const p of c.pickups) out.push(p);
     return out;
   }
 

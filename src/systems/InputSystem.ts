@@ -14,6 +14,11 @@ export type InputState = {
   // CameraRig lerps the camera toward this target so release snaps
   // smoothly back to centred when the player lets go of the button.
   viewYaw: number;
+  // One-shot pickup-use flags. HUD buttons set true on press; the
+  // game loop reads them once per frame and resets them so each
+  // tap drives a single use even if the button stays held.
+  useCrowbar: boolean;
+  useSmokeBomb: boolean;
 };
 
 export const input: InputState = {
@@ -22,6 +27,8 @@ export const input: InputState = {
   stance: 'walk',
   run: false,
   viewYaw: 0,
+  useCrowbar: false,
+  useSmokeBomb: false,
 };
 
 export function resetInput() {
@@ -30,4 +37,6 @@ export function resetInput() {
   input.stance = 'walk';
   input.run = false;
   input.viewYaw = 0;
+  input.useCrowbar = false;
+  input.useSmokeBomb = false;
 }

@@ -32,6 +32,12 @@ import {
   updateSmokeCloud,
   type SmokeCloud,
 } from '../scenes/SmokeCloud';
+import {
+  createSwingArc,
+  disposeSwingArc,
+  updateSwingArc,
+  type SwingArc,
+} from '../scenes/SwingArc';
 import type { SmokeRegion } from '../systems/DetectionSystem';
 import {
   CHUNK_LEN,
@@ -105,6 +111,12 @@ import {
   updateFigurePose,
 } from '../scenes/BlockyFigure';
 import { attachGuardEquipment, poseGuardArms, type GuardEquipment } from '../scenes/GuardEquipment';
+import {
+  createGuardStateMarker,
+  triggerGuardStateMarker,
+  updateGuardStateMarker,
+  type GuardStateMarker,
+} from '../scenes/GuardStateMarker';
 import { createBackdrop, updateBackdrop } from '../scenes/Backdrop';
 import {
   createWeather,
@@ -118,6 +130,12 @@ import {
 import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
 import { applyStageLighting } from '../scenes/Lighting';
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
+import {
+  createPickupSounds,
+  playPickupGrab,
+  playPickupUse,
+  type PickupSounds,
+} from '../scenes/PickupSounds';
 import { writeSaves, type Save } from '../util/storage';
 import { haptics } from '../util/haptics';
 
@@ -193,7 +211,8 @@ export function Game() {
     // gets torn down + reconstructed by buildScene().
 
     const player = createPlayer();
-    const playerFigure = createPlayerFigure(useStore.getState().playerSkin);
+    let playerSkin = useStore.getState().playerSkin;
+    let playerFigure = createPlayerFigure(playerSkin);
     r.worldRoot.add(playerFigure.group);
 
     const backdrop = createBackdrop();
@@ -203,6 +222,7 @@ export function Game() {
     r.worldRoot.add(radialMeter.group);
 
     const siren: SirenHandle = createSiren();
+    const pickupSounds: PickupSounds = createPickupSounds();
     const projectiles = new ProjectileSystem(r.worldRoot);
 
     // Active smoke clouds dropped by the player. Each cloud lives for
@@ -212,7 +232,22 @@ export function Game() {
     const smokeClouds: SmokeCloud[] = [];
     const smokeRegions: SmokeRegion[] = [];
 
-    type GuardEntry = { guard: Guard; figure: BlockyFigure; equipment: GuardEquipment };
+    // Transient swing-arc decals that visualise crowbar use. Each
+    // arc lives for ~180ms; we keep them on r.worldRoot so a swing
+    // during the last frame of a segment doesn't disappear when the
+    // scene rebuilds.
+    const swingArcs: SwingArc[] = [];
+
+    type GuardEntry = {
+      guard: Guard;
+      figure: BlockyFigure;
+      equipment: GuardEquipment;
+      marker: GuardStateMarker;
+      // Last guard.state observed by the marker-update tick, used to
+      // detect transitions into alert/investigate/chase so the pop
+      // animation only fires on the leading edge.
+      lastState: Guard['state'];
+    };
 
     type Scene = {
       // Parent Group for every per-segment mesh. Removing this from
@@ -225,6 +260,9 @@ export function Game() {
       weatherEnabledAtInit: boolean;
       weather: Weather;
       groundMat: THREE.MeshStandardMaterial;
+      // Win-line material exposed so the render loop can pulse its
+      // opacity (subtle "land here" glow rather than a flat plane).
+      winLineMat: THREE.MeshBasicMaterial;
       baseVisionRange: number;
       razorWire: boolean;
       guardEntries: GuardEntry[];
@@ -282,6 +320,10 @@ export function Game() {
       }
 
       const winLine = createWinLine(segLen);
+      const winLineMat = winLine.material as THREE.MeshBasicMaterial;
+      // The win line is built opaque; flip the material to transparent
+      // so the render loop's opacity pulse actually shows up.
+      winLineMat.transparent = true;
       root.add(winLine);
 
       const baseVisionRange = visionRangeFor(stage);
@@ -294,8 +336,10 @@ export function Game() {
           figure.group.position.set(guard.x, 0, guard.z);
           root.add(figure.group);
           const equipment = attachGuardEquipment(figure, baseVisionRange);
+          const marker = createGuardStateMarker();
+          figure.group.add(marker.group);
           guard.mesh = figure.group;
-          return { guard, figure, equipment };
+          return { guard, figure, equipment, marker, lastState: guard.state };
         },
       );
       const guards: Guard[] = guardEntries.map((e) => e.guard);
@@ -353,6 +397,7 @@ export function Game() {
         weatherEnabledAtInit,
         weather,
         groundMat,
+        winLineMat,
         baseVisionRange,
         razorWire,
         guardEntries,
@@ -411,6 +456,22 @@ export function Game() {
     let animTime = 0;
     const tmpVec = new THREE.Vector3();
 
+    // Camera-shake state. handleCatch sets shakeRemaining to
+    // SHAKE_DURATION; update() decays it; render() applies a small
+    // sin-driven offset to camera position scaled by the remaining
+    // fraction so the kick eases out smoothly.
+    const SHAKE_DURATION = 0.28;
+    let shakeRemaining = 0;
+
+    // Brief sparkle animation on collected pickups: instead of
+    // despawning the mesh immediately, scale it up and let it fade
+    // out across PICKUP_GRAB_DURATION seconds so the player sees
+    // their grab register. The owning Object3D outlives the procgen
+    // scene-root so we keep our own list and clean it up here.
+    const PICKUP_GRAB_DURATION = 0.22;
+    type FadingPickup = { mesh: THREE.Object3D; age: number };
+    const fadingPickups: FadingPickup[] = [];
+
     const resetSegment = () => {
       runTime = 0;
       timeDetectedAcc = 0;
@@ -455,6 +516,22 @@ export function Game() {
         disposeSmokeCloud(c);
       }
       smokeClouds.length = 0;
+      // Cancel any in-flight pickup-grab sparkles. Their meshes were
+      // children of scene.root which the rebuild already detached;
+      // explicit removes here are belt-and-braces for the restart
+      // path that doesn't tear the scene down.
+      for (const fp of fadingPickups) {
+        if (fp.mesh.parent) fp.mesh.parent.remove(fp.mesh);
+      }
+      fadingPickups.length = 0;
+      // Despawn any in-flight swing arcs from the player's last
+      // crowbar tap; otherwise a stale ring would linger at the
+      // pre-reset spawn after a catch.
+      for (const arc of swingArcs) {
+        r.worldRoot.remove(arc.mesh);
+        disposeSwingArc(arc);
+      }
+      swingArcs.length = 0;
       input.useCrowbar = false;
       input.useSmokeBomb = false;
     };
@@ -464,6 +541,7 @@ export function Game() {
       const remaining = st.hearts - 1;
       st.setHearts(remaining);
       projectiles.clear();
+      shakeRemaining = SHAKE_DURATION;
       if (remaining <= 0) {
         haptics.caught();
         st.setRunState('caught');
@@ -508,6 +586,20 @@ export function Game() {
         disposeSmokeCloud(c);
       }
       smokeClouds.length = 0;
+      // Tear down any in-flight pickup-grab sparkles too so they
+      // don't hover in the world while the player is back at spawn.
+      for (const fp of fadingPickups) {
+        if (fp.mesh.parent) fp.mesh.parent.remove(fp.mesh);
+      }
+      fadingPickups.length = 0;
+      // Despawn any in-flight swing arcs from the player's last
+      // crowbar tap; otherwise a stale ring would linger at the
+      // pre-reset spawn after a catch.
+      for (const arc of swingArcs) {
+        r.worldRoot.remove(arc.mesh);
+        disposeSwingArc(arc);
+      }
+      swingArcs.length = 0;
       input.useCrowbar = false;
       input.useSmokeBomb = false;
     };
@@ -584,6 +676,15 @@ export function Game() {
         rebuildScene(st.stage, st.segmentSeed);
         resetSegment();
       }
+      // Skin change (typically from a save load on the start screen):
+      // detach the existing player figure and rebuild it with the
+      // new skin so the in-world avatar matches the picker / save.
+      if (st.playerSkin !== playerSkin) {
+        playerSkin = st.playerSkin;
+        r.worldRoot.remove(playerFigure.group);
+        playerFigure = createPlayerFigure(playerSkin);
+        r.worldRoot.add(playerFigure.group);
+      }
       if (st.restartCounter !== lastRestartCounter) {
         lastRestartCounter = st.restartCounter;
         st.setHearts(startingHeartsFor(st.stage));
@@ -602,6 +703,9 @@ export function Game() {
 
       runTime += dt;
       animTime += dt;
+      if (shakeRemaining > 0) {
+        shakeRemaining = Math.max(0, shakeRemaining - dt);
+      }
 
       // Slow-mo close call: when detection is high AND a chasing
       // guard is right on top of you, stretch real-time briefly so
@@ -643,9 +747,10 @@ export function Game() {
       }
 
       // Pickup overlap: walk over a pickup to grab it. Iterate the
-      // chunk's pickup list and increment the inventory counter; the
-      // mesh is removed and the pickup is flagged collected so it
-      // isn't double-counted on subsequent frames.
+      // chunk's pickup list and increment the inventory counter. The
+      // mesh stays parented to scene.root for a brief sparkle (scale-
+      // up + lift) tracked in fadingPickups; it's removed from the
+      // graph when the animation completes a few frames later.
       for (const p of scene.procgen.pickups()) {
         if (p.collected) continue;
         const dx = p.x - player.x;
@@ -654,11 +759,28 @@ export function Game() {
         if (dx * dx + dz * dz <= reach * reach) {
           p.collected = true;
           if (p.mesh) {
-            scene.root.remove(p.mesh);
+            fadingPickups.push({ mesh: p.mesh, age: 0 });
             p.mesh = null;
           }
           st.addPickup(p.kind);
           haptics.pickupGrab();
+          playPickupGrab(pickupSounds, st.masterVolume);
+        }
+      }
+
+      // Advance fading pickup sparkles. Each entry scales up and
+      // rises off the ground over PICKUP_GRAB_DURATION seconds, then
+      // is detached from whatever group still parents it (usually
+      // scene.root unless a stage advance happened mid-fade).
+      for (let i = fadingPickups.length - 1; i >= 0; i--) {
+        const fp = fadingPickups[i];
+        fp.age += effDt;
+        const t = Math.min(1, fp.age / PICKUP_GRAB_DURATION);
+        fp.mesh.scale.setScalar(1 + 0.6 * t);
+        fp.mesh.position.y = 0.08 + 0.5 * t;
+        if (t >= 1) {
+          if (fp.mesh.parent) fp.mesh.parent.remove(fp.mesh);
+          fadingPickups.splice(i, 1);
         }
       }
 
@@ -669,7 +791,11 @@ export function Game() {
         input.useCrowbar = false;
         if (st.consumePickup('crowbar')) {
           applyCrowbarStun(player.x, player.z, scene.guards);
+          const arc = createSwingArc(player.x, player.z, CROWBAR_RANGE);
+          r.worldRoot.add(arc.mesh);
+          swingArcs.push(arc);
           haptics.pickupUse();
+          playPickupUse(pickupSounds, st.masterVolume);
         }
       }
       if (input.useSmokeBomb) {
@@ -679,6 +805,7 @@ export function Game() {
           r.worldRoot.add(cloud.group);
           smokeClouds.push(cloud);
           haptics.pickupUse();
+          playPickupUse(pickupSounds, st.masterVolume);
         }
       }
 
@@ -696,6 +823,19 @@ export function Game() {
           continue;
         }
         smokeRegions.push({ x: c.x, z: c.z, radius: c.radius });
+      }
+
+      // Advance any active crowbar swing arcs. Same expire-and-prune
+      // pattern as smoke; arcs don't influence detection so we don't
+      // collect any per-frame side data here.
+      for (let i = swingArcs.length - 1; i >= 0; i--) {
+        const arc = swingArcs[i];
+        const alive = updateSwingArc(arc, effDt);
+        if (!alive) {
+          r.worldRoot.remove(arc.mesh);
+          disposeSwingArc(arc);
+          swingArcs.splice(i, 1);
+        }
       }
 
       let lit = false;
@@ -849,6 +989,21 @@ export function Game() {
         });
       }
 
+      // Guard state-change pops: fire a "!" marker above any guard
+      // whose state just transitioned into alert / investigate /
+      // chase. Tracking the previous state per entry means the pop
+      // only triggers on the leading edge - the marker's own
+      // animation handles the hold + fade.
+      for (const entry of scene.guardEntries) {
+        const next = entry.guard.state;
+        if (next !== entry.lastState) {
+          if (next === 'alert') triggerGuardStateMarker(entry.marker, 'alert');
+          else if (next === 'investigate') triggerGuardStateMarker(entry.marker, 'investigate');
+          else if (next === 'chase') triggerGuardStateMarker(entry.marker, 'chase');
+          entry.lastState = next;
+        }
+      }
+
       // Detached dogs that aren't paired with any handler still
       // need an update tick (they keep chasing the player even if
       // the handler has been despawned, which can't happen yet but
@@ -906,6 +1061,10 @@ export function Game() {
       // mesh transform is touched.
       for (const p of scene.procgen.pickups()) animatePickup(p, animTime);
 
+      // Win-line glow: pulse the opacity so the green plane reads as
+      // an active goal rather than a static stripe. Runs at ~0.5 Hz.
+      scene.winLineMat.opacity = 0.65 + 0.35 * Math.sin(animTime * 3.2);
+
       // Player figure pose + position.
       const pSpeed = Math.hypot(player.vx, player.vz);
       // Facing matches movement direction; if standing still, keep
@@ -940,6 +1099,12 @@ export function Game() {
         // Override the swinging arm pose so flashlight + pistol stay
         // aimed reliably down the figure's facing direction.
         poseGuardArms(fig);
+        // Counter-rotate the state marker so it always faces the
+        // camera direction (i.e. doesn't yaw with the figure). The
+        // figure rotates around Y by figure.group.rotation.y; we
+        // negate that on the marker's own Y rotation.
+        entry.marker.group.rotation.y = -fig.group.rotation.y;
+        updateGuardStateMarker(entry.marker, 1 / 60);
       }
 
       // Radial meter follows the player; lit by the highest detection.
@@ -955,10 +1120,29 @@ export function Game() {
       for (let i = 0; i < scene.guards.length; i++) {
         const g = scene.guards[i];
         const v = detectionMap[g.id] ?? 0;
-        updateThreatArrow(scene.threatArrows[i], player.x, player.z, g.x, g.z, v);
+        updateThreatArrow(
+          scene.threatArrows[i],
+          player.x,
+          player.z,
+          g.x,
+          g.z,
+          v,
+          g.state === 'chase',
+          animTime,
+        );
       }
 
       updateCameraRig(r.camera, player, 1 / 60);
+      // Catch shake: small sin-driven offset on top of the rig pose,
+      // scaled by the remaining fraction of SHAKE_DURATION so the
+      // kick eases out. Frequency intentionally non-integer to avoid
+      // the shake reading as a consistent wobble.
+      if (shakeRemaining > 0) {
+        const t = shakeRemaining / SHAKE_DURATION;
+        const amp = 0.18 * t;
+        r.camera.position.x += Math.sin(animTime * 92) * amp;
+        r.camera.position.y += Math.cos(animTime * 71) * amp * 0.7;
+      }
       r.draw();
     };
 

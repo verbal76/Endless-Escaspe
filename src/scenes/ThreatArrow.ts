@@ -51,6 +51,10 @@ function colorFor(detection: number): number {
 // Place the arrow on the perimeter of the radial meter, pointing
 // outward in the bearing of `from -> to` (player -> guard). Caller
 // supplies player.x/z and the threat source x/z plus its detection.
+//
+// `chasing` and `time` are optional: when the source guard is in
+// chase, the arrow scale-pulses at ~5 Hz so the player gets a
+// distinct "this one is committed" tell on top of the base color.
 export function updateThreatArrow(
   arrow: ThreatArrow,
   px: number,
@@ -58,6 +62,8 @@ export function updateThreatArrow(
   gx: number,
   gz: number,
   detection: number,
+  chasing: boolean = false,
+  time: number = 0,
 ) {
   if (detection < 0.05) {
     arrow.mesh.visible = false;
@@ -75,6 +81,16 @@ export function updateThreatArrow(
   // toward -Z, i.e. y_rot = -atan2(uz, ux).
   arrow.mesh.rotation.y = -Math.atan2(uz, ux);
   arrow.material.color.setHex(colorFor(detection));
-  arrow.material.opacity = 0.55 + detection * 0.4;
+  let opacity = 0.55 + detection * 0.4;
+  let scale = 1;
+  if (chasing) {
+    // Sin-wave between 0.85 and 1.25 scale, plus a brighter floor on
+    // opacity so the chase arrow stays readable through the trough.
+    const wave = Math.sin(time * 9.5);
+    scale = 1.05 + 0.20 * wave;
+    opacity = Math.min(1, opacity + 0.10 + 0.10 * wave);
+  }
+  arrow.mesh.scale.setScalar(scale);
+  arrow.material.opacity = opacity;
   arrow.mesh.visible = true;
 }

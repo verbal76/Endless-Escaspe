@@ -4,6 +4,7 @@ import Animated, {
   Easing,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
@@ -47,7 +48,7 @@ export function Banner() {
   }));
 
   // Idle (initial app launch) is handled by StartScreen now; the
-  // Banner only renders the post-run states.
+  // Banner only renders the post-run states ('caught' / 'cleared').
   if (runState === 'playing' || runState === 'idle') return null;
 
   const isCleared = runState === 'cleared';
@@ -77,16 +78,18 @@ export function Banner() {
             </Text>
             {stats && (
               <View style={styles.statBlock}>
-                <StatRow label="Times spotted" value={String(stats.timesSeen)} />
+                <StatRow index={0} label="Times spotted" value={String(stats.timesSeen)} />
                 <StatRow
+                  index={1}
                   label="Time detected"
                   value={`${stats.timeDetected.toFixed(1)}s`}
                 />
                 <StatRow
+                  index={2}
                   label="Run time"
                   value={`${stats.runDurationS.toFixed(1)}s`}
                 />
-                <StatRow label="Lives used" value={String(stats.livesUsed)} />
+                <StatRow index={3} label="Lives used" value={String(stats.livesUsed)} />
               </View>
             )}
           </>
@@ -106,12 +109,29 @@ export function Banner() {
   );
 }
 
-function StatRow({ label, value }: { label: string; value: string }) {
+// Each row fades + slides in with a stagger keyed off its index, so
+// the four-row stat block reads as a flow rather than a wall of
+// numbers landing at once. The card-entry animation finishes around
+// 320ms; the first row starts ~280ms in and each subsequent row
+// follows 70ms later.
+function StatRow({ index, label, value }: { index: number; label: string; value: string }) {
+  const t = useSharedValue(0);
+  useEffect(() => {
+    t.value = 0;
+    t.value = withDelay(
+      280 + index * 70,
+      withTiming(1, { duration: 280, easing: Easing.out(Easing.cubic) }),
+    );
+  }, [t, index]);
+  const style = useAnimatedStyle(() => ({
+    opacity: t.value,
+    transform: [{ translateY: (1 - t.value) * 6 }],
+  }));
   return (
-    <View style={styles.statRow}>
+    <Animated.View style={[styles.statRow, style]}>
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
-    </View>
+    </Animated.View>
   );
 }
 

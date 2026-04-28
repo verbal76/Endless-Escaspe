@@ -53,10 +53,13 @@ function buildBeam(visionRange: number): THREE.Mesh {
   const baseR = Math.tan(halfAngle) * visionRange;
   // ConeGeometry: apex at +Y/2, base at -Y/2. We want apex at the
   // origin (the flashlight tip) and the base extending along +Z so
-  // the beam points "forward" in the parent's frame.
+  // the beam points "forward" in the parent's frame. rotateX(-PI/2)
+  // takes the -Y end (the base) to +Z; rotateX(+PI/2) sends it to
+  // -Z, which is what was happening before and produced a beam that
+  // poured out behind the guard.
   const geo = new THREE.ConeGeometry(baseR, visionRange, 16, 1, true);
   geo.translate(0, -visionRange / 2, 0);
-  geo.rotateX(Math.PI / 2);
+  geo.rotateX(-Math.PI / 2);
   return new THREE.Mesh(geo, BEAM_MAT);
 }
 

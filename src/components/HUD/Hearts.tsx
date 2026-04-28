@@ -76,9 +76,15 @@ export function Hearts() {
   // Hidden between runs (idle / cleared / caught) so the start
   // screen doesn't carry a stale heart count over the title art.
   if (runState !== 'playing') return null;
-  // Push down past the device's top safe-area inset (notch / status
-  // bar) so the row never gets clipped behind a cutout.
-  const top = Math.max(8, insets.top) + 8;
+  // Hearts sit to the right of the settings gear (which lives at
+  // left:12, width:40 in SettingsScreen.tsx). Anchoring at left:64
+  // gives a ~12 px gap, so the gear and the heart row never share
+  // pixels even when insets.left is 0.
+  //
+  // The top offset uses a larger minimum than the gear so that on
+  // devices that hide the status bar (insets.top reports 0) the
+  // glyphs still clear rounded screen corners.
+  const top = Math.max(20, insets.top + 8);
   return (
     <View style={[styles.row, { top }]}>
       {Array.from({ length: max }).map((_, i) => (
@@ -91,7 +97,7 @@ export function Hearts() {
 const styles = StyleSheet.create({
   row: {
     position: 'absolute',
-    left: 24,
+    left: 64,
     flexDirection: 'row',
     gap: 4,
   },

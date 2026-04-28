@@ -123,7 +123,10 @@ export function SettingsScreen() {
         accessibilityLabel="Settings"
         style={({ pressed }) => [
           styles.gearWrap,
-          { top: Math.max(8, insets.top) + 4, left: Math.max(12, insets.left) },
+          // Larger floor than the inset alone so the gear clears the
+          // rounded screen corner on devices that hide the status
+          // bar (insets.top reports 0 in that config).
+          { top: Math.max(16, insets.top + 4), left: Math.max(12, insets.left) },
           pressed && styles.gearPressed,
         ]}
         onPress={openPanel}

@@ -123,12 +123,13 @@ export function SettingsScreen() {
         accessibilityLabel="Settings"
         style={({ pressed }) => [
           styles.gearWrap,
-          // Larger floor than the inset alone so the gear clears the
-          // rounded screen corner on devices that hide the status
-          // bar (insets.top reports 0 in that config). 28 was the
-          // smallest value that fully cleared the curved-display
-          // mask on the test phone.
-          { top: Math.max(28, insets.top + 12), left: Math.max(12, insets.left) },
+          // Stacked beneath the heart row. Hearts use top floor 40
+          // (max(40, insets.top + 20)) + their own 32 height + a
+          // small gap, so the gear's top floor lands at ~84.
+          {
+            top: Math.max(84, insets.top + 64),
+            left: Math.max(16, insets.left + 12),
+          },
           pressed && styles.gearPressed,
         ]}
         onPress={openPanel}
@@ -201,22 +202,24 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   gearWrap: {
     position: 'absolute',
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.20)',
+    // Plain overlay glyph with no background or border - the user
+    // wanted it to read as just an icon, not an icon-in-a-box.
+    // Width / height kept generous so the press target stays
+    // forgiving even though the visible art is just the glyph.
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
   gearPressed: {
-    backgroundColor: 'rgba(255, 210, 90, 0.30)',
+    opacity: 0.6,
   },
   gearGlyph: {
     color: 'rgba(255, 255, 255, 0.92)',
-    fontSize: 22,
-    lineHeight: 24,
+    fontSize: 26,
+    lineHeight: 30,
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowRadius: 3,
   },
   backdrop: {
     flex: 1,

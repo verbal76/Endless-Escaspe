@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Endless Escaspe",
+    "slug": "runner",
+    "version": "0.1.0",
+    "orientation": "landscape",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0b0d12"
+    },
+    "android": {
+      "package": "com.verbal76.endlessescaspe",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0b0d12"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": [
+      "expo-dev-client"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/702308e3-1350-4db7-b41c-b6d73f3d4e69"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "702308e3-1350-4db7-b41c-b6d73f3d4e69"
+      }
+    }
+  }
+}

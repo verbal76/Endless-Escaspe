@@ -379,12 +379,32 @@ export function Game() {
     // keep the bright stage-1 sky.
     applyStageLighting(r.renderer, r.scene, initialStage);
 
+    // Detach the active scene's world subtree from the renderer and
+    // dispose its procgen chunks. Mount-once entities (player, smoke
+    // clouds, projectiles) live elsewhere so they survive teardown.
+    const tearDownScene = (s: Scene) => {
+      s.procgen.dispose();
+      r.worldRoot.remove(s.root);
+    };
+
+    // Swap the world for a fresh one matching the supplied stage and
+    // seed, and re-tint the sky / ambient lights. Called when the
+    // player advances stage or starts a new segment via the banner.
+    // Caller must run resetSegment() afterwards to re-zero player +
+    // accumulator state against the freshly built guards / dogs.
+    const rebuildScene = (stage: number, seed: number) => {
+      tearDownScene(scene);
+      scene = buildScene(stage, seed);
+      applyStageLighting(r.renderer, r.scene, stage);
+    };
+
     // Per-run stats accumulators.
     let runTime = 0;
     let timeDetectedAcc = 0;
     let timesSeenAcc = 0;
     let prevAnyDetected = false;
     let lastSegmentSeed = useStore.getState().segmentSeed;
+    let lastStage = useStore.getState().stage;
     let lastRestartCounter = useStore.getState().restartCounter;
     let animTime = 0;
     const tmpVec = new THREE.Vector3();
@@ -541,9 +561,18 @@ export function Game() {
       const st = useStore.getState();
 
       // Detect external state transitions (segment seed change from
-      // Banner's Next Segment, or restart request from pause panel).
-      if (st.segmentSeed !== lastSegmentSeed) {
+      // Banner's Next Segment, save load with a different stage, or
+      // restart request from pause panel).
+      //
+      // Stage *or* segmentSeed change triggers a full scene rebuild
+      // so the entity counts (guards, dogs, cameras, towers, segment
+      // length, razor wire) catch up to the new stage. Restart re-
+      // uses the existing scene by design - same seed, same world,
+      // just back to spawn.
+      if (st.segmentSeed !== lastSegmentSeed || st.stage !== lastStage) {
         lastSegmentSeed = st.segmentSeed;
+        lastStage = st.stage;
+        rebuildScene(st.stage, st.segmentSeed);
         resetSegment();
       }
       if (st.restartCounter !== lastRestartCounter) {

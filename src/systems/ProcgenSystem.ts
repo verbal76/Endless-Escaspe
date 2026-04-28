@@ -128,9 +128,11 @@ const CROWBAR_PICK_THRESHOLD = 0.45;
 // the player past at least one bare-handed encounter).
 function placePickups(rng: Rng, chunkIndex: number, obstacles: Obstacle[], startZ: number): Pickup[] {
   if (chunkIndex === 0) return [];
-  // Roll: ~70% chance of one pickup, ~25% chance of two, rest none.
+  // Roll: 8% chance of zero pickups, 76% one, 16% two. Expected count
+  // per chunk = 1.08, which is 10% below the 5/70/25 split we shipped
+  // initially.
   const roll = rng();
-  const count = roll < 0.05 ? 0 : roll < 0.75 ? 1 : 2;
+  const count = roll < 0.08 ? 0 : roll < 0.84 ? 1 : 2;
   const pickups: Pickup[] = [];
   for (let i = 0; i < count; i++) {
     let placed = false;

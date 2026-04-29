@@ -7,6 +7,7 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
+import { useStore } from '../../state/store';
 
 const SIZE = 130;
 const KNOB = 56;
@@ -18,6 +19,7 @@ const writeAxes = (x: number, y: number) => {
 };
 
 export function Joystick() {
+  const runState = useStore((s) => s.runState);
   const tx = useSharedValue(0);
   const ty = useSharedValue(0);
 
@@ -44,6 +46,10 @@ export function Joystick() {
   const knobStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }],
   }));
+
+  // Hide between runs so the splash demo's scripted input isn't
+  // fighting an idle touch on the joystick area.
+  if (runState !== 'playing') return null;
 
   return (
     <GestureDetector gesture={gesture}>

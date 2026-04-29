@@ -733,33 +733,33 @@ export function Game() {
         // speaker doesn't keep wailing while the player is in menus.
         updateSiren(siren, 0, useStore.getState().masterVolume);
         // Splash-demo loop. Only runs while we're idle (start screen
-        // up, no pause overlay). Drives the player's logical x/z + a
-        // crouch stance so the render pass below animates the figure
-        // sneaking through the level. The demo position is wiped by
-        // resetSegment() the moment runState flips to 'playing', so
-        // gameplay still starts cleanly at the spawn line.
+        // up, no pause overlay). Drives scripted axis input + crouch
+        // stance and then defers to the same updatePlayer that runs
+        // during gameplay so the figure actually navigates around
+        // obstacles instead of clipping through them.
         if (st.runState === 'idle' && !st.paused) {
           demoTime += dt;
           animTime += dt;
-          const phase = (demoTime % DEMO_PERIOD) / DEMO_PERIOD;
-          // Forward / back ping-pong along z over 0..30m, eased.
-          const t = (1 - Math.cos(phase * Math.PI * 2)) * 0.5;
-          const targetZ = 5 + t * 30;
-          const targetX = Math.sin(phase * Math.PI * 4) * 3;
-          // Velocity = derivative of position. Used by the figure
-          // pose to pick a walk-cycle direction + cadence.
-          const dz = (30 * Math.sin(phase * Math.PI * 2) * Math.PI) / DEMO_PERIOD;
-          const dx =
-            (3 * 4 * Math.PI * Math.cos(phase * Math.PI * 4)) / DEMO_PERIOD;
-          player.x = targetX;
-          player.z = targetZ;
-          player.vx = dx;
-          player.vz = dz;
-          player.stance = 'crouch';
-          player.isCrouched = true;
-          player.isRunning = false;
-          player.isHidden = false;
-          player.stamina = 1;
+          // Forward bias with a slow x-wander. The 0.62 forward
+          // scalar keeps the cycle leisurely; the sin term makes the
+          // path feel hand-piloted rather than ruler-straight.
+          input.axisX = Math.sin(demoTime * 0.55) * 0.35;
+          input.axisY = 0.62;
+          input.run = false;
+          input.stance = 'crouch';
+          updatePlayer(
+            player,
+            scene.procgen.obstacles(),
+            dt,
+            scene.segmentEndZ,
+            false,
+          );
+          // Loop back to spawn when the demo player nears the win
+          // line so the splash never ends in a frozen pose.
+          if (player.z >= scene.segmentEndZ - 4) {
+            player.x = 0;
+            player.z = 1;
+          }
         }
         return;
       }

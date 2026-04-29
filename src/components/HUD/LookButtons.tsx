@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
+import { useStore } from '../../state/store';
 
 // Hold-to-look arrows. Use react-native-gesture-handler instead of
 // Pressable so they coexist with the joystick's Pan gesture - with
@@ -55,8 +56,11 @@ function useLookButton(yaw: number) {
 }
 
 export function LookButtons() {
+  const runState = useStore((s) => s.runState);
   const left = useLookButton(LOOK_YAW_RAD);
   const right = useLookButton(-LOOK_YAW_RAD);
+
+  if (runState !== 'playing') return null;
 
   return (
     <>

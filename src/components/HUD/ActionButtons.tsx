@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
+import { useStore } from '../../state/store';
 import type { Stance } from '../../types/world';
 
 // Stance picker only. RUN is its own component (RunButton) sitting
@@ -71,12 +72,15 @@ function StanceButton({
 }
 
 export function ActionButtons() {
+  const runState = useStore((s) => s.runState);
   const [stance, setStance] = useState<Stance>('walk');
 
   const pickStance = (s: Stance) => {
     input.stance = s;
     setStance(s);
   };
+
+  if (runState !== 'playing') return null;
 
   return (
     <View style={styles.col}>

@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
+import { useStore } from '../../state/store';
 
 // RUN is a speed-toggle that doubles whatever stance speed is active.
 // Placed up-and-left of the joystick so the player's left thumb can
@@ -18,6 +19,7 @@ import { input } from '../../systems/InputSystem';
 // fires reliably; Pressable shares the responder pipeline with the
 // active Pan and would drop the toggle when the player is moving.
 export function RunButton() {
+  const runState = useStore((s) => s.runState);
   const [running, setRunning] = useState(false);
   const pressed = useSharedValue(0);
 
@@ -52,6 +54,8 @@ export function RunButton() {
     transform: [{ scale: 1 - pressed.value * 0.06 }],
     opacity: 1 - pressed.value * 0.15,
   }));
+
+  if (runState !== 'playing') return null;
 
   return (
     <GestureDetector gesture={tap}>

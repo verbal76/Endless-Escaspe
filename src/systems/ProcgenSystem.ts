@@ -200,25 +200,50 @@ export class ProcgenSystem {
   private rng: Rng;
   private worldRoot: THREE.Group;
 
-  // Number of chunks the segment will hold. Defaults to the engine
-  // baseline (CHUNKS_AHEAD); late stages pass a larger value so
-  // segments physically lengthen with difficulty.
+  // Number of gameplay chunks the segment will hold. Defaults to
+  // the engine baseline (CHUNKS_AHEAD); late stages pass a larger
+  // value so segments physically lengthen with difficulty.
   private chunkCount: number;
 
-  constructor(seed: number, worldRoot: THREE.Group, chunkCount: number = CHUNKS_AHEAD) {
+  // Number of cosmetic "horizon" chunks generated past the
+  // gameplay end. They render the same obstacle silhouettes the
+  // gameplay chunks do, so the path appears to continue toward the
+  // mountains instead of stopping at the win line. They contribute
+  // no gameplay state - obstacles() / pickups() exclude them.
+  private horizonChunks: number;
+
+  constructor(
+    seed: number,
+    worldRoot: THREE.Group,
+    chunkCount: number = CHUNKS_AHEAD,
+    horizonChunks: number = 0,
+  ) {
     this.rng = mulberry32(seed);
     this.worldRoot = worldRoot;
     this.chunkCount = Math.max(1, chunkCount | 0);
+    this.horizonChunks = Math.max(0, horizonChunks | 0);
   }
 
   init() {
     for (let i = 0; i < this.chunkCount; i++) {
-      this.spawnChunk(i, i * CHUNK_LEN);
+      this.spawnChunk(i, i * CHUNK_LEN, false);
+    }
+    for (let i = 0; i < this.horizonChunks; i++) {
+      const idx = this.chunkCount + i;
+      this.spawnChunk(idx, idx * CHUNK_LEN, true);
     }
   }
 
-  private spawnChunk(chunkIndex: number, startZ: number) {
+  private spawnChunk(chunkIndex: number, startZ: number, isHorizon: boolean) {
     const chunk = generateChunk(this.rng, startZ, chunkIndex);
+    if (isHorizon) {
+      chunk.isHorizon = true;
+      // Strip pickups from horizon chunks - their meshes would tease
+      // the player toward something they can never collect (the win
+      // line ends the segment first), and the gameplay queries
+      // already filter horizon chunks out anyway.
+      chunk.pickups = [];
+    }
     for (const o of chunk.obstacles) {
       const m = buildObstacleMesh(o);
       o.mesh = m;
@@ -245,15 +270,25 @@ export class ProcgenSystem {
   // v1: fixed 5-chunk segment, no recycling.
   update(_playerZ: number) {}
 
+  // Gameplay queries skip horizon chunks so their decorative
+  // obstacles never block the player's collision pass and never
+  // factor into guard line-of-sight. The horizon meshes are
+  // already in the scene; they just exist for the eye.
   obstacles(): Obstacle[] {
     const out: Obstacle[] = [];
-    for (const c of this.chunks) for (const o of c.obstacles) out.push(o);
+    for (const c of this.chunks) {
+      if (c.isHorizon) continue;
+      for (const o of c.obstacles) out.push(o);
+    }
     return out;
   }
 
   pickups(): Pickup[] {
     const out: Pickup[] = [];
-    for (const c of this.chunks) for (const p of c.pickups) out.push(p);
+    for (const c of this.chunks) {
+      if (c.isHorizon) continue;
+      for (const p of c.pickups) out.push(p);
+    }
     return out;
   }
 

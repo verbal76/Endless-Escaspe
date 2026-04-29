@@ -155,7 +155,11 @@ export function createGround(): THREE.Mesh {
 }
 
 export function createWinLine(segLen: number = CHUNK_LEN * CHUNKS_AHEAD): THREE.Mesh {
-  const geo = new THREE.PlaneGeometry(8, 0.4);
+  // Spans fence-to-fence. PLAY_HALF_W is the playfield half-width
+  // (gameplay clamps the player to that), and the fences sit just
+  // outside it - so a 2*PLAY_HALF_W stripe touches both fence
+  // posts edge-to-edge.
+  const geo = new THREE.PlaneGeometry(PLAY_HALF_W * 2, 0.4);
   const mat = new THREE.MeshBasicMaterial({ color: 0x55ff88 });
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;

@@ -64,6 +64,11 @@ export type Chunk = {
   endZ: number;
   obstacles: Obstacle[];
   pickups: Pickup[];
+  // Cosmetic chunks past the gameplay segment end. Their meshes
+  // render but they're excluded from gameplay queries (collision,
+  // detection LOS, pickups), so the player can't walk into a
+  // horizon chunk and they never affect difficulty.
+  isHorizon?: boolean;
 };
 
 // Player movement mode. RUN is a separate, orthogonal speed multiplier

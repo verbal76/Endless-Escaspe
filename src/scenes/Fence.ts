@@ -43,8 +43,13 @@ export function spawnFences(
   weather: WeatherKind,
   segLen: number,
   razorWire: boolean,
+  // Visual length the fence should cover. Defaults to segLen + 4
+  // (the original behaviour) but the caller can extend it past the
+  // gameplay end so the fences continue toward the horizon and the
+  // path reads as endless rather than terminating at the win line.
+  visualLen: number = segLen + 4,
 ) {
-  const totalLen = segLen + 4;
+  const totalLen = visualLen;
   const segsZ = Math.max(8, Math.round(totalLen / 0.6));
   const segsY = 5;
   const fenceGeo = new THREE.BoxGeometry(

@@ -357,7 +357,13 @@ export function Game() {
       );
       const guards: Guard[] = guardEntries.map((e) => e.guard);
 
-      const procgen = new ProcgenSystem(seed, root, chunkCount);
+      // Horizon chunks render past the gameplay end so the path
+      // visually continues toward the mountains - a chained "next
+      // segment" view that sells the endless-escape framing without
+      // affecting collision, detection, or the win check (those all
+      // ignore isHorizon chunks).
+      const HORIZON_CHUNKS = 6;
+      const procgen = new ProcgenSystem(seed, root, chunkCount, HORIZON_CHUNKS);
       procgen.init();
 
       // Snow weather: dust the top of every obstacle with a thin
@@ -367,7 +373,11 @@ export function Game() {
       }
 
       const razorWire = razorWireEnabledFor(stage);
-      spawnFences(root, stage, weatherKind, segLen, razorWire);
+      // Visual fence length = gameplay segment + horizon chunks +
+      // small lead-in. Lets the fence keep going past the win line
+      // so the eye doesn't see the path terminate.
+      const fenceVisualLen = segLen + HORIZON_CHUNKS * CHUNK_LEN + 4;
+      spawnFences(root, stage, weatherKind, segLen, razorWire, fenceVisualLen);
       const lightTowers: LightTower[] = spawnLightTowers(
         root,
         segLen,

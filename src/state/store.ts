@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { PickupKind, RunState, Stance } from '../types/world';
 import type { WeatherKind } from '../scenes/Weather';
 import type { Save, SavesMap } from '../util/storage';
+import type { GameModalConfig } from '../components/HUD/GameModal';
 import { startingHeartsFor } from '../util/progression';
 
 // How many of each pickup the player is currently carrying. Counts
@@ -59,6 +60,11 @@ type Store = {
   // launch and from the start-screen "How to play" button; flips
   // back to false when the cutscene finishes or the player skips.
   showTutorial: boolean;
+  // Branded confirm / alert modal config. Any component can set
+  // this to show a popup; the GameModal mounted in Game.tsx renders
+  // it. The action onPress handlers are responsible for clearing
+  // the config back to null when the user taps a button.
+  gameModal: GameModalConfig | null;
   // Master audio volume 0..1, applied on top of the siren's
   // detection-driven volume curve. Persisted via AsyncStorage.
   masterVolume: number;
@@ -109,6 +115,7 @@ type Store = {
   setBestStars: (b: Record<number, number>) => void;
   setWeatherEnabled: (b: boolean) => void;
   setShowTutorial: (b: boolean) => void;
+  setGameModal: (m: GameModalConfig | null) => void;
   setMasterVolume: (v: number) => void;
   setPlayerSkin: (s: PlayerSkin) => void;
   setPlayerName: (n: string) => void;
@@ -140,6 +147,7 @@ export const useStore = create<Store>((set) => ({
   weather: 'clear',
   weatherEnabled: true,
   showTutorial: false,
+  gameModal: null,
   masterVolume: 0.7,
   playerSkin: 'beige',
   playerName: '',
@@ -185,6 +193,7 @@ export const useStore = create<Store>((set) => ({
     set((st) => (st.weatherEnabled === b ? st : { weatherEnabled: b })),
   setShowTutorial: (b) =>
     set((st) => (st.showTutorial === b ? st : { showTutorial: b })),
+  setGameModal: (m) => set({ gameModal: m }),
   setMasterVolume: (v) =>
     set((st) => {
       const clamped = Math.max(0, Math.min(1, v));

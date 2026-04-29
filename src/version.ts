@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #31 · endless path: horizon chunks, fence to mountains, win line full width';
+export const OTA_VERSION = 'OTA #32 · branded GameModal replaces system Alert.alert';

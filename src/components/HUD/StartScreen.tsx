@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -144,6 +143,7 @@ export function StartScreen() {
   const setPendingStartMode = useStore((s) => s.setPendingStartMode);
   const setShowTutorial = useStore((s) => s.setShowTutorial);
   const showTutorial = useStore((s) => s.showTutorial);
+  const setGameModal = useStore((s) => s.setGameModal);
 
   const [mode, setMode] = useState<Mode>('home');
   const [pickedSkin, setPickedSkin] = useState<PlayerSkin | null>(null);
@@ -247,10 +247,13 @@ export function StartScreen() {
     }
     const key = saveKeyFromName(name);
     if (saves[key]) {
-      Alert.alert(
-        'Name already taken',
-        `"${name}" is already in use. Pick a different name or delete the existing save from the load screen.`,
-      );
+      setGameModal({
+        title: 'Name already taken',
+        body: `"${name}" is already in use. Pick a different name or delete the existing save from the load screen.`,
+        actions: [
+          { label: 'OK', variant: 'primary', onPress: () => setGameModal(null) },
+        ],
+      });
       return;
     }
     const save: Save = {
@@ -291,14 +294,18 @@ export function StartScreen() {
   };
 
   const onDeleteSave = (s: Save) => {
-    Alert.alert(
-      'Delete character?',
-      `Permanently delete "${s.name}" and their star board.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
+    setGameModal({
+      title: 'Delete character?',
+      body: `Permanently delete "${s.name}" and their star board.`,
+      actions: [
         {
-          text: 'Delete',
-          style: 'destructive',
+          label: 'CANCEL',
+          variant: 'cancel',
+          onPress: () => setGameModal(null),
+        },
+        {
+          label: 'DELETE',
+          variant: 'danger',
           onPress: () => {
             const key = saveKeyFromName(s.name);
             removeSave(key);
@@ -318,10 +325,11 @@ export function StartScreen() {
             ) {
               goBackHome();
             }
+            setGameModal(null);
           },
         },
       ],
-    );
+    });
   };
 
   // ---- Render ----

@@ -29,6 +29,13 @@ const TH_ALERT = 0.18;     // even small noise triggers a pause + scan
 const TH_INVESTIGATE = 0.40;
 const TH_CHASE = 1.0;
 const TH_LOSE = 0.50;      // if detection drops below 50%, fall back to investigate
+// Standalone fire threshold: any guard with detection above this
+// shoots, regardless of which AI state they're in. Lets the guard
+// open fire while the meter is sustained "red" without requiring
+// it to peg the chase trigger - in practice the per-frame rate
+// scale at low stages can leave the meter sitting at ~0.9 for
+// seconds without ever hitting the chase 1.0 ceiling.
+const TH_FIRE = 0.85;
 
 export type GuardFireFn = (g: Guard, targetX: number, targetZ: number) => void;
 
@@ -114,6 +121,15 @@ export function updateGuard(
   g.wanderTimer += dt;
   g.fireCooldown = Math.max(0, g.fireCooldown - dt);
 
+  // Standalone fire path: any guard with sustained high detection
+  // shoots, regardless of AI state. Decoupled from the chase case
+  // so the meter doesn't have to peg at exactly 1.0 (TH_CHASE) for
+  // shots to start - sitting at "red" (~0.85+) is enough.
+  if (detection >= TH_FIRE && g.fireCooldown <= 0 && onFire) {
+    onFire(g, p.x, p.z);
+    g.fireCooldown = FIRE_COOLDOWN_S;
+  }
+
   // Fresh stimulus while not chasing keeps the investigation target current.
   if (detection >= TH_INVESTIGATE && g.state !== 'chase') {
     g.investigationTarget = { x: p.x, z: p.z };
@@ -166,10 +182,9 @@ export function updateGuard(
     }
     case 'chase': {
       moveToward(g, p.x, p.z, SPEED_CHASE, obstacles, dt);
-      if (g.fireCooldown <= 0 && onFire) {
-        onFire(g, p.x, p.z);
-        g.fireCooldown = FIRE_COOLDOWN_S;
-      }
+      // Firing is now handled by the standalone TH_FIRE block at the
+      // top of this function so chase / non-chase guards can both
+      // shoot. Keep the move-fast behaviour here.
       break;
     }
     case 'return': {

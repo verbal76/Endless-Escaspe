@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #25 · any guard touch = arrest (no chase gate)';
+export const OTA_VERSION = 'OTA #26 · fire on red, killed/arrested, big title, splash demo, mountains+snow';

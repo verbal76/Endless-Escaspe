@@ -136,17 +136,21 @@ export function createGround(): THREE.Mesh {
   // 100m+ longer than the playfield in either direction) so the
   // grass always reaches the screen edge regardless of camera yaw,
   // resolution, or how far the player has traversed within the
-  // segment. The fence + tree line still mark the playable boundary
-  // visually; everything past that is just open field draped to the
-  // horizon.
-  const geo = new THREE.PlaneGeometry(800, CHUNK_LEN * (CHUNKS_AHEAD + 4) + 200);
+  // segment. The Z dimension explicitly extends past the backdrop
+  // mountain row (z ~= 720) so the mountains visually root in the
+  // same plane the player walks on rather than floating above an
+  // empty fog field.
+  const geo = new THREE.PlaneGeometry(800, 1800);
   const mat = new THREE.MeshStandardMaterial({
     color: 0x3f6a2c,
     roughness: 1,
   });
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
-  m.position.set(0, 0, (CHUNK_LEN * CHUNKS_AHEAD) / 2);
+  // Centred so the plane spans roughly z = -500 .. +1300, which
+  // covers everything from a few metres behind the start line out
+  // to the mountain row plus its depth.
+  m.position.set(0, 0, 400);
   return m;
 }
 

@@ -81,6 +81,11 @@ type Store = {
   // it on mount and clears it.
   pendingStartMode: 'home' | 'continue' | null;
   lastStats: RunStats | null;
+  // What killed the player on the most recent run-ending hit, used
+  // by the death banner to render "ARRESTED" vs "KILLED". Cleared
+  // on every new segment so the banner doesn't stale-read after a
+  // win + Next Segment.
+  lastDeathCause: 'arrested' | 'killed' | null;
   // Best star score (1..3) per stage for the *currently active save*.
   // Mirrored from save.bestStars when a save is loaded so existing
   // HUD code (Banner, etc.) can keep reading from the store. Resets
@@ -99,6 +104,7 @@ type Store = {
   setStage: (n: number) => void;
   setPaused: (b: boolean) => void;
   setLastStats: (s: RunStats | null) => void;
+  setLastDeathCause: (c: 'arrested' | 'killed' | null) => void;
   setWeather: (w: WeatherKind) => void;
   setBestStars: (b: Record<number, number>) => void;
   setWeatherEnabled: (b: boolean) => void;
@@ -141,6 +147,7 @@ export const useStore = create<Store>((set) => ({
   activeSaveName: null,
   pendingStartMode: null,
   lastStats: null,
+  lastDeathCause: null,
   bestStars: {},
   inventory: { ...EMPTY_INVENTORY },
   setRunState: (s) => set({ runState: s }),
@@ -171,6 +178,8 @@ export const useStore = create<Store>((set) => ({
     set((st) => (st.stage === n ? st : { stage: n })),
   setPaused: (b) => set((st) => (st.paused === b ? st : { paused: b })),
   setLastStats: (s) => set({ lastStats: s }),
+  setLastDeathCause: (c) =>
+    set((st) => (st.lastDeathCause === c ? st : { lastDeathCause: c })),
   setWeather: (w) => set((st) => (st.weather === w ? st : { weather: w })),
   setWeatherEnabled: (b) =>
     set((st) => (st.weatherEnabled === b ? st : { weatherEnabled: b })),

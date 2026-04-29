@@ -125,7 +125,7 @@ import {
   updateGuardStateMarker,
   type GuardStateMarker,
 } from '../scenes/GuardStateMarker';
-import { createBackdrop, updateBackdrop } from '../scenes/Backdrop';
+import { createBackdrop, setBackdropSnow, updateBackdrop } from '../scenes/Backdrop';
 import {
   createWeather,
   noiseMultiplier,
@@ -438,6 +438,7 @@ export function Game() {
     // applied on every rebuild so loading a save at stage 17 doesn't
     // keep the bright stage-1 sky.
     applyStageLighting(r.renderer, r.scene, initialStage);
+    setBackdropSnow(backdrop, scene.weatherKind === 'snow');
 
     // Detach the active scene's world subtree from the renderer and
     // dispose its procgen chunks. Mount-once entities (player, smoke
@@ -456,6 +457,7 @@ export function Game() {
       tearDownScene(scene);
       scene = buildScene(stage, seed);
       applyStageLighting(r.renderer, r.scene, stage);
+      setBackdropSnow(backdrop, scene.weatherKind === 'snow');
     };
 
     // Per-run stats accumulators.
@@ -475,6 +477,12 @@ export function Game() {
     // fraction so the kick eases out smoothly.
     const SHAKE_DURATION = 0.28;
     let shakeRemaining = 0;
+
+    // Idle splash-demo state. Drives the player figure on a slow
+    // crouched ping-pong path while the start screen is up so the
+    // backdrop reads as a living scene instead of a frozen still.
+    const DEMO_PERIOD = 14;
+    let demoTime = 0;
 
     // Brief sparkle animation on collected pickups: instead of
     // despawning the mesh immediately, scale it up and let it fade
@@ -553,10 +561,15 @@ export function Game() {
       input.useSmokeBomb = false;
     };
 
-    const handleCatch = () => {
+    // `cause` distinguishes the catch path so the death banner can
+    // pick its title. 'killed' = projectile hit; 'arrested' = body
+    // contact (guard touch / dog / razor wire). The store keeps the
+    // most recent cause so the banner reads it on the run-ending hit.
+    const handleCatch = (cause: 'arrested' | 'killed' = 'arrested') => {
       const st = useStore.getState();
       const remaining = st.hearts - 1;
       st.setHearts(remaining);
+      st.setLastDeathCause(cause);
       projectiles.clear();
       shakeRemaining = SHAKE_DURATION;
       if (remaining <= 0) {
@@ -719,6 +732,35 @@ export function Game() {
         // Silence the siren on pause / non-playing states so the
         // speaker doesn't keep wailing while the player is in menus.
         updateSiren(siren, 0, useStore.getState().masterVolume);
+        // Splash-demo loop. Only runs while we're idle (start screen
+        // up, no pause overlay). Drives the player's logical x/z + a
+        // crouch stance so the render pass below animates the figure
+        // sneaking through the level. The demo position is wiped by
+        // resetSegment() the moment runState flips to 'playing', so
+        // gameplay still starts cleanly at the spawn line.
+        if (st.runState === 'idle' && !st.paused) {
+          demoTime += dt;
+          animTime += dt;
+          const phase = (demoTime % DEMO_PERIOD) / DEMO_PERIOD;
+          // Forward / back ping-pong along z over 0..30m, eased.
+          const t = (1 - Math.cos(phase * Math.PI * 2)) * 0.5;
+          const targetZ = 5 + t * 30;
+          const targetX = Math.sin(phase * Math.PI * 4) * 3;
+          // Velocity = derivative of position. Used by the figure
+          // pose to pick a walk-cycle direction + cadence.
+          const dz = (30 * Math.sin(phase * Math.PI * 2) * Math.PI) / DEMO_PERIOD;
+          const dx =
+            (3 * 4 * Math.PI * Math.cos(phase * Math.PI * 4)) / DEMO_PERIOD;
+          player.x = targetX;
+          player.z = targetZ;
+          player.vx = dx;
+          player.vz = dz;
+          player.stance = 'crouch';
+          player.isCrouched = true;
+          player.isRunning = false;
+          player.isHidden = false;
+          player.stamina = 1;
+        }
         return;
       }
 
@@ -1078,7 +1120,7 @@ export function Game() {
       }
 
       if (projectiles.update(effDt, player)) {
-        handleCatch();
+        handleCatch('killed');
         return;
       }
 

@@ -70,6 +70,22 @@ const BIRD_MAT = new THREE.MeshBasicMaterial({
 // Pre-built shared geos.
 const TRUNK_GEO = new THREE.CylinderGeometry(0.32, 0.45, 2.6, 8);
 const LEAVES_GEO = new THREE.IcosahedronGeometry(1.6, 1);
+// Half-sphere shell that drapes the top of the leaves on snow days.
+// Built once and shared across all backdrop trees.
+const TREE_SNOW_GEO = new THREE.SphereGeometry(
+  1.45,
+  10,
+  6,
+  0,
+  Math.PI * 2,
+  0,
+  Math.PI / 2,
+);
+const TREE_SNOW_MAT = new THREE.MeshStandardMaterial({
+  color: 0xeef3fb,
+  roughness: 1,
+  flatShading: true,
+});
 
 function buildMountainMesh(rng: () => number): THREE.Group {
   // Triangle peak made from a custom BufferGeometry: base at y=0
@@ -141,7 +157,7 @@ function buildMountainMesh(rng: () => number): THREE.Group {
   return group;
 }
 
-function buildTreeMesh(): THREE.Group {
+function buildTreeMesh(): { group: THREE.Group; snowCap: THREE.Mesh } {
   const group = new THREE.Group();
   const trunk = new THREE.Mesh(TRUNK_GEO, TRUNK_MAT);
   trunk.position.y = 1.3;
@@ -149,7 +165,14 @@ function buildTreeMesh(): THREE.Group {
   const leaves = new THREE.Mesh(LEAVES_GEO, LEAVES_MAT);
   leaves.position.y = 3.2;
   group.add(leaves);
-  return group;
+  // Optional snow cap drapes the upper half of the leaf cluster.
+  // Always built; visibility is toggled per-segment by setBackdropSnow
+  // so non-snow stages don't see snowy distant trees.
+  const snowCap = new THREE.Mesh(TREE_SNOW_GEO, TREE_SNOW_MAT);
+  snowCap.position.y = 3.45;
+  snowCap.visible = false;
+  group.add(snowCap);
+  return { group, snowCap };
 }
 
 function buildCloudMesh(rng: () => number): THREE.Mesh {
@@ -206,6 +229,10 @@ export type Backdrop = {
   group: THREE.Group;
   birds: Bird[];
   clouds: Cloud[];
+  // Snow caps on every backdrop tree. Toggled visible / hidden per
+  // segment by setBackdropSnow so the distant trees match the
+  // current weather.
+  treeSnowCaps: THREE.Mesh[];
   bounds: { left: number; right: number };
 };
 
@@ -228,15 +255,17 @@ export function createBackdrop(): Backdrop {
   }
 
   // Tree line on each side of the playfield.
+  const treeSnowCaps: THREE.Mesh[] = [];
   for (let i = 0; i < TREE_COUNT_PER_SIDE; i++) {
     const z = (i / (TREE_COUNT_PER_SIDE - 1)) * (segLen + 40) + (rng() - 0.5) * 4;
     for (const sign of [-1, 1]) {
       const xJitter = rng() * (TREE_LINE_FAR - TREE_LINE_OUTER);
-      const tree = buildTreeMesh();
-      tree.position.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
-      tree.scale.setScalar(0.85 + rng() * 0.5);
-      tree.rotation.y = rng() * Math.PI * 2;
-      root.add(tree);
+      const built = buildTreeMesh();
+      built.group.position.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
+      built.group.scale.setScalar(0.85 + rng() * 0.5);
+      built.group.rotation.y = rng() * Math.PI * 2;
+      root.add(built.group);
+      treeSnowCaps.push(built.snowCap);
     }
   }
 
@@ -268,7 +297,16 @@ export function createBackdrop(): Backdrop {
     });
   }
 
-  return { group: root, birds, clouds, bounds: BACKDROP_BOUNDS };
+  return { group: root, birds, clouds, treeSnowCaps, bounds: BACKDROP_BOUNDS };
+}
+
+// Toggle snow caps on every backdrop tree. Called by Game.tsx after
+// each scene rebuild so the distant trees match the just-picked
+// weather without us having to rebuild the backdrop itself.
+export function setBackdropSnow(b: Backdrop, on: boolean) {
+  for (const cap of b.treeSnowCaps) {
+    cap.visible = on;
+  }
 }
 
 // Animate clouds and birds. Both wrap around horizontally so the

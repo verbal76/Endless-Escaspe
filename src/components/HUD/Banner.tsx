@@ -28,6 +28,7 @@ export function Banner() {
   const stats = useStore((s) => s.lastStats);
   const stage = useStore((s) => s.stage);
   const setRunState = useStore((s) => s.setRunState);
+  const lastDeathCause = useStore((s) => s.lastDeathCause);
   // Look up the best for whichever stage the user JUST finished:
   // setStage was already advanced in handleWin, so the just-cleared
   // stage is one less than the current.
@@ -90,7 +91,11 @@ export function Banner() {
   if (runState === 'playing' || runState === 'idle') return null;
 
   const isCleared = runState === 'cleared';
-  const title = isCleared ? 'YOU MADE IT!' : 'YOU DIED';
+  const title = isCleared
+    ? 'YOU MADE IT!'
+    : lastDeathCause === 'killed'
+      ? 'KILLED'
+      : 'ARRESTED';
 
   const stars = isCleared && stats ? Math.max(1, Math.min(3, stats.stars)) : 0;
 

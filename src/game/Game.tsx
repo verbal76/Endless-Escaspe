@@ -1082,9 +1082,16 @@ export function Game() {
         return;
       }
 
+      // Body-contact arrest. ANY non-stunned guard touching the
+      // player counts as an arrest, regardless of their AI state -
+      // a wandering guard who walks into you is just as bad as a
+      // chasing one. Stunned guards (crowbar) are frozen and don't
+      // catch even on contact. Shooting stays gated on the chase
+      // state inside updateGuard above, so distance threats still
+      // come from active chasers and not patrolling guards.
       for (const g of scene.guards) {
+        if (g.stunTimer > 0) continue;
         if (
-          g.state === 'chase' &&
           circleHit(
             { x: player.x, z: player.z, r: PLAYER_RADIUS },
             { x: g.x, z: g.z, r: 0.6 },

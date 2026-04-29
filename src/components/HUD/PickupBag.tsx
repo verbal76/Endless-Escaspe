@@ -24,7 +24,6 @@ import type { PickupKind } from '../../types/world';
 type Slot = {
   kind: PickupKind;
   label: string;
-  glyph: string;
   active: string;
   border: string;
 };
@@ -33,18 +32,50 @@ const SLOTS: Slot[] = [
   {
     kind: 'crowbar',
     label: 'CROWBAR',
-    glyph: '⛏',
     active: 'rgba(255,150,80,0.45)',
     border: 'rgba(255,180,120,0.8)',
   },
   {
     kind: 'smokebomb',
     label: 'SMOKE',
-    glyph: '●',
     active: 'rgba(180,200,220,0.5)',
     border: 'rgba(220,230,240,0.85)',
   },
 ];
+
+// Tiny drawn icons - the previous text glyph for crowbar (⛏) is
+// actually a pickaxe on most fonts. These are stylised tools made
+// from 2-3 absolutely-positioned Views, so the icon ships without
+// extra assets and reads accurately.
+function CrowbarIcon({ tint }: { tint: string }) {
+  return (
+    <View style={iconStyles.box}>
+      {/* Diagonal shaft */}
+      <View
+        style={[
+          iconStyles.crowbarShaft,
+          { backgroundColor: tint },
+        ]}
+      />
+      {/* Hooked claw at the upper end */}
+      <View
+        style={[
+          iconStyles.crowbarHook,
+          { backgroundColor: tint },
+        ]}
+      />
+    </View>
+  );
+}
+
+function SmokeIcon({ tint }: { tint: string }) {
+  return (
+    <View style={iconStyles.box}>
+      <View style={[iconStyles.smokeBody, { backgroundColor: tint }]} />
+      <View style={[iconStyles.smokeCap, { backgroundColor: tint }]} />
+    </View>
+  );
+}
 
 function PickupSlot({ slot, count }: { slot: Slot; count: number }) {
   const empty = count <= 0;
@@ -94,7 +125,11 @@ function PickupSlot({ slot, count }: { slot: Slot; count: number }) {
           style,
         ]}
       >
-        <Text style={[styles.glyph, empty && styles.glyphEmpty]}>{slot.glyph}</Text>
+        {slot.kind === 'crowbar' ? (
+          <CrowbarIcon tint={empty ? 'rgba(255,255,255,0.5)' : '#f0d8a8'} />
+        ) : (
+          <SmokeIcon tint={empty ? 'rgba(255,255,255,0.5)' : '#e8eef7'} />
+        )}
         <Text style={[styles.count, empty && styles.countEmpty]}>{count}</Text>
         <Text style={[styles.label, empty && styles.labelEmpty]}>{slot.label}</Text>
       </Animated.View>
@@ -138,15 +173,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  glyph: {
-    color: 'rgba(255,255,255,0.95)',
-    fontSize: 18,
-    lineHeight: 20,
-    fontWeight: '800',
-  },
-  glyphEmpty: {
-    color: 'rgba(255,255,255,0.55)',
-  },
   count: {
     color: 'rgba(255,255,255,0.95)',
     fontSize: 11,
@@ -165,5 +191,48 @@ const styles = StyleSheet.create({
   },
   labelEmpty: {
     color: 'rgba(255,255,255,0.45)',
+  },
+});
+
+// Drawn pickup icons. Each lives in a 22x22 box; absolute children
+// position the strokes that form the silhouette.
+const iconStyles = StyleSheet.create({
+  box: {
+    width: 22,
+    height: 22,
+  },
+  crowbarShaft: {
+    position: 'absolute',
+    top: 9,
+    left: 0,
+    width: 22,
+    height: 3,
+    borderRadius: 1.5,
+    transform: [{ rotate: '-32deg' }],
+  },
+  crowbarHook: {
+    position: 'absolute',
+    top: 1,
+    right: -1,
+    width: 5,
+    height: 7,
+    borderRadius: 1,
+    transform: [{ rotate: '20deg' }],
+  },
+  smokeBody: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 10,
+    height: 14,
+    borderRadius: 5,
+  },
+  smokeCap: {
+    position: 'absolute',
+    top: 3,
+    left: 5,
+    width: 12,
+    height: 4,
+    borderRadius: 2,
   },
 });

@@ -51,14 +51,17 @@ const STAGES: StageLighting[] = [
     sunColor: 0x90a8d0,
     sunIntensity: 0.30,
   },
-  // Stage 5+ - deep night
+  // Stage 5+ - deep night. Brighter than a strict simulation would
+  // call for: silhouettes have to remain readable enough that the
+  // player can plan around obstacles. Earlier values (0.25 / 0.20)
+  // crushed the field to near-pitch-black on this stage.
   {
-    sky: 0x0d1426,
-    fog: 0x0d1426,
-    ambientColor: 0x303a55,
-    ambientIntensity: 0.25,
-    sunColor: 0x7088b8,
-    sunIntensity: 0.20,
+    sky: 0x141d33,
+    fog: 0x141d33,
+    ambientColor: 0x4c5c80,
+    ambientIntensity: 0.55,
+    sunColor: 0x9aaee0,
+    sunIntensity: 0.45,
   },
 ];
 

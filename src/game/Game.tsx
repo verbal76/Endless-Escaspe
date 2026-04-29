@@ -38,6 +38,13 @@ import {
   updateSwingArc,
   type SwingArc,
 } from '../scenes/SwingArc';
+import {
+  createFootprintField,
+  disposeFootprintField,
+  spawnFootprint,
+  updateFootprintField,
+  FOOTPRINT_SPAWN_INTERVAL,
+} from '../scenes/Footprints';
 import type { SmokeRegion } from '../systems/DetectionSystem';
 import {
   CHUNK_LEN,
@@ -238,6 +245,11 @@ export function Game() {
     // during the last frame of a segment doesn't disappear when the
     // scene rebuilds.
     const swingArcs: SwingArc[] = [];
+
+    // Snow footprints. Active only on snow-weather segments; the
+    // field tracks alternating sides + a spawn-interval counter so
+    // prints stagger naturally as the player walks.
+    const footprintField = createFootprintField();
 
     type GuardEntry = {
       guard: Guard;
@@ -533,6 +545,10 @@ export function Game() {
         disposeSwingArc(arc);
       }
       swingArcs.length = 0;
+      // Clear snow footprints from the prior life - leaving a trail
+      // at the soft-restart spawn point would read as the wrong
+      // player's footsteps.
+      disposeFootprintField(footprintField);
       input.useCrowbar = false;
       input.useSmokeBomb = false;
     };
@@ -601,6 +617,10 @@ export function Game() {
         disposeSwingArc(arc);
       }
       swingArcs.length = 0;
+      // Clear snow footprints from the prior life - leaving a trail
+      // at the soft-restart spawn point would read as the wrong
+      // player's footsteps.
+      disposeFootprintField(footprintField);
       input.useCrowbar = false;
       input.useSmokeBomb = false;
     };
@@ -838,6 +858,26 @@ export function Game() {
           swingArcs.splice(i, 1);
         }
       }
+
+      // Snow footprints. Drop a new print at FOOTPRINT_SPAWN_INTERVAL
+      // while the player is moving on a snow-weather segment, then
+      // age out the rest of the field. Off-snow stages skip the
+      // spawn entirely so the field stays empty.
+      if (scene.weatherKind === 'snow') {
+        footprintField.sinceSpawn += effDt;
+        const speed = Math.hypot(player.vx, player.vz);
+        if (speed > 0.4 && footprintField.sinceSpawn >= FOOTPRINT_SPAWN_INTERVAL) {
+          footprintField.sinceSpawn = 0;
+          spawnFootprint(
+            footprintField,
+            player.x,
+            player.z,
+            Math.atan2(player.vz, player.vx),
+            r.worldRoot,
+          );
+        }
+      }
+      updateFootprintField(footprintField, effDt);
 
       let lit = false;
       // Searchlight one-shot bump: when a tracking-capable tower

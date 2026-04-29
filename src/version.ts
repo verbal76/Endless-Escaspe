@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #23 · gear under hearts, overlay glyph, top floor 40';
+export const OTA_VERSION = 'OTA #24 · brighter night, real crowbar icon, snow rotation, footprints, YOU DIED';

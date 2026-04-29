@@ -101,6 +101,12 @@ export function dustObstaclesWithSnow(obstacles: readonly Obstacle[]) {
     const parent = o.mesh.parent;
     if (!parent) continue;
     cap.mesh.position.set(o.x, o.height + cap.yOffset, o.z);
+    // Mirror the obstacle's Y rotation onto the cap so rectangular
+    // pieces (hedgerow, car) get a cap aligned with their footprint.
+    // Without this the cap stayed axis-aligned while the obstacle
+    // was rotated 90deg, producing a cap that ran the wrong way
+    // across the top.
+    cap.mesh.rotation.y = o.mesh.rotation.y;
     parent.add(cap.mesh);
   }
 }

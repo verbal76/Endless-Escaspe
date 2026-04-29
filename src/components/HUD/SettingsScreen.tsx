@@ -3,7 +3,6 @@ import {
   GestureResponderEvent,
   Modal,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -142,65 +141,68 @@ export function SettingsScreen() {
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
         <View style={styles.backdrop}>
           <View style={styles.card}>
-            {/* ScrollView so the panel stays usable on landscape
-                phones where the full content stack (4 buttons +
-                settings + About) overflows the available height. */}
-            <ScrollView
-              contentContainerStyle={styles.cardContent}
-              showsVerticalScrollIndicator={true}
-            >
-              <Text style={styles.title}>GAME PAUSED</Text>
+            {/* Title spans both columns. */}
+            <Text style={styles.title}>GAME PAUSED</Text>
 
-              <Pressable
-                style={({ pressed }) => [styles.bigBtn, styles.btnResume, pressed && styles.btnPressed]}
-                onPress={onResume}
-              >
-                <Text style={styles.bigLabel}>RESUME</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
-                onPress={onRestart}
-              >
-                <Text style={styles.bigLabel}>RESTART</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.bigBtn, styles.btnLoad, pressed && styles.btnPressed]}
-                onPress={onLoadRun}
-              >
-                <Text style={styles.bigLabel}>LOAD RUN</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
-                onPress={onMainMenu}
-              >
-                <Text style={styles.bigLabel}>MAIN MENU</Text>
-              </Pressable>
-
-              <Text style={styles.sectionHeading}>Settings</Text>
-              <View style={styles.settingRow}>
-                <Text style={styles.settingLabel}>Volume</Text>
-                <VolumeSlider value={masterVolume} onChange={setMasterVolume} />
+            {/* Two-column landscape layout: pause actions on the left,
+                Settings + About on the right. Lays the whole panel
+                out within the available height so the user doesn't
+                have to scroll on a typical landscape phone. */}
+            <View style={styles.columns}>
+              <View style={styles.colLeft}>
+                <Pressable
+                  style={({ pressed }) => [styles.bigBtn, styles.btnResume, pressed && styles.btnPressed]}
+                  onPress={onResume}
+                >
+                  <Text style={styles.bigLabel}>RESUME</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
+                  onPress={onRestart}
+                >
+                  <Text style={styles.bigLabel}>RESTART</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.bigBtn, styles.btnLoad, pressed && styles.btnPressed]}
+                  onPress={onLoadRun}
+                >
+                  <Text style={styles.bigLabel}>LOAD RUN</Text>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
+                  onPress={onMainMenu}
+                >
+                  <Text style={styles.bigLabel}>MAIN MENU</Text>
+                </Pressable>
               </View>
-              <View style={styles.settingRow}>
-                <View style={styles.toggleLabelWrap}>
-                  <Text style={styles.settingLabel}>Weather effects</Text>
-                  <Text style={styles.subLabel}>
-                    {weatherEnabled
-                      ? 'Rain / snow active'
-                      : 'Off (AI senses boosted)'}
-                  </Text>
+
+              <View style={styles.colRight}>
+                <Text style={styles.sectionHeading}>Settings</Text>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Volume</Text>
+                  <VolumeSlider value={masterVolume} onChange={setMasterVolume} />
                 </View>
-                <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />
-              </View>
+                <View style={styles.settingRow}>
+                  <View style={styles.toggleLabelWrap}>
+                    <Text style={styles.settingLabel}>Weather effects</Text>
+                    <Text style={styles.subLabel}>
+                      {weatherEnabled
+                        ? 'Rain / snow active'
+                        : 'Off (AI senses boosted)'}
+                    </Text>
+                  </View>
+                  <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />
+                </View>
 
-              <Text style={styles.sectionHeading}>About</Text>
-              <View style={styles.aboutBlock}>
-                <Text style={styles.rowLabel}>Build</Text>
-                <Text style={styles.rowValue}>{BUILD_VERSION}</Text>
-                <Text style={[styles.rowLabel, styles.rowLabelTop]}>OTA</Text>
-                <Text style={styles.rowValue}>{OTA_VERSION}</Text>
+                <Text style={styles.sectionHeading}>About</Text>
+                <View style={styles.aboutBlock}>
+                  <Text style={styles.rowLabel}>Build</Text>
+                  <Text style={styles.rowValue}>{BUILD_VERSION}</Text>
+                  <Text style={[styles.rowLabel, styles.rowLabelTop]}>OTA</Text>
+                  <Text style={styles.rowValue}>{OTA_VERSION}</Text>
+                </View>
               </View>
-            </ScrollView>
+            </View>
           </View>
         </View>
       </Modal>
@@ -238,20 +240,30 @@ const styles = StyleSheet.create({
     padding: 28,
   },
   card: {
-    width: '92%',
-    maxWidth: 460,
-    // Bounded so the ScrollView inside has a defined height; on
-    // landscape this caps the panel below the device height with a
-    // safe-area buffer, leaving room to scroll long content.
-    maxHeight: '92%',
+    // Wider (and shorter) than before so the two-column layout fits
+    // a landscape phone without overflow. maxHeight cap leaves a
+    // small breathing band at the top + bottom.
+    width: '94%',
+    maxWidth: 720,
+    maxHeight: '94%',
     backgroundColor: '#1a1d24',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255, 210, 90, 0.40)',
-    overflow: 'hidden',
+    padding: 18,
   },
-  cardContent: {
-    padding: 20,
+  columns: {
+    flexDirection: 'row',
+    gap: 18,
+    flexShrink: 1,
+  },
+  colLeft: {
+    flex: 1,
+    minWidth: 200,
+  },
+  colRight: {
+    flex: 1.1,
+    minWidth: 220,
   },
   title: {
     color: '#ffd14a',
@@ -262,9 +274,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   bigBtn: {
-    marginVertical: 5,
-    paddingHorizontal: 18,
-    paddingVertical: 12,
+    // Tighter than before so all four buttons fit in the column
+    // alongside the right-hand Settings + About without overflow.
+    marginVertical: 4,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     borderRadius: 10,
     alignItems: 'center',
     borderWidth: 1,
@@ -299,14 +313,14 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 1.5,
-    marginTop: 14,
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 6,
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   settingLabel: {
     color: '#fff',

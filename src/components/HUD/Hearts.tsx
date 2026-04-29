@@ -76,12 +76,12 @@ export function Hearts() {
   // Hidden between runs (idle / cleared / caught) so the start
   // screen doesn't carry a stale heart count over the title art.
   if (runState !== 'playing') return null;
-  // Hearts now anchor in the top-left corner with a generous top
-  // floor that clears curved-display masks even when insets.top
-  // reports 0 (status bar hidden). The settings gear stacks below
-  // the heart row so the corner stays visually clean - no shared
-  // pixels, no overlapping containers.
-  const top = Math.max(40, insets.top + 20);
+  // Hearts now stack BELOW the settings gear (which sits at the
+  // top of the screen). The gear is ~36 tall at top floor 24, so
+  // the heart row's top floor lands at 64 with a small breathing
+  // gap. The big top minimum still clears curved-display masks on
+  // devices that hide the status bar (insets.top reports 0).
+  const top = Math.max(64, insets.top + 52);
   const left = Math.max(16, insets.left + 12);
   return (
     <View style={[styles.row, { top, left }]}>

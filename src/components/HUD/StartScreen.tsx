@@ -47,10 +47,10 @@ function BouncingLetter({ char, index }: { char: string; index: number }) {
     const wave = Math.sin(phase * Math.PI * 2);
     return {
       transform: [
-        // Wave amplitude scaled to track the title size: -22 worked
-        // for fontSize 96, so at fontSize 77 (20% smaller) we use
-        // -18 to keep the same perceptual feel.
-        { translateY: -18 * wave },
+        // Amplitude tracks the title size (-18 at fontSize 77,
+        // -14 here at fontSize 62) so the wave reads consistently
+        // regardless of how often we retune the title.
+        { translateY: -14 * wave },
         { scale: 1 + 0.06 * wave },
       ],
     };
@@ -676,16 +676,16 @@ const styles = StyleSheet.create({
   },
   titleLetter: {
     color: '#ffd14a',
-    fontSize: 77,
+    fontSize: 62,
     fontWeight: '900',
-    letterSpacing: 2,
+    letterSpacing: 1.8,
     marginHorizontal: 2,
     textShadowColor: '#1a1206',
     textShadowOffset: { width: 3, height: 3 },
     textShadowRadius: 2,
   },
   titleSpace: {
-    width: 20,
+    width: 16,
   },
   tagline: {
     color: 'rgba(255,255,255,0.85)',

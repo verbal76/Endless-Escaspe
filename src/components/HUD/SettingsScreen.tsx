@@ -3,6 +3,7 @@ import {
   GestureResponderEvent,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -123,11 +124,11 @@ export function SettingsScreen() {
         accessibilityLabel="Settings"
         style={({ pressed }) => [
           styles.gearWrap,
-          // Stacked beneath the heart row. Hearts use top floor 40
-          // (max(40, insets.top + 20)) + their own 32 height + a
-          // small gap, so the gear's top floor lands at ~84.
+          // Top-of-screen anchor: above the start-screen title row
+          // and ahead of the heart row during gameplay (Hearts now
+          // sit at top floor 64 so the two stack vertically).
           {
-            top: Math.max(84, insets.top + 64),
+            top: Math.max(24, insets.top + 12),
             left: Math.max(16, insets.left + 12),
           },
           pressed && styles.gearPressed,
@@ -141,57 +142,65 @@ export function SettingsScreen() {
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
         <View style={styles.backdrop}>
           <View style={styles.card}>
-            <Text style={styles.title}>GAME PAUSED</Text>
+            {/* ScrollView so the panel stays usable on landscape
+                phones where the full content stack (4 buttons +
+                settings + About) overflows the available height. */}
+            <ScrollView
+              contentContainerStyle={styles.cardContent}
+              showsVerticalScrollIndicator={true}
+            >
+              <Text style={styles.title}>GAME PAUSED</Text>
 
-            <Pressable
-              style={({ pressed }) => [styles.bigBtn, styles.btnResume, pressed && styles.btnPressed]}
-              onPress={onResume}
-            >
-              <Text style={styles.bigLabel}>RESUME</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
-              onPress={onRestart}
-            >
-              <Text style={styles.bigLabel}>RESTART</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.bigBtn, styles.btnLoad, pressed && styles.btnPressed]}
-              onPress={onLoadRun}
-            >
-              <Text style={styles.bigLabel}>LOAD RUN</Text>
-            </Pressable>
-            <Pressable
-              style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
-              onPress={onMainMenu}
-            >
-              <Text style={styles.bigLabel}>MAIN MENU</Text>
-            </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.bigBtn, styles.btnResume, pressed && styles.btnPressed]}
+                onPress={onResume}
+              >
+                <Text style={styles.bigLabel}>RESUME</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
+                onPress={onRestart}
+              >
+                <Text style={styles.bigLabel}>RESTART</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.bigBtn, styles.btnLoad, pressed && styles.btnPressed]}
+                onPress={onLoadRun}
+              >
+                <Text style={styles.bigLabel}>LOAD RUN</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
+                onPress={onMainMenu}
+              >
+                <Text style={styles.bigLabel}>MAIN MENU</Text>
+              </Pressable>
 
-            <Text style={styles.sectionHeading}>Settings</Text>
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Volume</Text>
-              <VolumeSlider value={masterVolume} onChange={setMasterVolume} />
-            </View>
-            <View style={styles.settingRow}>
-              <View style={styles.toggleLabelWrap}>
-                <Text style={styles.settingLabel}>Weather effects</Text>
-                <Text style={styles.subLabel}>
-                  {weatherEnabled
-                    ? 'Rain / snow active'
-                    : 'Off (AI senses boosted)'}
-                </Text>
+              <Text style={styles.sectionHeading}>Settings</Text>
+              <View style={styles.settingRow}>
+                <Text style={styles.settingLabel}>Volume</Text>
+                <VolumeSlider value={masterVolume} onChange={setMasterVolume} />
               </View>
-              <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />
-            </View>
+              <View style={styles.settingRow}>
+                <View style={styles.toggleLabelWrap}>
+                  <Text style={styles.settingLabel}>Weather effects</Text>
+                  <Text style={styles.subLabel}>
+                    {weatherEnabled
+                      ? 'Rain / snow active'
+                      : 'Off (AI senses boosted)'}
+                  </Text>
+                </View>
+                <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />
+              </View>
 
-            <Text style={styles.sectionHeading}>About</Text>
-            <View style={styles.aboutBlock}>
-              <Text style={styles.rowLabel}>Build</Text>
-              <Text style={styles.rowValue}>{BUILD_VERSION}</Text>
-              <Text style={[styles.rowLabel, styles.rowLabelTop]}>OTA</Text>
-              <Text style={styles.rowValue}>{OTA_VERSION}</Text>
-            </View>
+              <Text style={styles.sectionHeading}>About</Text>
+              <View style={styles.aboutBlock}>
+                <Text style={styles.rowLabel}>Build</Text>
+                <Text style={styles.rowValue}>{BUILD_VERSION}</Text>
+                <Text style={[styles.rowLabel, styles.rowLabelTop]}>OTA</Text>
+                <Text style={styles.rowValue}>{OTA_VERSION}</Text>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -231,10 +240,17 @@ const styles = StyleSheet.create({
   card: {
     width: '92%',
     maxWidth: 460,
+    // Bounded so the ScrollView inside has a defined height; on
+    // landscape this caps the panel below the device height with a
+    // safe-area buffer, leaving room to scroll long content.
+    maxHeight: '92%',
     backgroundColor: '#1a1d24',
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255, 210, 90, 0.40)',
+    overflow: 'hidden',
+  },
+  cardContent: {
     padding: 20,
   },
   title: {

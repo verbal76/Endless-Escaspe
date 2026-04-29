@@ -68,7 +68,7 @@ export function createDog(id: number, handlerGuardId: number, x: number, z: numb
   group.add(body);
 
   const head = new THREE.Mesh(
-    new THREE.SphereGeometry(HEAD_R, 8, 6),
+    new THREE.SphereGeometry(HEAD_R, 14, 10),
     HEAD_MAT,
   );
   head.position.set(0, BODY_H + LEG_H, BODY_L / 2 + HEAD_R * 0.4);

@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #32 · branded GameModal replaces system Alert.alert';
+export const OTA_VERSION = 'OTA #33 · run starts at spawn (not demo position) + rounder heads/props';

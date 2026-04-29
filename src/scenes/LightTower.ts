@@ -96,14 +96,14 @@ function buildTower(
   canTrack: boolean,
 ): LightTower {
   const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(POLE_RADIUS, POLE_RADIUS, TOWER_HEIGHT, 8),
+    new THREE.CylinderGeometry(POLE_RADIUS, POLE_RADIUS, TOWER_HEIGHT, 14),
     POLE_MAT,
   );
   pole.position.set(x, TOWER_HEIGHT / 2, z);
   worldRoot.add(pole);
 
   const head = new THREE.Mesh(
-    new THREE.SphereGeometry(HEAD_RADIUS, 12, 12),
+    new THREE.SphereGeometry(HEAD_RADIUS, 16, 12),
     HEAD_MAT,
   );
   head.position.set(x, TOWER_HEIGHT, z);

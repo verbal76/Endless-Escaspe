@@ -13,14 +13,19 @@ import type { Obstacle, ObstacleKind } from '../types/world';
 const CRATE_GEO = new THREE.BoxGeometry(1.1, 1.1, 1.1);
 const WALL_GEO = new THREE.BoxGeometry(1.6, 0.6, 0.6);
 const COVER_GEO = new THREE.BoxGeometry(2.0, 1.4, 1.0);
-const BARREL_GEO = new THREE.CylinderGeometry(0.42, 0.42, 1.05, 14);
-const BOULDER_GEO = new THREE.IcosahedronGeometry(0.7, 0);
+// Segment counts bumped from the prototype values to give curved
+// shapes a bit more polish without blowing the per-frame budget:
+// barrels go 14 -> 20 sides, car wheels 12 -> 18, tree trunks
+// 10 -> 16. Boulder + leaves moved up an icosahedron-detail tier
+// for less-faceted silhouettes (20 faces -> 80, 80 faces -> 320).
+const BARREL_GEO = new THREE.CylinderGeometry(0.42, 0.42, 1.05, 20);
+const BOULDER_GEO = new THREE.IcosahedronGeometry(0.7, 1);
 const HEDGE_GEO = new THREE.BoxGeometry(2.6, 1.1, 0.7);
 const CAR_BODY_GEO = new THREE.BoxGeometry(2.4, 0.9, 1.25);
 const CAR_CABIN_GEO = new THREE.BoxGeometry(1.6, 0.6, 1.1);
-const CAR_WHEEL_GEO = new THREE.CylinderGeometry(0.27, 0.27, 0.18, 12);
-const TRUNK_GEO = new THREE.CylinderGeometry(0.22, 0.28, 1.6, 10);
-const LEAVES_GEO = new THREE.IcosahedronGeometry(0.95, 1);
+const CAR_WHEEL_GEO = new THREE.CylinderGeometry(0.27, 0.27, 0.18, 18);
+const TRUNK_GEO = new THREE.CylinderGeometry(0.22, 0.28, 1.6, 16);
+const LEAVES_GEO = new THREE.IcosahedronGeometry(0.95, 2);
 
 const CRATE_MAT = new THREE.MeshStandardMaterial({ color: 0x8a6a3d, roughness: 0.85 });
 const WALL_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4f55, roughness: 0.95 });

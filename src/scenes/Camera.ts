@@ -47,7 +47,7 @@ function buildCamera(x: number, z: number, facing: number, worldRoot: THREE.Grou
   // Short pole mounted on the fence line.
   const POLE_H = 2.4;
   const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.07, 0.07, POLE_H, 8),
+    new THREE.CylinderGeometry(0.07, 0.07, POLE_H, 14),
     POLE_MAT,
   );
   pole.position.set(x, POLE_H / 2, z);
@@ -63,7 +63,7 @@ function buildCamera(x: number, z: number, facing: number, worldRoot: THREE.Grou
 
   // Red lens on the front of the housing (forward = local +Z, so
   // place it in the rotated frame).
-  const lens = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), LENS_MAT);
+  const lens = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 8), LENS_MAT);
   lens.position.set(
     x + Math.sin(facing) * 0.21,
     POLE_H,

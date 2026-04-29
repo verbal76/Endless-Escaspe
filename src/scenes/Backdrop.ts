@@ -67,15 +67,18 @@ const BIRD_MAT = new THREE.MeshBasicMaterial({
   depthWrite: false,
 });
 
-// Pre-built shared geos.
-const TRUNK_GEO = new THREE.CylinderGeometry(0.32, 0.45, 2.6, 8);
-const LEAVES_GEO = new THREE.IcosahedronGeometry(1.6, 1);
+// Pre-built shared geos. Trunk segs 8 -> 14 and leaves bumped one
+// icosahedron-detail tier so the distant tree silhouettes don't
+// read as obvious low-poly cylinders + spiky icosahedra against
+// the sky.
+const TRUNK_GEO = new THREE.CylinderGeometry(0.32, 0.45, 2.6, 14);
+const LEAVES_GEO = new THREE.IcosahedronGeometry(1.6, 2);
 // Half-sphere shell that drapes the top of the leaves on snow days.
 // Built once and shared across all backdrop trees.
 const TREE_SNOW_GEO = new THREE.SphereGeometry(
   1.45,
-  10,
-  6,
+  16,
+  8,
   0,
   Math.PI * 2,
   0,

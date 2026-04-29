@@ -479,6 +479,11 @@ export function Game() {
     let lastSegmentSeed = useStore.getState().segmentSeed;
     let lastStage = useStore.getState().stage;
     let lastRestartCounter = useStore.getState().restartCounter;
+    // Tracks the last observed runState so we can detect a fresh
+    // transition into 'playing' (e.g. tapping START on a new save
+    // or finishing the tutorial prompt) and snap the player off of
+    // wherever the splash-demo left them and back to spawn.
+    let lastRunState = useStore.getState().runState;
     let animTime = 0;
     const tmpVec = new THREE.Vector3();
 
@@ -737,6 +742,23 @@ export function Game() {
         st.setRunState('playing');
         resetSegment();
       }
+      // Fresh transition into gameplay (typically from the start
+      // screen's NEW RUN / CONTINUE / tutorial prompt path). The
+      // splash-demo loop has been driving player.x/z to drift the
+      // figure across the yard during idle; without this catch the
+      // player would inherit the demo's last position when the run
+      // begins. Skip if a rebuild already ran above (resetSegment
+      // would just be called twice).
+      if (st.runState === 'playing' && lastRunState !== 'playing') {
+        if (
+          st.segmentSeed === lastSegmentSeed &&
+          st.stage === lastStage &&
+          st.restartCounter === lastRestartCounter
+        ) {
+          resetSegment();
+        }
+      }
+      lastRunState = st.runState;
 
       if (st.runState !== 'playing' || st.paused) {
         projectiles.clear();

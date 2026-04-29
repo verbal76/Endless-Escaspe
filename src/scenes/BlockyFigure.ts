@@ -61,13 +61,28 @@ function makePart(
   return new THREE.Mesh(geo, mat);
 }
 
+// Spherical head replaces the original cube head: same overall
+// volume but a markedly less blocky silhouette. Radius is
+// HEAD_SIZE * 0.58 so the apparent height of the head matches the
+// pre-bump cube while reading rounder against shoulders.
+function makeHead(color: number): THREE.Mesh {
+  const geo = new THREE.SphereGeometry(HEAD_SIZE * 0.58, 14, 10);
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.55,
+    transparent: true,
+    opacity: 1,
+  });
+  return new THREE.Mesh(geo, mat);
+}
+
 // Optional headColor lets guards / players override just the head
 // while keeping the body uniform-coloured. If omitted, the head
 // matches the body colour.
 export function createBlockyFigure(color: number, headColor?: number): BlockyFigure {
   const group = new THREE.Group();
 
-  const head = makePart(HEAD_SIZE, HEAD_SIZE, HEAD_SIZE, headColor ?? color, false);
+  const head = makeHead(headColor ?? color);
   head.position.y = HEAD_Y;
   group.add(head);
 

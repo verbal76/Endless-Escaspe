@@ -172,8 +172,22 @@ export function StartScreen() {
       setNameDraft('');
       setNameError(null);
       setProfileKey(null);
+      // Also drop any "auto-start run after tutorial" flag that
+      // wasn't consumed - otherwise opening HOW TO PLAY from the
+      // home menu later could spuriously kick off a run when the
+      // cutscene closes.
+      setPendingRunAfterTutorial(false);
     }
   }, [runState, mode]);
+
+  // Once the player actually leaves idle (run started), clear the
+  // pending-run flag so it can't fire again on a future tutorial
+  // close.
+  useEffect(() => {
+    if (runState !== 'idle' && pendingRunAfterTutorial) {
+      setPendingRunAfterTutorial(false);
+    }
+  }, [runState, pendingRunAfterTutorial]);
 
   // Honour pause-menu "LOAD RUN": drop directly onto the save list.
   // Cleared via setPendingStartMode(null) so the next plain return
@@ -246,7 +260,10 @@ export function StartScreen() {
       return;
     }
     const key = saveKeyFromName(name);
-    if (saves[key]) {
+    // Live read of saves so a save upserted during the keystroke
+    // window is honoured by the duplicate check.
+    const liveSavesPre = useStore.getState().saves;
+    if (liveSavesPre[key]) {
       setGameModal({
         title: 'Name already taken',
         body: `"${name}" is already in use. Pick a different name or delete the existing save from the load screen.`,
@@ -269,7 +286,9 @@ export function StartScreen() {
     setPlayerName(name);
     setStage(1);
     setBestStars({});
-    const next: SavesMap = { ...saves, [key]: save };
+    // Build the on-disk record from the post-upsert store state so
+    // any save not represented in the prior closure is preserved.
+    const next: SavesMap = useStore.getState().saves;
     writeSaves(next);
     // Don't drop straight into gameplay - offer the intro cutscene
     // first so first-time players get a quick demo of the rules.
@@ -308,10 +327,15 @@ export function StartScreen() {
           variant: 'danger',
           onPress: () => {
             const key = saveKeyFromName(s.name);
+            // Read the live saves map from the store so a concurrent
+            // upsert between modal open and DELETE press isn't
+            // wiped from disk on the writeSaves below. The closure
+            // capture would have used a stale snapshot.
+            const liveSaves = useStore.getState().saves;
             removeSave(key);
             const next: SavesMap = {};
-            for (const k of Object.keys(saves)) {
-              if (k !== key) next[k] = saves[k];
+            for (const k of Object.keys(liveSaves)) {
+              if (k !== key) next[k] = liveSaves[k];
             }
             writeSaves(next);
             // If we deleted the save we were profiling, bounce back
@@ -412,15 +436,20 @@ export function StartScreen() {
     // (matches what the system keyboard's autoCapitalize="words"
     // gave us before the swap).
     const appendChar = (c: string) => {
-      if (nameDraft.length >= 20) return;
-      const isFirstOfWord = nameDraft.length === 0 || nameDraft.endsWith(' ');
-      const ch = isFirstOfWord ? c.toUpperCase() : c.toLowerCase();
-      setNameDraft(nameDraft + ch);
+      // Functional setState reads the latest value at apply time, so
+      // a double-tap in the same React tick sees the post-first-tap
+      // string when deciding whether to cap at 20 chars or apply the
+      // word-boundary capitalisation rule.
+      setNameDraft((prev) => {
+        if (prev.length >= 20) return prev;
+        const isFirstOfWord = prev.length === 0 || prev.endsWith(' ');
+        const ch = isFirstOfWord ? c.toUpperCase() : c.toLowerCase();
+        return prev + ch;
+      });
       if (nameError) setNameError(null);
     };
     const backspace = () => {
-      if (nameDraft.length === 0) return;
-      setNameDraft(nameDraft.slice(0, -1));
+      setNameDraft((prev) => (prev.length === 0 ? prev : prev.slice(0, -1)));
       if (nameError) setNameError(null);
     };
 

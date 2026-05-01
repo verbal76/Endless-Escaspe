@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { WeatherKind } from './Weather';
 import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
+import { markShared } from '../util/dispose';
 
 // Chain-link fence running the full segment length on both X edges.
 // Visualised as a wireframe BoxGeometry with high subdivisions so
@@ -15,16 +16,20 @@ const FENCE_THICKNESS = 0.05;
 const FENCE_X_OFFSET = 0.3;
 const RAZOR_TOP_HEIGHT = 0.25;
 
-const POST_MAT = new THREE.MeshStandardMaterial({
-  color: 0x3a3d44,
-  roughness: 0.7,
-});
+const POST_MAT = markShared(
+  new THREE.MeshStandardMaterial({
+    color: 0x3a3d44,
+    roughness: 0.7,
+  }),
+);
 
-const RAZOR_MAT = new THREE.MeshBasicMaterial({
-  color: 0xff4040,
-  transparent: true,
-  opacity: 0.9,
-});
+const RAZOR_MAT = markShared(
+  new THREE.MeshBasicMaterial({
+    color: 0xff4040,
+    transparent: true,
+    opacity: 0.9,
+  }),
+);
 
 // Pick fence wire colour from the current scene mood. Bright snow
 // or daylight stages (1-2) get a black wire that pops against the

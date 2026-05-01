@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import type { Obstacle, Player } from '../types/world';
 import { lineOfSightClear, type Circle } from '../util/collision';
-import { dist2 } from '../util/math';
+import { dist2Sq } from '../util/math';
 import { PLAY_HALF_W } from '../util/geometry';
+import { markShared } from '../util/dispose';
 
 // Wall-mounted security camera. Pointed inwards from one of the
 // fence sides, fixed in place, narrow cone, no kill range. Detection
@@ -36,6 +37,8 @@ const CONE_MAT = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
   depthWrite: false,
 });
+
+[POLE_MAT, HOUSING_MAT, LENS_MAT, CONE_MAT].forEach((m) => markShared(m));
 
 export type Camera = {
   x: number;
@@ -119,7 +122,7 @@ function cameraSeesPlayer(
   p: Player,
   obstacles: readonly Obstacle[],
 ): boolean {
-  const dSq = dist2(c.x, c.z, p.x, p.z);
+  const dSq = dist2Sq(c.x, c.z, p.x, p.z);
   if (dSq > CAM_RANGE * CAM_RANGE) return false;
   const angleToPlayer = Math.atan2(p.x - c.x, p.z - c.z);
   let d = angleToPlayer - c.facing;
@@ -146,7 +149,7 @@ export function updateCameraAlarm(
   let bestProximity = 0;
   for (const c of cameras) {
     if (cameraSeesPlayer(c, player, obstacles)) {
-      const dSq = dist2(c.x, c.z, player.x, player.z);
+      const dSq = dist2Sq(c.x, c.z, player.x, player.z);
       const prox = 1 - dSq / (CAM_RANGE * CAM_RANGE);
       if (prox > bestProximity) bestProximity = prox;
     }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { markShared } from '../util/dispose';
 
 // Small flat arrow on the ground, parented to the world root and
 // repositioned per frame around the player at the perimeter of the
@@ -27,7 +28,7 @@ function buildGeometry(): THREE.BufferGeometry {
   return geo;
 }
 
-const sharedGeo = buildGeometry();
+const sharedGeo = markShared(buildGeometry());
 
 export function createThreatArrow(): ThreatArrow {
   const mat = new THREE.MeshBasicMaterial({

@@ -1,5 +1,5 @@
 import type { Guard, Obstacle, Player } from '../types/world';
-import { clamp, dist2 } from '../util/math';
+import { clamp, dist2Sq } from '../util/math';
 import { lineOfSightClear, type Circle } from '../util/collision';
 import { VISION_CONE_DEG } from '../util/geometry';
 
@@ -71,7 +71,7 @@ export function updateDetection(
     }
   }
 
-  const dSq = dist2(guard.x, guard.z, player.x, player.z);
+  const dSq = dist2Sq(guard.x, guard.z, player.x, player.z);
   const visionRangeSq = visionRange * visionRange;
 
   // Stance scales how visible the player is when in the cone.

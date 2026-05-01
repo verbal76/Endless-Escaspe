@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
+import { markShared } from '../util/dispose';
 
 // Weather: rain or snow or clear. Rolled at the start of each
 // segment via pickWeather(). Visualised as a column of falling
@@ -42,6 +43,9 @@ const LIGHTNING_MAT = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
   fog: false,
 });
+
+[RAIN_MAT, SNOW_MAT, LIGHTNING_MAT].forEach((m) => markShared(m));
+markShared(SNOW_GEO);
 
 type Particle = {
   x: number;

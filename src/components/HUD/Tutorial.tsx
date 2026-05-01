@@ -109,8 +109,6 @@ const POPUPS: { title: string; body: string }[] = [
 export function Tutorial() {
   const showTutorial = useStore((s) => s.showTutorial);
   const setShowTutorial = useStore((s) => s.setShowTutorial);
-  const masterVolume = useStore((s) => s.masterVolume);
-  const weatherEnabled = useStore((s) => s.weatherEnabled);
   const insets = useSafeAreaInsets();
   const win = useWindowDimensions();
   const isLandscape = win.width > win.height;
@@ -135,9 +133,10 @@ export function Tutorial() {
   const dismissAndPersist = () => {
     setShowTutorial(false);
     // Mark the tutorial as seen so it doesn't auto-replay next launch.
-    // The active save and skin live in their own storage; this only
-    // touches the global settings file.
-    saveSettings({ masterVolume, weatherEnabled, tutorialSeen: true });
+    // saveSettings merges with the existing on-disk record, so we
+    // only patch the field we care about here - no risk of clobbering
+    // a stale volume / weather value the user changed mid-tutorial.
+    saveSettings({ tutorialSeen: true });
   };
 
   // Reset state on (re-)mount of the tutorial. showTutorial flipping

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Obstacle, ObstacleKind } from '../types/world';
+import { markShared } from '../util/dispose';
 
 // Snow caps that read as a layer of snow on top of each obstacle:
 // flush against the surface (no gap), sized to the actual footprint
@@ -7,23 +8,25 @@ import type { Obstacle, ObstacleKind } from '../types/world';
 // slab), and rendered with polygonOffset so it sits visually on the
 // obstacle surface without z-fighting.
 
-const CAP_MAT = new THREE.MeshStandardMaterial({
+const CAP_MAT = markShared(new THREE.MeshStandardMaterial({
   color: 0xeef3fb,
   roughness: 1,
   flatShading: true,
   polygonOffset: true,
   polygonOffsetFactor: -1,
   polygonOffsetUnits: -1,
-});
+}));
 
 const T = 0.04; // dusting thickness; thinner than the 0.07 plate before
 
+// All cap geos are cached + reused across rebuilds, so they're
+// shared (disposal pass must skip them).
 const geoCache = new Map<string, THREE.BufferGeometry>();
 function box(w: number, h: number, d: number): THREE.BufferGeometry {
   const k = `b:${w.toFixed(2)}x${h.toFixed(2)}x${d.toFixed(2)}`;
   let g = geoCache.get(k);
   if (!g) {
-    g = new THREE.BoxGeometry(w, h, d);
+    g = markShared(new THREE.BoxGeometry(w, h, d));
     geoCache.set(k, g);
   }
   return g;
@@ -32,7 +35,7 @@ function cyl(r: number, h: number, segs: number): THREE.BufferGeometry {
   const k = `c:${r.toFixed(2)}x${h.toFixed(2)}-${segs}`;
   let g = geoCache.get(k);
   if (!g) {
-    g = new THREE.CylinderGeometry(r, r, h, segs);
+    g = markShared(new THREE.CylinderGeometry(r, r, h, segs));
     geoCache.set(k, g);
   }
   return g;
@@ -41,7 +44,7 @@ function sphereCap(r: number): THREE.BufferGeometry {
   const k = `sc:${r.toFixed(2)}`;
   let g = geoCache.get(k);
   if (!g) {
-    g = new THREE.SphereGeometry(r, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    g = markShared(new THREE.SphereGeometry(r, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2));
     geoCache.set(k, g);
   }
   return g;

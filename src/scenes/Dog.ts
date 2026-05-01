@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { Guard, Player } from '../types/world';
-import { dist2 } from '../util/math';
+import { dist2Sq } from '../util/math';
 import { PLAY_HALF_W } from '../util/geometry';
+import { markShared } from '../util/dispose';
 
 // Patrol dog. Behaviour summary:
 // - Trails its handler guard while the guard is patrolling.
@@ -31,6 +32,8 @@ const HEAD_MAT = new THREE.MeshStandardMaterial({
   color: 0x4a3018,
   roughness: 0.85,
 });
+
+[BODY_MAT, HEAD_MAT].forEach((m) => markShared(m));
 
 export const SMELL_RADIUS = 9;
 const SMELL_RADIUS_SQ = SMELL_RADIUS * SMELL_RADIUS;
@@ -116,7 +119,7 @@ export function updateDog(d: Dog, handler: Guard | undefined, p: Player, dt: num
   // Detach into chase when the handler does, OR when the player
   // walks into the smell radius. Otherwise trail the handler at a
   // small offset.
-  const dSq = dist2(d.x, d.z, p.x, p.z);
+  const dSq = dist2Sq(d.x, d.z, p.x, p.z);
   if (handler && handler.state === 'chase') {
     d.state = 'chase';
   } else if (d.state === 'leash' && dSq <= SMELL_RADIUS_SQ * 0.18) {
@@ -149,5 +152,5 @@ export function setDogTransform(d: Dog) {
 }
 
 export function dogHits(d: Dog, p: Player): boolean {
-  return dist2(d.x, d.z, p.x, p.z) <= DOG_HIT_RADIUS * DOG_HIT_RADIUS;
+  return dist2Sq(d.x, d.z, p.x, p.z) <= DOG_HIT_RADIUS * DOG_HIT_RADIUS;
 }

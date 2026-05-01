@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { markShared } from '../util/dispose';
 
 // Snow footprints: small dark elliptical patches that drop behind
 // the player while they're moving on a snow stage. Each fades out
@@ -15,7 +16,7 @@ export const FOOTPRINT_LIFETIME = 4.0;
 export const FOOTPRINT_SPAWN_INTERVAL = 0.34;
 const MAX_FOOTPRINTS = 36;
 
-const SHARED_GEO = new THREE.CircleGeometry(0.12, 14);
+const SHARED_GEO = markShared(new THREE.CircleGeometry(0.12, 14));
 SHARED_GEO.rotateX(-Math.PI / 2);
 
 const SHARED_MAT_TEMPLATE = {

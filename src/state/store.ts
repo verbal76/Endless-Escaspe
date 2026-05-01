@@ -272,6 +272,7 @@ export const useStore = create<Store>((set) => ({
       restartCounter: st.restartCounter + 1,
       paused: false,
       lastStats: null,
+      lastDeathCause: null,
     })),
   resetForSegment: (seed) =>
     set({
@@ -283,6 +284,7 @@ export const useStore = create<Store>((set) => ({
       stance: 'walk',
       paused: false,
       lastStats: null,
+      lastDeathCause: null,
       inventory: { ...EMPTY_INVENTORY },
     }),
   startRun: () =>
@@ -295,6 +297,7 @@ export const useStore = create<Store>((set) => ({
       stance: 'walk',
       paused: false,
       lastStats: null,
+      lastDeathCause: null,
       inventory: { ...EMPTY_INVENTORY },
     })),
 }));

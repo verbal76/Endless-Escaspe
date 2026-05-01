@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
+import { markShared } from '../util/dispose';
 
 // Scanning floodlight tower: vertical pole, head, downward translucent
 // cone that rotates around the pole's vertical axis. The cone's
@@ -52,6 +53,11 @@ const ARC_MAT = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
   depthWrite: false,
 });
+
+// Mark every module-level material as shared so the disposal pass
+// on rebuild leaves them alone (each tower mesh holds its own
+// per-instance geometry which DOES get disposed).
+[POLE_MAT, HEAD_MAT, BEAM_MAT, FOOT_MAT, ARC_MAT].forEach((m) => markShared(m));
 
 // State machine for tower lock-on behavior. Default is 'scan' (the
 // classic sweep). When a tracking-capable tower catches the player

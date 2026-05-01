@@ -1,5 +1,5 @@
 import type { Guard, Obstacle, Player } from '../types/world';
-import { dist2 } from '../util/math';
+import { dist2Sq } from '../util/math';
 import { circleHit } from '../util/collision';
 import { PLAY_HALF_W } from '../util/geometry';
 
@@ -168,7 +168,7 @@ export function updateGuard(
       if (g.investigationTarget) {
         moveToward(g, g.investigationTarget.x, g.investigationTarget.z, SPEED_INVESTIGATE, obstacles, dt);
         const arrived =
-          dist2(g.x, g.z, g.investigationTarget.x, g.investigationTarget.z) <= ARRIVE_EPS_SQ;
+          dist2Sq(g.x, g.z, g.investigationTarget.x, g.investigationTarget.z) <= ARRIVE_EPS_SQ;
         if (arrived) {
           // Reached the spot. Hold for a beat as alert; if nothing
           // new happens behaviorTimer will tick up and we'll abandon.
@@ -189,7 +189,7 @@ export function updateGuard(
     }
     case 'return': {
       moveToward(g, g.homeX, g.homeZ, SPEED_RETURN, obstacles, dt);
-      const home = dist2(g.x, g.z, g.homeX, g.homeZ);
+      const home = dist2Sq(g.x, g.z, g.homeX, g.homeZ);
       if (home <= RETURN_HOME_RADIUS * RETURN_HOME_RADIUS) {
         setState(g, 'wander');
         g.wanderTarget = rngTarget(g);
@@ -199,7 +199,7 @@ export function updateGuard(
     }
     case 'wander':
     default: {
-      const arrived = dist2(g.x, g.z, g.wanderTarget.x, g.wanderTarget.z) <= ARRIVE_EPS_SQ;
+      const arrived = dist2Sq(g.x, g.z, g.wanderTarget.x, g.wanderTarget.z) <= ARRIVE_EPS_SQ;
       if (arrived || g.wanderTimer >= WANDER_RETARGET_S) {
         g.wanderTarget = rngTarget(g);
         g.wanderTimer = 0;

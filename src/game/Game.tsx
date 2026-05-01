@@ -104,6 +104,7 @@ import { PickupBag } from '../components/HUD/PickupBag';
 import { EventFlash } from '../components/HUD/EventFlash';
 import { Tutorial } from '../components/HUD/Tutorial';
 import { GameModal } from '../components/HUD/GameModal';
+import { disposeSubtree } from '../util/dispose';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
 import { spawnFences } from '../scenes/Fence';
@@ -457,6 +458,12 @@ export function Game() {
     const tearDownScene = (s: Scene) => {
       s.procgen.dispose();
       r.worldRoot.remove(s.root);
+      // Free per-instance GPU resources under the old scene root
+      // (per-segment fence wireframes, ground plane, win line,
+      // light-tower / camera / dog / guard meshes, threat arrows,
+      // weather sheets, etc). Module-level shared geos / mats are
+      // tagged userData.shared = true and are skipped by this walk.
+      disposeSubtree(s.root);
     };
 
     // Swap the world for a fresh one matching the supplied stage and
@@ -1046,15 +1053,25 @@ export function Game() {
           weatherNoise,
           smokeRegions,
         );
+        // Stun freeze: a crowbar-stunned guard's detection meter only
+        // decays. Don't pile on dog smell, floodlight rate, or the
+        // searchlight bump - otherwise the meter pegs while the guard
+        // is frozen and the moment the stun ends they're already at
+        // chase. updateDetection above already handles the vision /
+        // noise side of the freeze.
+        const stunned = g.stunTimer > 0;
         let dogSmell = 0;
-        for (const d of scene.dogs) {
-          if (d.handlerGuardId === g.id) {
-            dogSmell += updateDog(d, g, player, effDt);
+        if (!stunned) {
+          for (const d of scene.dogs) {
+            if (d.handlerGuardId === g.id) {
+              dogSmell += updateDog(d, g, player, effDt);
+            }
           }
         }
+        const externalBumps = stunned ? 0 : litAdd + dogSmell + searchlightBump;
         const next = Math.min(
           1,
-          visionAndNoise + litAdd + dogSmell + searchlightBump,
+          visionAndNoise + externalBumps,
         );
         nextDetection[g.id] = next;
         if (next > maxDetection) maxDetection = next;

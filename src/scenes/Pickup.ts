@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Pickup, PickupKind } from '../types/world';
+import { markShared } from '../util/dispose';
 
 // Pickup overlap radius (m). Tuned generously so the player can grab
 // a pickup while running past it without precision steering.
@@ -35,11 +36,16 @@ const HALO_MAT = new THREE.MeshBasicMaterial({
   side: THREE.DoubleSide,
 });
 
-const CROWBAR_GEO = new THREE.BoxGeometry(0.85, 0.08, 0.08);
-const CROWBAR_TIP_GEO = new THREE.BoxGeometry(0.18, 0.08, 0.18);
-const SMOKE_BODY_GEO = new THREE.CylinderGeometry(0.18, 0.18, 0.4, 14);
-const SMOKE_CAP_GEO = new THREE.CylinderGeometry(0.19, 0.19, 0.06, 14);
-const HALO_GEO = new THREE.RingGeometry(0.55, 0.75, 24);
+const CROWBAR_GEO = markShared(new THREE.BoxGeometry(0.85, 0.08, 0.08));
+const CROWBAR_TIP_GEO = markShared(new THREE.BoxGeometry(0.18, 0.08, 0.18));
+const SMOKE_BODY_GEO = markShared(new THREE.CylinderGeometry(0.18, 0.18, 0.4, 14));
+const SMOKE_CAP_GEO = markShared(new THREE.CylinderGeometry(0.19, 0.19, 0.06, 14));
+const HALO_GEO = markShared(new THREE.RingGeometry(0.55, 0.75, 24));
+
+// Mark module-level pickup materials as shared so the disposal
+// pass on rebuild doesn't free them out from under future spawns.
+[CROWBAR_BAR_MAT, CROWBAR_TIP_MAT, SMOKE_BODY_MAT, SMOKE_CAP_MAT, HALO_MAT]
+  .forEach((m) => markShared(m));
 
 // Shallow "look at me" halo on the ground so the player can spot
 // pickups across the yard even when the prop itself is small.

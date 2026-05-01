@@ -1,5 +1,5 @@
 import type { Obstacle, Player } from '../types/world';
-import { dist2 } from '../util/math';
+import { dist2Sq } from '../util/math';
 
 const HIDE_RANGE_SQ = 2.5 * 2.5;
 
@@ -14,7 +14,7 @@ export function updateHide(p: Player, obstacles: readonly Obstacle[]) {
   }
   for (const o of obstacles) {
     if (!o.isCover) continue;
-    if (dist2(p.x, p.z, o.x, o.z) <= HIDE_RANGE_SQ) {
+    if (dist2Sq(p.x, p.z, o.x, o.z) <= HIDE_RANGE_SQ) {
       p.isHidden = true;
       return;
     }

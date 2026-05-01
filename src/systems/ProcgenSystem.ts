@@ -27,17 +27,42 @@ const SLAB_STEP = 1.0;
 const SLAB_HALF_DEPTH = 1.2;
 const REQUIRED_GAP_W = PLAYER_RADIUS * 4;
 
-function tooClose(obstacles: Obstacle[], x: number, z: number, r: number): boolean {
+// Distance gate. The optional `seam` list lets the caller include
+// obstacles from the previous chunk so the check spans the chunk
+// boundary - otherwise placements at z close to startZ ignored
+// neighbours sitting just past z = startZ - epsilon, producing
+// impassable choke points across the seam.
+function tooClose(
+  obstacles: readonly Obstacle[],
+  x: number,
+  z: number,
+  r: number,
+  seam?: readonly Obstacle[],
+): boolean {
   for (const o of obstacles) {
     const dx = o.x - x;
     const dz = o.z - z;
     const minD = o.r + r + SPACING_BUFFER;
     if (dx * dx + dz * dz < minD * minD) return true;
   }
+  if (seam) {
+    for (const o of seam) {
+      const dx = o.x - x;
+      const dz = o.z - z;
+      const minD = o.r + r + SPACING_BUFFER;
+      if (dx * dx + dz * dz < minD * minD) return true;
+    }
+  }
   return false;
 }
 
-function placeNonCoverScatter(rng: Rng, obstacles: Obstacle[], startZ: number, count: number) {
+function placeNonCoverScatter(
+  rng: Rng,
+  obstacles: Obstacle[],
+  startZ: number,
+  count: number,
+  seam?: readonly Obstacle[],
+) {
   for (let i = 0; i < count; i++) {
     let placed = false;
     for (let attempt = 0; attempt < 14 && !placed; attempt++) {
@@ -45,7 +70,7 @@ function placeNonCoverScatter(rng: Rng, obstacles: Obstacle[], startZ: number, c
       const r = OBSTACLE_RADIUS[kind];
       const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
       const z = startZ + 1.5 + rng() * (CHUNK_LEN - 3);
-      if (tooClose(obstacles, x, z, r)) continue;
+      if (tooClose(obstacles, x, z, r, seam)) continue;
       obstacles.push({
         id: nextObstacleId++,
         kind,
@@ -61,13 +86,19 @@ function placeNonCoverScatter(rng: Rng, obstacles: Obstacle[], startZ: number, c
   }
 }
 
-function placeCoverScatter(rng: Rng, obstacles: Obstacle[], startZ: number, count: number) {
+function placeCoverScatter(
+  rng: Rng,
+  obstacles: Obstacle[],
+  startZ: number,
+  count: number,
+  seam?: readonly Obstacle[],
+) {
   for (let i = 0; i < count; i++) {
     let placed = false;
     for (let attempt = 0; attempt < 14 && !placed; attempt++) {
       const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
       const z = startZ + 1.5 + rng() * (CHUNK_LEN - 3);
-      if (tooClose(obstacles, x, z, COVER_RADIUS)) continue;
+      if (tooClose(obstacles, x, z, COVER_RADIUS, seam)) continue;
       obstacles.push({
         id: nextObstacleId++,
         kind: 'cover',
@@ -107,12 +138,16 @@ function isSolvable(obstacles: Obstacle[], startZ: number, endZ: number): boolea
   return true;
 }
 
-function generateChunkContents(rng: Rng, startZ: number): Obstacle[] {
+function generateChunkContents(
+  rng: Rng,
+  startZ: number,
+  seam?: readonly Obstacle[],
+): Obstacle[] {
   const obstacles: Obstacle[] = [];
   const obstacleCount = randInt(rng, 8, 14);
-  placeNonCoverScatter(rng, obstacles, startZ, obstacleCount);
+  placeNonCoverScatter(rng, obstacles, startZ, obstacleCount, seam);
   const coverCount = randInt(rng, 2, 5);
-  placeCoverScatter(rng, obstacles, startZ, coverCount);
+  placeCoverScatter(rng, obstacles, startZ, coverCount, seam);
   return obstacles;
 }
 
@@ -173,9 +208,14 @@ function placePickups(rng: Rng, chunkIndex: number, obstacles: Obstacle[], start
   return pickups;
 }
 
-export function generateChunk(rng: Rng, startZ: number, chunkIndex: number): Chunk {
+export function generateChunk(
+  rng: Rng,
+  startZ: number,
+  chunkIndex: number,
+  seam?: readonly Obstacle[],
+): Chunk {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const obstacles = generateChunkContents(rng, startZ);
+    const obstacles = generateChunkContents(rng, startZ, seam);
     if (isSolvable(obstacles, startZ, startZ + CHUNK_LEN)) {
       return {
         id: nextChunkId++,
@@ -235,7 +275,18 @@ export class ProcgenSystem {
   }
 
   private spawnChunk(chunkIndex: number, startZ: number, isHorizon: boolean) {
-    const chunk = generateChunk(this.rng, startZ, chunkIndex);
+    // Cross-chunk seam: feed the previous chunk's near-the-boundary
+    // obstacles into the placement check so we don't drop a new
+    // obstacle within SPACING_BUFFER of one sitting just past the
+    // previous chunk's far edge. SEAM_DEPTH is the worst-case
+    // obstacle radius (CAR / HEDGE = ~1.35) plus a buffer.
+    const SEAM_DEPTH = 3;
+    const previous = this.chunks.length > 0 ? this.chunks[this.chunks.length - 1] : null;
+    const seam =
+      previous && previous.endZ === startZ
+        ? previous.obstacles.filter((o) => o.z >= startZ - SEAM_DEPTH)
+        : undefined;
+    const chunk = generateChunk(this.rng, startZ, chunkIndex, seam);
     if (isHorizon) {
       chunk.isHorizon = true;
       // Strip pickups from horizon chunks - their meshes would tease

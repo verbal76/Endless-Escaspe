@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { markShared } from '../util/dispose';
 
 // Per-guard "!" marker that pops above the figure's head whenever
 // the guard transitions into alert / investigate / chase. Colour
@@ -16,8 +17,8 @@ const COLORS: Record<GuardStateMarkerKind, number> = {
 
 // Shared geometries: same shape across every marker, so the only
 // per-guard allocation is the materials (which we tint per state).
-const STEM_GEO = new THREE.CylinderGeometry(0.06, 0.06, 0.42, 10);
-const DOT_GEO = new THREE.SphereGeometry(0.085, 10, 8);
+const STEM_GEO = markShared(new THREE.CylinderGeometry(0.06, 0.06, 0.42, 10));
+const DOT_GEO = markShared(new THREE.SphereGeometry(0.085, 10, 8));
 
 const STEM_Y = 0.30;   // local Y of the bar's centre
 const DOT_Y = -0.02;   // local Y of the dot

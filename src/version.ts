@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #33 · run starts at spawn (not demo position) + rounder heads/props';
+export const OTA_VERSION = 'OTA #34 · QA pass: dist2Sq, stun bypass, cross-chunk spacing, timer cleanup, functional setStates, save backup, GPU disposal';

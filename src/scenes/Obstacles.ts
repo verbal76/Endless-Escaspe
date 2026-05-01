@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Obstacle, ObstacleKind } from '../types/world';
+import { markShared } from '../util/dispose';
 
 // Obstacle mesh factory + per-kind metadata. Procgen picks a kind
 // randomly, then this module produces the matching three.js mesh
@@ -10,22 +11,22 @@ import type { Obstacle, ObstacleKind } from '../types/world';
 // low walls don't) reads sensibly: anything tall enough to hide
 // behind blocks; anything below knee height doesn't.
 
-const CRATE_GEO = new THREE.BoxGeometry(1.1, 1.1, 1.1);
-const WALL_GEO = new THREE.BoxGeometry(1.6, 0.6, 0.6);
-const COVER_GEO = new THREE.BoxGeometry(2.0, 1.4, 1.0);
+const CRATE_GEO = markShared(new THREE.BoxGeometry(1.1, 1.1, 1.1));
+const WALL_GEO = markShared(new THREE.BoxGeometry(1.6, 0.6, 0.6));
+const COVER_GEO = markShared(new THREE.BoxGeometry(2.0, 1.4, 1.0));
 // Segment counts bumped from the prototype values to give curved
 // shapes a bit more polish without blowing the per-frame budget:
 // barrels go 14 -> 20 sides, car wheels 12 -> 18, tree trunks
 // 10 -> 16. Boulder + leaves moved up an icosahedron-detail tier
 // for less-faceted silhouettes (20 faces -> 80, 80 faces -> 320).
-const BARREL_GEO = new THREE.CylinderGeometry(0.42, 0.42, 1.05, 20);
-const BOULDER_GEO = new THREE.IcosahedronGeometry(0.7, 1);
-const HEDGE_GEO = new THREE.BoxGeometry(2.6, 1.1, 0.7);
-const CAR_BODY_GEO = new THREE.BoxGeometry(2.4, 0.9, 1.25);
-const CAR_CABIN_GEO = new THREE.BoxGeometry(1.6, 0.6, 1.1);
-const CAR_WHEEL_GEO = new THREE.CylinderGeometry(0.27, 0.27, 0.18, 18);
-const TRUNK_GEO = new THREE.CylinderGeometry(0.22, 0.28, 1.6, 16);
-const LEAVES_GEO = new THREE.IcosahedronGeometry(0.95, 2);
+const BARREL_GEO = markShared(new THREE.CylinderGeometry(0.42, 0.42, 1.05, 20));
+const BOULDER_GEO = markShared(new THREE.IcosahedronGeometry(0.7, 1));
+const HEDGE_GEO = markShared(new THREE.BoxGeometry(2.6, 1.1, 0.7));
+const CAR_BODY_GEO = markShared(new THREE.BoxGeometry(2.4, 0.9, 1.25));
+const CAR_CABIN_GEO = markShared(new THREE.BoxGeometry(1.6, 0.6, 1.1));
+const CAR_WHEEL_GEO = markShared(new THREE.CylinderGeometry(0.27, 0.27, 0.18, 18));
+const TRUNK_GEO = markShared(new THREE.CylinderGeometry(0.22, 0.28, 1.6, 16));
+const LEAVES_GEO = markShared(new THREE.IcosahedronGeometry(0.95, 2));
 
 const CRATE_MAT = new THREE.MeshStandardMaterial({ color: 0x8a6a3d, roughness: 0.85 });
 const WALL_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4f55, roughness: 0.95 });
@@ -68,6 +69,15 @@ const LEAVES_MAT = new THREE.MeshStandardMaterial({
   roughness: 0.9,
   flatShading: true,
 });
+
+// Mark every module-level material as shared so the scene-rebuild
+// disposal pass leaves them alone (they're reused across every
+// future obstacle spawn).
+[
+  CRATE_MAT, WALL_MAT, COVER_MAT, BARREL_MAT, BOULDER_MAT,
+  HEDGE_MAT, CAR_BODY_MAT, CAR_CABIN_MAT, CAR_WHEEL_MAT,
+  TRUNK_MAT, LEAVES_MAT,
+].forEach((m) => markShared(m));
 
 // Collision radius the procgen should treat each kind as for the
 // min-spacing rule. Long shapes (car, hedgerow) get larger radii so

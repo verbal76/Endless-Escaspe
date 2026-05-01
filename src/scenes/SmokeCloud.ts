@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { markShared } from '../util/dispose';
 
 // A smoke-bomb cloud: an expanding, fading translucent puff that
 // blocks guard vision while it's alive. The DetectionSystem treats
@@ -25,8 +26,8 @@ export type SmokeCloud = {
   rim: THREE.Mesh;
 };
 
-const CORE_GEO = new THREE.SphereGeometry(1, 14, 10);
-const RIM_GEO = new THREE.SphereGeometry(1.05, 14, 10);
+const CORE_GEO = markShared(new THREE.SphereGeometry(1, 14, 10));
+const RIM_GEO = markShared(new THREE.SphereGeometry(1.05, 14, 10));
 
 function newCoreMaterial(): THREE.MeshBasicMaterial {
   return new THREE.MeshBasicMaterial({

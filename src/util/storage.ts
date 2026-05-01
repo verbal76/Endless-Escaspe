@@ -2,6 +2,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEY_SETTINGS = 'endless-escaspe:settings:v1';
 const KEY_SAVES = 'endless-escaspe:saves:v1';
+const KEY_SAVES_BACKUP = 'endless-escaspe:saves:v1.bak';
+
+// Serial write queue. Settings and saves writes are routed through
+// `enqueueWrite(key, fn)` so a load-modify-write sequence can never
+// be split by an interleaved write to the same key. Each key gets
+// its own promise chain so unrelated keys still write in parallel.
+const writeChains: Record<string, Promise<unknown>> = {};
+function enqueueWrite<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = writeChains[key] ?? Promise.resolve();
+  const next = prev.catch(() => undefined).then(fn);
+  writeChains[key] = next.catch(() => undefined);
+  return next;
+}
 
 // User settings persisted globally. Volume + weather are not tied to
 // any specific character; the active prisoner skin and the per-stage
@@ -53,14 +66,20 @@ export async function loadSettings(): Promise<Settings> {
 // Persist a settings patch. Reads the existing file first so callers
 // only need to specify the fields they're changing - SettingsScreen
 // doesn't have to know about flags it never edits (e.g. tutorialSeen).
+//
+// Routed through enqueueWrite so simultaneous saveSettings calls
+// (e.g. tutorial dismiss writing tutorialSeen, settings panel writing
+// masterVolume) can't interleave their read-modify-write phases.
 export async function saveSettings(patch: Partial<Settings>): Promise<void> {
-  try {
-    const existing = await loadSettings();
-    const next: Settings = { ...existing, ...patch };
-    await AsyncStorage.setItem(KEY_SETTINGS, JSON.stringify(next));
-  } catch {
-    // ignore
-  }
+  return enqueueWrite(KEY_SETTINGS, async () => {
+    try {
+      const existing = await loadSettings();
+      const next: Settings = { ...existing, ...patch };
+      await AsyncStorage.setItem(KEY_SETTINGS, JSON.stringify(next));
+    } catch {
+      // ignore
+    }
+  });
 }
 
 // Per-character save file. Created when the player picks a prisoner
@@ -91,43 +110,65 @@ export function saveKeyFromName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-export async function loadSaves(): Promise<SavesMap> {
+function parseSaves(raw: string | null): SavesMap | null {
+  if (!raw) return null;
+  let parsed: unknown;
   try {
-    const raw = await AsyncStorage.getItem(KEY_SAVES);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return {};
-    const out: SavesMap = {};
-    for (const k of Object.keys(parsed)) {
-      const v = (parsed as Record<string, unknown>)[k] as Partial<Save> | null;
-      if (
-        v &&
-        typeof v.name === 'string' &&
-        (v.skin === 'beige' || v.skin === 'brown') &&
-        typeof v.stage === 'number'
-      ) {
-        const cleanedStars: Record<number, number> = {};
-        const rawStars = (v as { bestStars?: unknown }).bestStars;
-        if (rawStars && typeof rawStars === 'object') {
-          for (const sk of Object.keys(rawStars as Record<string, unknown>)) {
-            const sv = (rawStars as Record<string, unknown>)[sk];
-            const n = Number(sk);
-            if (Number.isFinite(n) && typeof sv === 'number') {
-              cleanedStars[n] = Math.max(0, Math.min(3, sv | 0));
-            }
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const out: SavesMap = {};
+  for (const k of Object.keys(parsed)) {
+    const v = (parsed as Record<string, unknown>)[k] as Partial<Save> | null;
+    if (
+      v &&
+      typeof v.name === 'string' &&
+      (v.skin === 'beige' || v.skin === 'brown') &&
+      typeof v.stage === 'number'
+    ) {
+      const cleanedStars: Record<number, number> = {};
+      const rawStars = (v as { bestStars?: unknown }).bestStars;
+      if (rawStars && typeof rawStars === 'object') {
+        for (const sk of Object.keys(rawStars as Record<string, unknown>)) {
+          const sv = (rawStars as Record<string, unknown>)[sk];
+          const n = Number(sk);
+          if (Number.isFinite(n) && typeof sv === 'number') {
+            cleanedStars[n] = Math.max(0, Math.min(3, sv | 0));
           }
         }
-        out[saveKeyFromName(v.name)] = {
-          name: v.name,
-          skin: v.skin,
-          stage: Math.max(1, v.stage | 0),
-          bestStars: cleanedStars,
-          updatedAt:
-            typeof v.updatedAt === 'number' ? v.updatedAt : Date.now(),
-        };
       }
+      out[saveKeyFromName(v.name)] = {
+        name: v.name,
+        skin: v.skin,
+        stage: Math.max(1, v.stage | 0),
+        bestStars: cleanedStars,
+        updatedAt:
+          typeof v.updatedAt === 'number' ? v.updatedAt : Date.now(),
+      };
     }
-    return out;
+  }
+  return out;
+}
+
+export async function loadSaves(): Promise<SavesMap> {
+  // Try the primary slot first, then fall back to the backup if the
+  // primary parse fails or returns nothing usable. The backup is
+  // written *before* every overwrite of the primary, so the worst
+  // case for a user is "you lose at most the last successful run's
+  // record" rather than the entire roster.
+  try {
+    const raw = await AsyncStorage.getItem(KEY_SAVES);
+    const parsed = parseSaves(raw);
+    if (parsed) return parsed;
+  } catch {
+    // fall through to backup
+  }
+  try {
+    const backup = await AsyncStorage.getItem(KEY_SAVES_BACKUP);
+    const parsed = parseSaves(backup);
+    if (parsed) return parsed;
   } catch {
     // ignore
   }
@@ -135,9 +176,23 @@ export async function loadSaves(): Promise<SavesMap> {
 }
 
 export async function writeSaves(saves: SavesMap): Promise<void> {
-  try {
-    await AsyncStorage.setItem(KEY_SAVES, JSON.stringify(saves));
-  } catch {
-    // ignore
-  }
+  return enqueueWrite(KEY_SAVES, async () => {
+    try {
+      // Snapshot the current primary into the backup slot before
+      // we overwrite. If the new write itself errors, the primary
+      // is unchanged; if the device crashes mid-write, the backup
+      // still has yesterday's roster.
+      const existing = await AsyncStorage.getItem(KEY_SAVES);
+      if (existing != null) {
+        try {
+          await AsyncStorage.setItem(KEY_SAVES_BACKUP, existing);
+        } catch {
+          // best-effort
+        }
+      }
+      await AsyncStorage.setItem(KEY_SAVES, JSON.stringify(saves));
+    } catch {
+      // ignore
+    }
+  });
 }

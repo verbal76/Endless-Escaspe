@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { BlockyFigure } from './BlockyFigure';
 import { VISION_CONE_DEG } from '../util/geometry';
+import { markShared } from '../util/dispose';
 
 // Equipment for a guard figure: a flashlight in the right hand
 // (whose visible beam represents the vision cone) and a pistol in
@@ -36,6 +37,8 @@ const BEAM_MAT = new THREE.MeshBasicMaterial({
   depthWrite: false,
   side: THREE.DoubleSide,
 });
+
+[FLASHLIGHT_MAT, PISTOL_MAT, BEAM_MAT].forEach((m) => markShared(m));
 
 export type GuardEquipment = {
   flashlight: THREE.Mesh;

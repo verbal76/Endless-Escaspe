@@ -65,6 +65,19 @@ type Store = {
   // it. The action onPress handlers are responsible for clearing
   // the config back to null when the user taps a button.
   gameModal: GameModalConfig | null;
+  // Boss-arena dev gate. Once `bossModeUnlocked` is true the
+  // settings panel surfaces the `bossModeEnabled` toggle; when
+  // that's true, the next scene rebuild produces an arena variant
+  // in place of the standard linear segment. Both flags mirror
+  // the persisted Settings record so toggling them survives a
+  // relaunch.
+  bossModeUnlocked: boolean;
+  bossModeEnabled: boolean;
+  // Live countdown for the active boss-arena segment, in seconds.
+  // The Game.tsx update loop writes this each frame (coalesced to
+  // whole seconds); 0 outside an arena. The HUD's BossTimer
+  // subscribes to render the on-screen clock.
+  bossTimeRemaining: number;
   // Master audio volume 0..1, applied on top of the siren's
   // detection-driven volume curve. Persisted via AsyncStorage.
   masterVolume: number;
@@ -116,6 +129,9 @@ type Store = {
   setWeatherEnabled: (b: boolean) => void;
   setShowTutorial: (b: boolean) => void;
   setGameModal: (m: GameModalConfig | null) => void;
+  setBossModeUnlocked: (b: boolean) => void;
+  setBossModeEnabled: (b: boolean) => void;
+  setBossTimeRemaining: (v: number) => void;
   setMasterVolume: (v: number) => void;
   setPlayerSkin: (s: PlayerSkin) => void;
   setPlayerName: (n: string) => void;
@@ -148,6 +164,9 @@ export const useStore = create<Store>((set) => ({
   weatherEnabled: true,
   showTutorial: false,
   gameModal: null,
+  bossModeUnlocked: false,
+  bossModeEnabled: false,
+  bossTimeRemaining: 0,
   masterVolume: 0.7,
   playerSkin: 'beige',
   playerName: '',
@@ -194,6 +213,12 @@ export const useStore = create<Store>((set) => ({
   setShowTutorial: (b) =>
     set((st) => (st.showTutorial === b ? st : { showTutorial: b })),
   setGameModal: (m) => set({ gameModal: m }),
+  setBossModeUnlocked: (b) =>
+    set((st) => (st.bossModeUnlocked === b ? st : { bossModeUnlocked: b })),
+  setBossModeEnabled: (b) =>
+    set((st) => (st.bossModeEnabled === b ? st : { bossModeEnabled: b })),
+  setBossTimeRemaining: (v) =>
+    set((st) => (st.bossTimeRemaining === v ? st : { bossTimeRemaining: v })),
   setMasterVolume: (v) =>
     set((st) => {
       const clamped = Math.max(0, Math.min(1, v));

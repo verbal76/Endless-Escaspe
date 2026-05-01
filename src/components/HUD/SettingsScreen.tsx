@@ -66,6 +66,12 @@ function Toggle({
   );
 }
 
+// Unlock code that flips bossModeUnlocked. The settings panel
+// surfaces a 4-digit cycler the player can dial to this value to
+// reveal the test toggle. Kept inline rather than env-config so a
+// QA build doesn't need a rebuild to use it.
+const BOSS_UNLOCK_CODE = '5058';
+
 export function SettingsScreen() {
   const [open, setOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -76,12 +82,37 @@ export function SettingsScreen() {
   const setMasterVolume = useStore((s) => s.setMasterVolume);
   const weatherEnabled = useStore((s) => s.weatherEnabled);
   const setWeatherEnabled = useStore((s) => s.setWeatherEnabled);
+  const bossModeUnlocked = useStore((s) => s.bossModeUnlocked);
+  const setBossModeUnlocked = useStore((s) => s.setBossModeUnlocked);
+  const bossModeEnabled = useStore((s) => s.bossModeEnabled);
+  const setBossModeEnabled = useStore((s) => s.setBossModeEnabled);
+
+  // Per-digit code state. Each tap of a slot increments that digit
+  // (0..9 wrap-around). Once the joined string equals
+  // BOSS_UNLOCK_CODE we flip the unlock flag and the cycler is
+  // replaced by the boss-mode toggle below.
+  const [codeDigits, setCodeDigits] = useState<number[]>([0, 0, 0, 0]);
+  const cycleDigit = (idx: number) => {
+    setCodeDigits((prev) => {
+      const next = prev.slice();
+      next[idx] = (next[idx] + 1) % 10;
+      return next;
+    });
+  };
+  const tryUnlock = () => {
+    if (codeDigits.join('') === BOSS_UNLOCK_CODE) {
+      setBossModeUnlocked(true);
+      saveSettings({ bossModeUnlocked: true });
+    }
+  };
 
   const persistSettings = () => {
     const st = useStore.getState();
     saveSettings({
       masterVolume: st.masterVolume,
       weatherEnabled: st.weatherEnabled,
+      bossModeUnlocked: st.bossModeUnlocked,
+      bossModeEnabled: st.bossModeEnabled,
     });
   };
 
@@ -193,6 +224,48 @@ export function SettingsScreen() {
                   </View>
                   <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />
                 </View>
+
+                <Text style={styles.sectionHeading}>Test</Text>
+                {bossModeUnlocked ? (
+                  <View style={styles.settingRow}>
+                    <View style={styles.toggleLabelWrap}>
+                      <Text style={styles.settingLabel}>Boss arena</Text>
+                      <Text style={styles.subLabel}>
+                        {bossModeEnabled
+                          ? 'Next stage = arena (survive timer)'
+                          : 'Off (linear segments)'}
+                      </Text>
+                    </View>
+                    <Toggle
+                      value={bossModeEnabled}
+                      onChange={setBossModeEnabled}
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.codeRow}>
+                    {codeDigits.map((d, i) => (
+                      <Pressable
+                        key={i}
+                        onPress={() => cycleDigit(i)}
+                        style={({ pressed }) => [
+                          styles.codeDigit,
+                          pressed && styles.codeDigitPressed,
+                        ]}
+                      >
+                        <Text style={styles.codeDigitText}>{d}</Text>
+                      </Pressable>
+                    ))}
+                    <Pressable
+                      onPress={tryUnlock}
+                      style={({ pressed }) => [
+                        styles.codeUnlockBtn,
+                        pressed && styles.btnPressed,
+                      ]}
+                    >
+                      <Text style={styles.codeUnlockLabel}>UNLOCK</Text>
+                    </Pressable>
+                  </View>
+                )}
 
                 <Text style={styles.sectionHeading}>About</Text>
                 <View style={styles.aboutBlock}>
@@ -335,6 +408,50 @@ const styles = StyleSheet.create({
   toggleLabelWrap: {
     flexShrink: 1,
     marginRight: 12,
+  },
+  // Boss-arena code entry: a row of four cycler buttons + UNLOCK.
+  // Each cycler taps through 0..9 wrap-around; UNLOCK checks the
+  // joined string against BOSS_UNLOCK_CODE.
+  codeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  codeDigit: {
+    width: 32,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
+    backgroundColor: 'rgba(40, 46, 58, 0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  codeDigitPressed: {
+    opacity: 0.7,
+  },
+  codeDigitText: {
+    color: '#ffd14a',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 1,
+  },
+  codeUnlockBtn: {
+    marginLeft: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 210, 90, 0.55)',
+    backgroundColor: 'rgba(255, 210, 90, 0.20)',
+  },
+  codeUnlockLabel: {
+    color: '#ffd14a',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.5,
   },
   // About: stack label above value vertically so long OTA strings
   // wrap without overlapping the label.

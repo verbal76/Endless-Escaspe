@@ -28,12 +28,23 @@ export type Settings = {
   // so we don't replay it every cold launch. The "How to play"
   // entry on the start screen still re-shows it on demand.
   tutorialSeen: boolean;
+  // Test / dev gate. Flipped to true once the player enters the
+  // unlock code in the settings panel; reveals the boss-arena
+  // toggle below.
+  bossModeUnlocked: boolean;
+  // When true, the next scene rebuild produces a boss-arena
+  // variant (smaller enclosed arena, survive-the-timer goal) in
+  // place of the standard linear segment. Persisted so the toggle
+  // survives a relaunch.
+  bossModeEnabled: boolean;
 };
 
 const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.7,
   weatherEnabled: true,
   tutorialSeen: false,
+  bossModeUnlocked: false,
+  bossModeEnabled: false,
 };
 
 export async function loadSettings(): Promise<Settings> {
@@ -55,6 +66,14 @@ export async function loadSettings(): Promise<Settings> {
           typeof parsed.tutorialSeen === 'boolean'
             ? parsed.tutorialSeen
             : DEFAULT_SETTINGS.tutorialSeen,
+        bossModeUnlocked:
+          typeof parsed.bossModeUnlocked === 'boolean'
+            ? parsed.bossModeUnlocked
+            : DEFAULT_SETTINGS.bossModeUnlocked,
+        bossModeEnabled:
+          typeof parsed.bossModeEnabled === 'boolean'
+            ? parsed.bossModeEnabled
+            : DEFAULT_SETTINGS.bossModeEnabled,
       };
     }
   } catch {

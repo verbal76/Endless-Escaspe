@@ -23,6 +23,8 @@ export default function App() {
     loadSettings().then((s) => {
       useStore.getState().setMasterVolume(s.masterVolume);
       useStore.getState().setWeatherEnabled(s.weatherEnabled);
+      useStore.getState().setBossModeUnlocked(s.bossModeUnlocked);
+      useStore.getState().setBossModeEnabled(s.bossModeEnabled);
     });
     loadSaves().then((m) => useStore.getState().setSaves(m));
   }, []);

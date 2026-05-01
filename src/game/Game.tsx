@@ -50,6 +50,7 @@ import {
   CHUNK_LEN,
   CHUNKS_AHEAD,
   PLAYER_RADIUS,
+  PLAY_HALF_W,
 } from '../util/geometry';
 import { circleHit } from '../util/collision';
 import {
@@ -104,6 +105,7 @@ import { PickupBag } from '../components/HUD/PickupBag';
 import { EventFlash } from '../components/HUD/EventFlash';
 import { Tutorial } from '../components/HUD/Tutorial';
 import { GameModal } from '../components/HUD/GameModal';
+import { BossTimer } from '../components/HUD/BossTimer';
 import { disposeSubtree } from '../util/dispose';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
@@ -275,9 +277,8 @@ export function Game() {
       weatherEnabledAtInit: boolean;
       weather: Weather;
       groundMat: THREE.MeshStandardMaterial;
-      // Win-line material exposed so the render loop can pulse its
-      // opacity (subtle "land here" glow rather than a flat plane).
-      winLineMat: THREE.MeshBasicMaterial;
+      // Win-line material is null for arena variants (no win line).
+      winLineMat: THREE.MeshBasicMaterial | null;
       baseVisionRange: number;
       razorWire: boolean;
       guardEntries: GuardEntry[];
@@ -289,6 +290,12 @@ export function Game() {
       threatArrows: ThreatArrow[];
       bossStage: boolean;
       bossGuardId: number;
+      // True when this is a boss-arena variant: smaller enclosed
+      // playfield, no win line, win condition is "survive the
+      // timer". `bossSurviveSeconds` is the target; the update
+      // loop counts down from it once gameplay is active.
+      isBossArena: boolean;
+      bossSurviveSeconds: number;
     };
 
     // ---- Per-segment scene builder ----------------------------------
@@ -300,11 +307,22 @@ export function Game() {
       const root = new THREE.Group();
       r.worldRoot.add(root);
 
+      // Boss-arena variant: shorter playfield, no win line, no
+      // horizon chunks, a back wall, extra guards, and a survive-
+      // the-timer win check (handled in the update loop). The
+      // toggle is a settings flag the player flips behind a
+      // dev-unlock code.
+      const isBossArena = useStore.getState().bossModeEnabled;
+      const ARENA_CHUNKS = 2; // ~48 m enclosed arena
+      const ARENA_SURVIVE_SECONDS = 60;
+
       const segLengthMul = segmentLengthMulFor(stage);
-      const chunkCount = Math.max(
-        CHUNKS_AHEAD,
-        Math.round(CHUNKS_AHEAD * segLengthMul),
-      );
+      const chunkCount = isBossArena
+        ? ARENA_CHUNKS
+        : Math.max(
+            CHUNKS_AHEAD,
+            Math.round(CHUNKS_AHEAD * segLengthMul),
+          );
       const segLen = chunkCount * CHUNK_LEN;
 
       const ground = createGround();
@@ -334,16 +352,43 @@ export function Game() {
         groundMat.color.setHex(0xc8d6dc);
       }
 
-      const winLine = createWinLine(segLen);
-      const winLineMat = winLine.material as THREE.MeshBasicMaterial;
-      // The win line is built opaque; flip the material to transparent
-      // so the render loop's opacity pulse actually shows up.
-      winLineMat.transparent = true;
-      root.add(winLine);
+      // Win line is omitted on arena stages (no end zone to cross -
+      // the goal is to survive the timer instead). The render loop
+      // skips its opacity pulse when winLineMat is null.
+      let winLineMat: THREE.MeshBasicMaterial | null = null;
+      if (!isBossArena) {
+        const winLine = createWinLine(segLen);
+        winLineMat = winLine.material as THREE.MeshBasicMaterial;
+        // The win line is built opaque; flip the material to transparent
+        // so the render loop's opacity pulse actually shows up.
+        winLineMat.transparent = true;
+        root.add(winLine);
+      }
+
+      // Arena back wall: a wireframe panel running across the far
+      // end of the playfield so the eye sees an enclosed yard.
+      // Player z is already clamped to segmentEndZ in PlayerController
+      // so this is purely visual.
+      if (isBossArena) {
+        const wallW = PLAY_HALF_W * 2 + 1.5;
+        const wallH = 2.6;
+        const wallGeo = new THREE.BoxGeometry(wallW, wallH, 0.05, 12, 5, 1);
+        const wallMat = new THREE.MeshBasicMaterial({
+          color: 0x111114,
+          wireframe: true,
+          transparent: true,
+          opacity: 0.7,
+        });
+        const wall = new THREE.Mesh(wallGeo, wallMat);
+        wall.position.set(0, wallH / 2, segLen);
+        root.add(wall);
+      }
 
       const baseVisionRange = visionRangeFor(stage);
 
-      const guardCount = guardCountFor(stage);
+      // Arena bumps the guard count by 2 so the smaller playfield
+      // doesn't feel sparse. Capped further up by createGuardConfigs.
+      const guardCount = guardCountFor(stage) + (isBossArena ? 2 : 0);
       const guardEntries: GuardEntry[] = createGuardConfigs(guardCount, segLen).map(
         (cfg) => {
           const guard = createGuard(cfg);
@@ -363,8 +408,9 @@ export function Game() {
       // visually continues toward the mountains - a chained "next
       // segment" view that sells the endless-escape framing without
       // affecting collision, detection, or the win check (those all
-      // ignore isHorizon chunks).
-      const HORIZON_CHUNKS = 6;
+      // ignore isHorizon chunks). Arenas skip them entirely so the
+      // back wall reads as a real wall instead of teasing more yard.
+      const HORIZON_CHUNKS = isBossArena ? 0 : 6;
       const procgen = new ProcgenSystem(seed, root, chunkCount, HORIZON_CHUNKS);
       procgen.init();
 
@@ -434,6 +480,8 @@ export function Game() {
         threatArrows,
         bossStage,
         bossGuardId,
+        isBossArena,
+        bossSurviveSeconds: ARENA_SURVIVE_SECONDS,
       };
     };
 
@@ -451,6 +499,9 @@ export function Game() {
     // keep the bright stage-1 sky.
     applyStageLighting(r.renderer, r.scene, initialStage);
     setBackdropSnow(backdrop, scene.weatherKind === 'snow');
+    useStore
+      .getState()
+      .setBossTimeRemaining(scene.isBossArena ? scene.bossSurviveSeconds : 0);
 
     // Detach the active scene's world subtree from the renderer and
     // dispose its procgen chunks. Mount-once entities (player, smoke
@@ -476,6 +527,12 @@ export function Game() {
       scene = buildScene(stage, seed);
       applyStageLighting(r.renderer, r.scene, stage);
       setBackdropSnow(backdrop, scene.weatherKind === 'snow');
+      // Re-arm the boss-arena countdown to match the fresh scene's
+      // target. Non-arena scenes report 0 so the HUD knows to hide.
+      bossTimeRemaining = scene.isBossArena ? scene.bossSurviveSeconds : 0;
+      useStore
+        .getState()
+        .setBossTimeRemaining(scene.isBossArena ? scene.bossSurviveSeconds : 0);
     };
 
     // Per-run stats accumulators.
@@ -492,6 +549,11 @@ export function Game() {
     // wherever the splash-demo left them and back to spawn.
     let lastRunState = useStore.getState().runState;
     let animTime = 0;
+    // Boss-arena countdown. Initialised from the scene's
+    // bossSurviveSeconds at build / rebuild; the update loop
+    // decrements it during gameplay and fires handleWin at zero.
+    // Stays at 0 on linear segments.
+    let bossTimeRemaining = scene.isBossArena ? scene.bossSurviveSeconds : 0;
     const tmpVec = new THREE.Vector3();
 
     // Camera-shake state. handleCatch sets shakeRemaining to
@@ -1164,7 +1226,21 @@ export function Game() {
 
       scene.procgen.update(player.z);
 
-      if (player.z >= scene.segmentEndZ) {
+      if (scene.isBossArena) {
+        // Survive-the-timer win: count down each frame, fire
+        // handleWin when the clock hits zero. Mirror the integer
+        // remaining seconds onto the store so the BossTimer HUD
+        // can render without re-mounting on every frame.
+        bossTimeRemaining = Math.max(0, bossTimeRemaining - effDt);
+        const displaySec = Math.ceil(bossTimeRemaining);
+        if (st.bossTimeRemaining !== displaySec) {
+          st.setBossTimeRemaining(displaySec);
+        }
+        if (bossTimeRemaining <= 0) {
+          handleWin();
+          return;
+        }
+      } else if (player.z >= scene.segmentEndZ) {
         handleWin();
         return;
       }
@@ -1203,7 +1279,11 @@ export function Game() {
 
       // Win-line glow: pulse the opacity so the green plane reads as
       // an active goal rather than a static stripe. Runs at ~0.5 Hz.
-      scene.winLineMat.opacity = 0.65 + 0.35 * Math.sin(animTime * 3.2);
+      // Skipped on arena segments where winLineMat is null (no win
+      // line - the timer is the goal).
+      if (scene.winLineMat) {
+        scene.winLineMat.opacity = 0.65 + 0.35 * Math.sin(animTime * 3.2);
+      }
 
       // Player figure pose + position.
       const pSpeed = Math.hypot(player.vx, player.vz);
@@ -1301,6 +1381,7 @@ export function Game() {
       <Hearts />
       <StaminaBar />
       <AlarmBar />
+      <BossTimer />
       <EventFlash />
       <Banner />
       <StartScreen />

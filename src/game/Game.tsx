@@ -673,6 +673,19 @@ export function Game() {
       shakeRemaining = SHAKE_DURATION;
       if (remaining <= 0) {
         haptics.caught();
+        // Final death: mirror handleWin's stats build so the death
+        // banner can render the same post-run summary the win banner
+        // uses. livesUsed equals the stage's starting hearts because
+        // every life was spent to reach this point. Stars=0 so the
+        // banner's death branch can render skulls instead.
+        const finalStats: RunStats = {
+          timesSeen: timesSeenAcc,
+          timeDetected: timeDetectedAcc,
+          runDurationS: runTime,
+          livesUsed: startingHeartsFor(st.stage),
+          stars: 0,
+        };
+        st.setLastStats(finalStats);
         st.setRunState('caught');
         return;
       }

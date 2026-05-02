@@ -15,14 +15,8 @@ const STAR_FILLED = '★';
 const STAR_EMPTY = '☆';
 const SKULL = '💀';
 
-// How long the death panel hangs on screen before auto-returning to
-// the start screen. Cleared/win panel has no auto-dismiss because
-// the player typically wants to dwell on the stat board.
-const DEATH_HOLD_MS = 2500;
-
 export function Banner() {
   const runState = useStore((s) => s.runState);
-  const startRun = useStore((s) => s.startRun);
   const resetForSegment = useStore((s) => s.resetForSegment);
   const segmentSeed = useStore((s) => s.segmentSeed);
   const stats = useStore((s) => s.lastStats);
@@ -75,17 +69,6 @@ export function Banner() {
     ],
   }));
 
-  // Auto-return to the start screen after a short hold on the death
-  // panel. Cleared state has no auto-return - the player chooses
-  // when to advance via NEXT SEGMENT.
-  useEffect(() => {
-    if (runState !== 'caught') return;
-    const tm = setTimeout(() => {
-      setRunState('idle');
-    }, DEATH_HOLD_MS);
-    return () => clearTimeout(tm);
-  }, [runState, setRunState]);
-
   // Idle (initial app launch) is handled by StartScreen now; the
   // Banner only renders the post-run states ('caught' / 'cleared').
   if (runState === 'playing' || runState === 'idle') return null;
@@ -98,6 +81,12 @@ export function Banner() {
       : 'ARRESTED';
 
   const stars = isCleared && stats ? Math.max(1, Math.min(3, stats.stars)) : 0;
+  // Death panel skull count = lives used in this run, capped at 3 so
+  // the row never overflows the card. Falls back to 3 if stats are
+  // missing for any reason (older saves, mid-rebuild edge case).
+  const skullCount = !isCleared
+    ? Math.max(1, Math.min(3, stats?.livesUsed ?? 3))
+    : 0;
 
   return (
     <View pointerEvents="box-none" style={styles.wrap}>
@@ -113,50 +102,63 @@ export function Banner() {
         </Text>
 
         {isCleared ? (
-          <>
-            <Text style={styles.stars}>
-              {STAR_FILLED.repeat(stars) + STAR_EMPTY.repeat(3 - stars)}
-            </Text>
-            <Text style={styles.bestLine}>
-              Stage {justClearedStage} best:{' '}
-              {bestForJustClearedStage > 0
-                ? STAR_FILLED.repeat(bestForJustClearedStage) +
-                  STAR_EMPTY.repeat(3 - bestForJustClearedStage)
-                : '—'}
-            </Text>
-            {stats && (
-              <View style={styles.statBlock}>
-                <StatRow index={0} label="Times spotted" value={String(stats.timesSeen)} />
-                <StatRow
-                  index={1}
-                  label="Time detected"
-                  value={`${stats.timeDetected.toFixed(1)}s`}
-                />
-                <StatRow
-                  index={2}
-                  label="Run time"
-                  value={`${stats.runDurationS.toFixed(1)}s`}
-                />
-                <StatRow index={3} label="Lives used" value={String(stats.livesUsed)} />
-              </View>
-            )}
-
-            <Pressable
-              style={({ pressed }) => [styles.btn, pressed && styles.btnDown]}
-              onPress={() => resetForSegment(segmentSeed + 1)}
-            >
-              <Text style={styles.btnLabel}>NEXT SEGMENT</Text>
-            </Pressable>
-          </>
+          <Text style={styles.stars}>
+            {STAR_FILLED.repeat(stars) + STAR_EMPTY.repeat(3 - stars)}
+          </Text>
         ) : (
-          // Death panel: 3 skulls in place of the win-stars row, no
-          // button, hands off to the auto-return timer above.
-          <>
-            <Text style={styles.skulls}>
-              {SKULL + ' ' + SKULL + ' ' + SKULL}
-            </Text>
-            <Text style={styles.deathHint}>Returning to the menu…</Text>
-          </>
+          // Death panel mirrors the win panel: same card width, same
+          // entry animation, same stats block - just skulls in place
+          // of stars and a red-themed border + button.
+          <Text style={styles.skulls}>
+            {SKULL.repeat(skullCount)}
+          </Text>
+        )}
+
+        {isCleared && (
+          <Text style={styles.bestLine}>
+            Stage {justClearedStage} best:{' '}
+            {bestForJustClearedStage > 0
+              ? STAR_FILLED.repeat(bestForJustClearedStage) +
+                STAR_EMPTY.repeat(3 - bestForJustClearedStage)
+              : '—'}
+          </Text>
+        )}
+
+        {stats && (
+          <View style={styles.statBlock}>
+            <StatRow index={0} label="Times spotted" value={String(stats.timesSeen)} />
+            <StatRow
+              index={1}
+              label="Time detected"
+              value={`${stats.timeDetected.toFixed(1)}s`}
+            />
+            <StatRow
+              index={2}
+              label="Run time"
+              value={`${stats.runDurationS.toFixed(1)}s`}
+            />
+            <StatRow index={3} label="Lives used" value={String(stats.livesUsed)} />
+          </View>
+        )}
+
+        {isCleared ? (
+          <Pressable
+            style={({ pressed }) => [styles.btn, pressed && styles.btnDown]}
+            onPress={() => resetForSegment(segmentSeed + 1)}
+          >
+            <Text style={styles.btnLabel}>NEXT SEGMENT</Text>
+          </Pressable>
+        ) : (
+          // Caught panel: send the player back to the start screen
+          // when they're ready. No auto-dismiss - the user wanted to
+          // dwell on the death summary the same way they dwell on a
+          // win.
+          <Pressable
+            style={({ pressed }) => [styles.btn, styles.btnDeath, pressed && styles.btnDeathDown]}
+            onPress={() => setRunState('idle')}
+          >
+            <Text style={[styles.btnLabel, styles.btnLabelDeath]}>MAIN MENU</Text>
+          </Pressable>
         )}
       </Animated.View>
     </View>
@@ -229,17 +231,10 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   skulls: {
-    color: '#ffffff',
-    fontSize: 36,
-    letterSpacing: 4,
-    marginBottom: 8,
-  },
-  deathHint: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 1.5,
-    marginBottom: 4,
+    color: '#ff6868',
+    fontSize: 40,
+    letterSpacing: 6,
+    marginBottom: 14,
   },
   bestLine: {
     color: 'rgba(255, 255, 255, 0.55)',
@@ -281,5 +276,16 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 1,
     fontSize: 16,
+  },
+  // Death panel button: red theme to match the cardCaught border so
+  // the call-to-action reads as a "leave" rather than an "advance".
+  btnDeath: {
+    backgroundColor: 'rgba(255, 80, 80, 0.85)',
+  },
+  btnDeathDown: {
+    backgroundColor: 'rgba(220, 50, 50, 0.95)',
+  },
+  btnLabelDeath: {
+    color: '#1b1b1b',
   },
 });

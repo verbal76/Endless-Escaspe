@@ -96,19 +96,23 @@ const styles = StyleSheet.create({
   row: {
     position: 'absolute',
     flexDirection: 'row',
-    gap: 4,
+    gap: 6,
+    // Explicit visible overflow so the rightmost slot's glyph + text
+    // shadow never clip against the row's intrinsic width on devices
+    // that default the row to a hidden overflow.
+    overflow: 'visible',
   },
   slot: {
-    width: 32,
-    height: 32,
+    // Slot widened from 32 -> 40 so the glyph + 3px text-shadow halo
+    // fits comfortably even when the font's heart glyph reports an
+    // advance width >28px (seen on some Android system fonts).
+    width: 40,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'visible',
   },
   heart: {
-    // Stretched to fill the slot so the glyph centres horizontally
-    // even when its rendered width exceeds the slot's intrinsic
-    // width (some font metrics push the heart 1-2px past 28px and
-    // were clipping the right edge before we used textAlign).
     fontSize: 28,
     textShadowColor: 'rgba(0,0,0,0.6)',
     textShadowRadius: 3,

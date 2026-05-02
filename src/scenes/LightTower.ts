@@ -32,19 +32,65 @@ const HEAD_MAT = new THREE.MeshStandardMaterial({
   emissiveIntensity: 0.6,
   roughness: 0.3,
 });
-const BEAM_MAT = new THREE.MeshBasicMaterial({
-  color: 0xfff0a0,
+// Beam: shader material that fades to alpha=0 at the cone's wide end
+// (the ground side after the pole-tilt rotation) so the beam smoothly
+// merges with the lit footprint disk instead of terminating in a hard
+// ring of glow above the floor. UV.y on a ConeGeometry runs 0 at the
+// base (wide end) to 1 at the apex (light source), so smoothstepping
+// up from 0 fades the ground end out. A second smoothstep on the
+// upper third softens the near-apex edge so the bulb-end isn't a
+// hard slab either.
+const BEAM_MAT = new THREE.ShaderMaterial({
   transparent: true,
-  opacity: 0.18,
   side: THREE.DoubleSide,
   depthWrite: false,
+  uniforms: {
+    uColor: { value: new THREE.Color(0xfff0a0) },
+    uMaxOpacity: { value: 0.28 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor;
+    uniform float uMaxOpacity;
+    varying vec2 vUv;
+    void main() {
+      float bottomFade = smoothstep(0.0, 0.45, vUv.y);
+      float topFade = 1.0 - smoothstep(0.92, 1.0, vUv.y);
+      gl_FragColor = vec4(uColor, bottomFade * topFade * uMaxOpacity);
+    }
+  `,
 });
-const FOOT_MAT = new THREE.MeshBasicMaterial({
-  color: 0xfff0a0,
+// Footprint disk: gentle radial fade so the bright "lit zone" reads
+// as a soft pool of light rather than a stamped-on circle.
+const FOOT_MAT = new THREE.ShaderMaterial({
   transparent: true,
-  opacity: 0.22,
   side: THREE.DoubleSide,
   depthWrite: false,
+  uniforms: {
+    uColor: { value: new THREE.Color(0xfff0a0) },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform vec3 uColor;
+    varying vec2 vUv;
+    void main() {
+      float d = distance(vUv, vec2(0.5));
+      float fade = 1.0 - smoothstep(0.30, 0.50, d);
+      gl_FragColor = vec4(uColor, fade * 0.35);
+    }
+  `,
 });
 const ARC_MAT = new THREE.MeshBasicMaterial({
   color: 0xfff0a0,

@@ -42,26 +42,30 @@ const STAGES: StageLighting[] = [
     sunColor: 0xff9a70,
     sunIntensity: 0.55,
   },
-  // Stage 4 - early night
+  // Stage 4 - early night. Bumped a touch so obstacle colour is still
+  // legible against the ground; the prior 0.35/0.30 crushed boulders
+  // and dark-blue cover into near-silhouettes.
   {
     sky: 0x2a3148,
     fog: 0x2a3148,
-    ambientColor: 0x4a5a78,
-    ambientIntensity: 0.35,
-    sunColor: 0x90a8d0,
-    sunIntensity: 0.30,
+    ambientColor: 0x5a6c8e,
+    ambientIntensity: 0.55,
+    sunColor: 0xa0b8de,
+    sunIntensity: 0.45,
   },
   // Stage 5+ - deep night. Brighter than a strict simulation would
   // call for: silhouettes have to remain readable enough that the
-  // player can plan around obstacles. Earlier values (0.25 / 0.20)
-  // crushed the field to near-pitch-black on this stage.
+  // player can plan around obstacles. Bumped again from 0.55/0.45
+  // because cover/crate/boulder colours were still bottoming out
+  // on the device. Combined with the +emissive bump on every obstacle
+  // material this is the brightest night will get.
   {
-    sky: 0x141d33,
-    fog: 0x141d33,
-    ambientColor: 0x4c5c80,
-    ambientIntensity: 0.55,
-    sunColor: 0x9aaee0,
-    sunIntensity: 0.45,
+    sky: 0x1c2640,
+    fog: 0x1c2640,
+    ambientColor: 0x6478a0,
+    ambientIntensity: 0.75,
+    sunColor: 0xb4c4e8,
+    sunIntensity: 0.60,
   },
 ];
 

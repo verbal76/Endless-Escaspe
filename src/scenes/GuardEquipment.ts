@@ -30,12 +30,34 @@ const PISTOL_MAT = new THREE.MeshStandardMaterial({
   roughness: 0.3,
   metalness: 0.6,
 });
-const BEAM_MAT = new THREE.MeshBasicMaterial({
-  color: 0xffe385,
+const BEAM_MAT = new THREE.ShaderMaterial({
   transparent: true,
-  opacity: 0.18,
-  depthWrite: false,
   side: THREE.DoubleSide,
+  depthWrite: false,
+  uniforms: {
+    uColor: { value: new THREE.Color(0xffe385) },
+    uMaxOpacity: { value: 0.22 },
+  },
+  vertexShader: `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  // ConeGeometry: vUv.y = 1 at the apex (flashlight tip, brightest)
+  // and vUv.y = 0 at the base (far end of the throw, where the beam
+  // should fade to invisible rather than stop at a hard rim).
+  fragmentShader: `
+    uniform vec3 uColor;
+    uniform float uMaxOpacity;
+    varying vec2 vUv;
+    void main() {
+      float farFade = smoothstep(0.0, 0.55, vUv.y);
+      float nearFade = 1.0 - smoothstep(0.96, 1.0, vUv.y);
+      gl_FragColor = vec4(uColor, farFade * nearFade * uMaxOpacity);
+    }
+  `,
 });
 
 [FLASHLIGHT_MAT, PISTOL_MAT, BEAM_MAT].forEach((m) => markShared(m));

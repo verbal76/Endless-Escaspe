@@ -542,6 +542,11 @@ export function Game() {
     let prevAnyDetected = false;
     let lastSegmentSeed = useStore.getState().segmentSeed;
     let lastStage = useStore.getState().stage;
+    // Track the boss-arena toggle so flipping it forces a rebuild
+    // even when neither stage nor seed changed - otherwise the
+    // user could turn the toggle off and still be stuck in the
+    // arena scene that was built while it was on.
+    let lastBossModeEnabled = useStore.getState().bossModeEnabled;
     let lastRestartCounter = useStore.getState().restartCounter;
     // Tracks the last observed runState so we can detect a fresh
     // transition into 'playing' (e.g. tapping START on a new save
@@ -789,9 +794,14 @@ export function Game() {
       // length, razor wire) catch up to the new stage. Restart re-
       // uses the existing scene by design - same seed, same world,
       // just back to spawn.
-      if (st.segmentSeed !== lastSegmentSeed || st.stage !== lastStage) {
+      if (
+        st.segmentSeed !== lastSegmentSeed ||
+        st.stage !== lastStage ||
+        st.bossModeEnabled !== lastBossModeEnabled
+      ) {
         lastSegmentSeed = st.segmentSeed;
         lastStage = st.stage;
+        lastBossModeEnabled = st.bossModeEnabled;
         rebuildScene(st.stage, st.segmentSeed);
         resetSegment();
       }

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -73,7 +73,13 @@ function StanceButton({
 
 export function ActionButtons() {
   const runState = useStore((s) => s.runState);
-  const [stance, setStance] = useState<Stance>('walk');
+  // Subscribe to store.stance instead of holding a local copy so the
+  // button highlight tracks the actual player stance - including the
+  // 'walk' reset that resetSegment() applies on every level start
+  // (otherwise a CROUCH highlight from the prior segment would persist
+  // visually even though the player is back in walk).
+  const stance = useStore((s) => s.stance);
+  const setStance = useStore((s) => s.setStance);
 
   const pickStance = (s: Stance) => {
     input.stance = s;

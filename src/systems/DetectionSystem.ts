@@ -51,6 +51,12 @@ export function updateDetection(
   tuning: DetectionTuning,
   noiseScale: number = 1,
   smokeRegions: readonly SmokeRegion[] = [],
+  // Frame-quantised external feed (floodlight rate * dt + dog smell +
+  // searchlight one-shot). Routed through here so decay is suppressed
+  // whenever the player is being externally fed - otherwise at early
+  // stages the floodlight rate (~0.12/s) is dwarfed by the decay rate
+  // (~0.15/s) and standing in a beam never moves the meter.
+  externalAdd: number = 0,
 ): number {
   // Stunned guards stop contributing to detection while frozen by a
   // crowbar hit. Their meter still decays naturally so the player
@@ -117,7 +123,7 @@ export function updateDetection(
   // Caller supplies the per-stage rate scale (smaller = slower
   // build) so the same code path serves stage 1 (gentle ramp) and
   // late stages (snappier alarm).
-  const add = (visionAdd + noiseAdd) * tuning.rateScale;
+  const add = (visionAdd + noiseAdd) * tuning.rateScale + externalAdd;
   if (add > 0) {
     return clamp(prev + add, 0, 1);
   }

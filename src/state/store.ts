@@ -47,6 +47,11 @@ type Store = {
   segmentSeed: number;
   stage: number;
   stance: Stance;
+  // Run-toggle mirror. RunButton writes here on tap (alongside the
+  // input.run flag the game loop reads); the HUD highlight subscribes
+  // here so the button styling matches the actual run state, including
+  // when resetSegment() clears it on level start.
+  running: boolean;
   paused: boolean;
   restartCounter: number;
   // Per-segment weather. Picked at segment init by Game.tsx via
@@ -120,6 +125,7 @@ type Store = {
   setStamina: (v: number) => void;
   setAlarmLevel: (v: number) => void;
   setStance: (s: Stance) => void;
+  setRunning: (b: boolean) => void;
   setStage: (n: number) => void;
   setPaused: (b: boolean) => void;
   setLastStats: (s: RunStats | null) => void;
@@ -158,6 +164,7 @@ export const useStore = create<Store>((set) => ({
   segmentSeed: 1,
   stage: 1,
   stance: 'walk',
+  running: false,
   paused: false,
   restartCounter: 0,
   weather: 'clear',
@@ -201,6 +208,8 @@ export const useStore = create<Store>((set) => ({
     }),
   setStance: (s) =>
     set((st) => (st.stance === s ? st : { stance: s })),
+  setRunning: (b) =>
+    set((st) => (st.running === b ? st : { running: b })),
   setStage: (n) =>
     set((st) => (st.stage === n ? st : { stage: n })),
   setPaused: (b) => set((st) => (st.paused === b ? st : { paused: b })),
@@ -307,6 +316,7 @@ export const useStore = create<Store>((set) => ({
       alarmLevel: 0,
       segmentSeed: seed,
       stance: 'walk',
+      running: false,
       paused: false,
       lastStats: null,
       lastDeathCause: null,
@@ -320,6 +330,7 @@ export const useStore = create<Store>((set) => ({
       stamina: 1,
       alarmLevel: 0,
       stance: 'walk',
+      running: false,
       paused: false,
       lastStats: null,
       lastDeathCause: null,

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { StyleSheet, Text } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -20,15 +20,18 @@ import { useStore } from '../../state/store';
 // active Pan and would drop the toggle when the player is moving.
 export function RunButton() {
   const runState = useStore((s) => s.runState);
-  const [running, setRunning] = useState(false);
+  // Mirror via store so the highlight tracks the canonical run flag
+  // (resetSegment() flips it back to false on every level start; a
+  // local useState would keep the prior segment's highlight stuck on
+  // even though the player is no longer running).
+  const running = useStore((s) => s.running);
+  const setRunning = useStore((s) => s.setRunning);
   const pressed = useSharedValue(0);
 
   const toggle = () => {
-    setRunning((prev) => {
-      const next = !prev;
-      input.run = next;
-      return next;
-    });
+    const next = !useStore.getState().running;
+    input.run = next;
+    setRunning(next);
   };
 
   const tap = useMemo(

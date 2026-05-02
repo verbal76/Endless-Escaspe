@@ -24,7 +24,7 @@ import {
 } from '../scenes/PrisonYard1';
 import { useStore, type RunStats } from '../state/store';
 import type { Guard } from '../types/world';
-import { input } from '../systems/InputSystem';
+import { input, resetInput } from '../systems/InputSystem';
 import { animatePickup } from '../scenes/Pickup';
 import {
   createSmokeCloud,
@@ -125,7 +125,7 @@ import {
 import { attachGuardEquipment, poseGuardArms, type GuardEquipment } from '../scenes/GuardEquipment';
 import {
   createGuardStateMarker,
-  triggerGuardStateMarker,
+  setGuardStateMarker,
   updateGuardStateMarker,
   type GuardStateMarker,
 } from '../scenes/GuardStateMarker';
@@ -594,8 +594,12 @@ export function Game() {
       player.isHidden = false;
       player.stance = 'walk';
       player.stamina = 1;
+      player.isRunning = false;
+      player.vx = 0;
+      player.vz = 0;
       const st = useStore.getState();
       st.setStance('walk');
+      st.setRunning(false);
       st.setStamina(1);
       st.setAlarmLevel(0);
       for (const g of scene.guards) {
@@ -647,8 +651,13 @@ export function Game() {
       // at the soft-restart spawn point would read as the wrong
       // player's footsteps.
       disposeFootprintField(footprintField);
-      input.useCrowbar = false;
-      input.useSmokeBomb = false;
+      // Zero every input axis / toggle so the player doesn't carry
+      // forward residual state from the splash demo (which scripts
+      // axisY=0.62, stance=crouch) or from the prior segment (RUN
+      // toggle held, look-yaw mid-rotation). Without this the player
+      // sometimes spawns into a new segment already drifting forward
+      // before the joystick is even touched.
+      resetInput();
     };
 
     // `cause` distinguishes the catch path so the death banner can
@@ -724,8 +733,11 @@ export function Game() {
       // at the soft-restart spawn point would read as the wrong
       // player's footsteps.
       disposeFootprintField(footprintField);
-      input.useCrowbar = false;
-      input.useSmokeBomb = false;
+      // Soft restart after a hit: zero input so the player respawns
+      // stationary even if the joystick was held mid-flight.
+      resetInput();
+      st.setStance('walk');
+      st.setRunning(false);
     };
 
     const handleWin = () => {
@@ -1114,17 +1126,6 @@ export function Game() {
           g.id === scene.bossGuardId
             ? effectiveVisionRangeWithAlarm * 1.5
             : effectiveVisionRangeWithAlarm;
-        const visionAndNoise = updateDetection(
-          g,
-          player,
-          scene.procgen.obstacles(),
-          prev,
-          effDt,
-          guardRange,
-          tuning,
-          weatherNoise,
-          smokeRegions,
-        );
         // Stun freeze: a crowbar-stunned guard's detection meter only
         // decays. Don't pile on dog smell, floodlight rate, or the
         // searchlight bump - otherwise the meter pegs while the guard
@@ -1140,10 +1141,24 @@ export function Game() {
             }
           }
         }
+        // Route external feeds through updateDetection so they suppress
+        // the decay branch. Critical for early-stage spotlights: the
+        // floodlight rate (0.125/s) is below the decay rate (0.15/s)
+        // so adding the bump *after* the function would never move
+        // the meter. With the bump inside, decay is skipped on any
+        // frame where lit / dog / searchlight is feeding the guard.
         const externalBumps = stunned ? 0 : litAdd + dogSmell + searchlightBump;
-        const next = Math.min(
-          1,
-          visionAndNoise + externalBumps,
+        const next = updateDetection(
+          g,
+          player,
+          scene.procgen.obstacles(),
+          prev,
+          effDt,
+          guardRange,
+          tuning,
+          weatherNoise,
+          smokeRegions,
+          externalBumps,
         );
         nextDetection[g.id] = next;
         if (next > maxDetection) maxDetection = next;
@@ -1194,19 +1209,40 @@ export function Game() {
         });
       }
 
-      // Guard state-change pops: fire a "!" marker above any guard
-      // whose state just transitioned into alert / investigate /
-      // chase. Tracking the previous state per entry means the pop
-      // only triggers on the leading edge - the marker's own
-      // animation handles the hold + fade.
+      // Sustained "!" markers above each guard. Priority order:
+      //   stunned  -> red    (knocked out by crowbar)
+      //   smoke    -> orange (guard inside an active smoke cloud)
+      //   chase    -> red    (active pursuit)
+      //   search   -> yellow (alert + investigate states share the
+      //                       same "looking for the player" intent)
+      // The marker is hidden when none of these apply; setGuardState-
+      // Marker is a no-op when the kind hasn't changed so the bob /
+      // pulse phase stays continuous frame-to-frame.
       for (const entry of scene.guardEntries) {
-        const next = entry.guard.state;
-        if (next !== entry.lastState) {
-          if (next === 'alert') triggerGuardStateMarker(entry.marker, 'alert');
-          else if (next === 'investigate') triggerGuardStateMarker(entry.marker, 'investigate');
-          else if (next === 'chase') triggerGuardStateMarker(entry.marker, 'chase');
-          entry.lastState = next;
+        const g = entry.guard;
+        let kind: 'search' | 'chase' | 'stunned' | 'smoke' | null = null;
+        if (g.stunTimer > 0) kind = 'stunned';
+        else {
+          // Smoke check uses the same regions list the DetectionSystem
+          // consumes - any guard within an active cloud's radius gets
+          // the orange marker.
+          let inSmoke = false;
+          for (const sr of smokeRegions) {
+            const dx = g.x - sr.x;
+            const dz = g.z - sr.z;
+            if (dx * dx + dz * dz <= sr.radius * sr.radius) {
+              inSmoke = true;
+              break;
+            }
+          }
+          if (inSmoke) kind = 'smoke';
+          else if (g.state === 'chase') kind = 'chase';
+          else if (g.state === 'alert' || g.state === 'investigate') {
+            kind = 'search';
+          }
         }
+        setGuardStateMarker(entry.marker, kind);
+        entry.lastState = g.state;
       }
 
       // Detached dogs that aren't paired with any handler still

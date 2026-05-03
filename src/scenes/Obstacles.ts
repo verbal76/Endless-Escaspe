@@ -28,80 +28,81 @@ const CAR_WHEEL_GEO = markShared(new THREE.CylinderGeometry(0.27, 0.27, 0.18, 18
 const TRUNK_GEO = markShared(new THREE.CylinderGeometry(0.22, 0.28, 1.6, 16));
 const LEAVES_GEO = markShared(new THREE.IcosahedronGeometry(0.95, 2));
 
-// Each obstacle material carries a low emissive matching its diffuse
-// hue so the silhouette stays legible under deep-night ambient. The
-// emissive intensity (~0.18) is below the level where it reads as a
-// glow in daylight stages, but lifts the dark surfaces enough to
-// distinguish a crate from a low wall under a moonlit ambient.
+// Each obstacle material carries an emissive matching its diffuse
+// hue so the silhouette stays legible under deep-night ambient.
+// Intensity is high enough (~0.40) to lift surfaces out of pitch-
+// black at night while still reading as an unlit material in full
+// daylight (the daylight ambient + sun overwhelms the ~30% emissive
+// contribution).
 const CRATE_MAT = new THREE.MeshStandardMaterial({
   color: 0x8a6a3d,
-  emissive: 0x4a3a20,
-  emissiveIntensity: 0.18,
+  emissive: 0x6e553e,
+  emissiveIntensity: 0.40,
   roughness: 0.85,
 });
 const WALL_MAT = new THREE.MeshStandardMaterial({
   color: 0x6a7080,
-  emissive: 0x363b46,
-  emissiveIntensity: 0.20,
+  emissive: 0x52596a,
+  emissiveIntensity: 0.42,
   roughness: 0.95,
 });
 const COVER_MAT = new THREE.MeshStandardMaterial({
   color: 0x4a5e7a,
-  emissive: 0x26334a,
-  emissiveIntensity: 0.22,
+  emissive: 0x3c4d68,
+  emissiveIntensity: 0.45,
   roughness: 0.9,
 });
 const BARREL_MAT = new THREE.MeshStandardMaterial({
   color: 0x8a4634,
-  emissive: 0x46221a,
-  emissiveIntensity: 0.20,
+  emissive: 0x6c3528,
+  emissiveIntensity: 0.42,
   roughness: 0.7,
   metalness: 0.2,
 });
 const BOULDER_MAT = new THREE.MeshStandardMaterial({
   color: 0x8a8e94,
-  emissive: 0x484c52,
-  emissiveIntensity: 0.18,
+  emissive: 0x6c707a,
+  emissiveIntensity: 0.40,
   roughness: 1,
   flatShading: true,
 });
 const HEDGE_MAT = new THREE.MeshStandardMaterial({
   color: 0x4a7a40,
-  emissive: 0x223b1c,
-  emissiveIntensity: 0.20,
+  emissive: 0x386030,
+  emissiveIntensity: 0.42,
   roughness: 0.9,
   flatShading: true,
 });
 const CAR_BODY_MAT = new THREE.MeshStandardMaterial({
   color: 0x6286a4,
-  emissive: 0x2c4054,
-  emissiveIntensity: 0.20,
+  emissive: 0x466782,
+  emissiveIntensity: 0.42,
   roughness: 0.55,
   metalness: 0.4,
 });
 const CAR_CABIN_MAT = new THREE.MeshStandardMaterial({
   color: 0x4a607a,
-  emissive: 0x202c40,
-  emissiveIntensity: 0.20,
+  emissive: 0x394a60,
+  emissiveIntensity: 0.42,
   roughness: 0.5,
   metalness: 0.4,
 });
 const CAR_WHEEL_MAT = new THREE.MeshStandardMaterial({
   color: 0x2a2a30,
-  emissive: 0x141418,
-  emissiveIntensity: 0.18,
+  emissive: 0x202024,
+  emissiveIntensity: 0.40,
   roughness: 0.95,
 });
 const TRUNK_MAT = new THREE.MeshStandardMaterial({
   color: 0x70502c,
-  emissive: 0x322210,
-  emissiveIntensity: 0.18,
+  emissive: 0x563d22,
+  emissiveIntensity: 0.40,
   roughness: 0.95,
 });
 const LEAVES_MAT = new THREE.MeshStandardMaterial({
   color: 0x528840,
-  emissive: 0x244020,
-  emissiveIntensity: 0.20,
+  emissive: 0x3e6c30,
+  emissiveIntensity: 0.42,
   roughness: 0.9,
   flatShading: true,
 });

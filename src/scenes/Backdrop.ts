@@ -46,9 +46,20 @@ const MOUNTAIN_SNOW_MAT = new THREE.MeshStandardMaterial({
   roughness: 1,
   flatShading: true,
 });
-const TRUNK_MAT = new THREE.MeshStandardMaterial({ color: 0x3e2918, roughness: 1 });
+// Backdrop trunk + leaves carry a low emissive matching their hue so
+// distant trees don't crush to pure black under the deep-night
+// palette. Same trick as the obstacle materials: invisible in
+// daylight, lifts the silhouettes by ~30% under moonlit ambient.
+const TRUNK_MAT = new THREE.MeshStandardMaterial({
+  color: 0x5a3c20,
+  emissive: 0x3a2614,
+  emissiveIntensity: 0.40,
+  roughness: 1,
+});
 const LEAVES_MAT = new THREE.MeshStandardMaterial({
-  color: 0x2f5a26,
+  color: 0x3f7036,
+  emissive: 0x2a4f22,
+  emissiveIntensity: 0.42,
   roughness: 1,
   flatShading: true,
 });

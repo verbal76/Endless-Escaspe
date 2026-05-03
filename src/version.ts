@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #40 · death panel mirrors win panel; hearts no longer clip';
+export const OTA_VERSION = 'OTA #41 · brighter obstacle + tree glow under deep night';

@@ -7,6 +7,7 @@ import {
   VISION_CONE_DEG,
 } from '../util/geometry';
 import { createModelFigure, type ModelFigure } from './ModelFigure';
+import { getGrassTexture } from '../util/textures';
 
 // Player + guard figures are now Kenney-modelled OBJs (see
 // ModelFigure.ts) instead of the procedural blocks. Public API names
@@ -152,10 +153,40 @@ export function createGround(): THREE.Mesh {
   // same plane the player walks on rather than floating above an
   // empty fog field.
   const geo = new THREE.PlaneGeometry(800, 1800);
-  const mat = new THREE.MeshStandardMaterial({
-    color: 0x3f6a2c,
-    roughness: 1,
-  });
+  // Try to texture the ground with the Kenney grass tile. The PNG is
+  // 64x64 so we set a per-square-metre repeat (one tile every 4 m)
+  // and clone the texture before tweaking wrap/repeat so this
+  // ground's settings don't leak into other materials sharing the
+  // same loaded texture instance. Falls back to a flat green when
+  // the asset preload didn't resolve.
+  const grassTex = getGrassTexture();
+  let mat: THREE.MeshStandardMaterial;
+  if (grassTex) {
+    const tex = grassTex.clone();
+    tex.needsUpdate = true;
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    // 800m wide / 4m per tile = 200 reps in X; 1800m / 4m = 450 in Y.
+    // Linear filter would blend into a muddy green; nearest preserves
+    // the per-blade detail of the source tile.
+    tex.repeat.set(200, 450);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 1,
+      // Slight emissive lift so the ground stays legible on the
+      // deep-night palette, same trick the obstacle materials use.
+      emissive: 0xffffff,
+      emissiveMap: tex,
+      emissiveIntensity: 0.18,
+    });
+  } else {
+    mat = new THREE.MeshStandardMaterial({
+      color: 0x3f6a2c,
+      roughness: 1,
+    });
+  }
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
   // Centred so the plane spans roughly z = -500 .. +1300, which

@@ -81,19 +81,19 @@ export async function preloadAllTextures(): Promise<void> {
       'vehicle-colormap',
       require('../../assets/vehicles/colormap.png'),
     ),
-    // Prop textures: only the subset we have so far. The remaining
-    // MTL-referenced textures (concrete / signs / roof / dirt /
-    // grass / metal_wall) fall back to solid colours in KitProps
-    // until the matching PNGs land in assets/props/.
+    // Prop textures - the 64x64 Kenney detail PNGs that the prop
+    // OBJ MTLs reference. Tiled / repeated by the kit's UV layout.
     loadAssetTexture('prop-wall', require('../../assets/props/wall.png')),
     loadAssetTexture('prop-treeB', require('../../assets/props/treeB.png')),
-    // Stand-in for metal_wall.png until the real Kenney atlas lands;
-    // the garage-door panel reads as galvanised metal and matches the
-    // dumpster trim well enough.
-    loadAssetTexture(
-      'prop-metal',
-      require('../../assets/props/wall_garage.png'),
-    ),
+    loadAssetTexture('prop-metal_wall', require('../../assets/props/metal_wall.png')),
+    loadAssetTexture('prop-concrete', require('../../assets/props/concrete.png')),
+    loadAssetTexture('prop-signs', require('../../assets/props/signs.png')),
+    loadAssetTexture('prop-roof', require('../../assets/props/roof.png')),
+    loadAssetTexture('prop-grass', require('../../assets/props/grass.png')),
+    // Stand-in for dirt.png (not yet in the asset batch). The Kenney
+    // rock texture reads as a gritty brown surface that's a passable
+    // substitute for the dumpster's dirt-pile interior.
+    loadAssetTexture('prop-dirt', require('../../assets/props/rock.png')),
   ]);
 }
 
@@ -109,9 +109,9 @@ export function getVehicleColormap(): THREE.Texture | null {
 
 // Prop texture lookup keyed by the MTL `newmtl` name from each
 // Kenney prop OBJ. Returns null if the texture wasn't preloaded
-// (caller falls back to a solid colour). The mapping captures
-// what we have today; the four missing names (concrete, signs,
-// roof, dirt, grass) return null and stay solid-coloured.
+// (caller falls back to a solid colour). All eight MTL names are
+// covered now; dirt is filled by the rock texture as a stand-in
+// because the Kenney atlas didn't ship a dirt PNG.
 export function getPropTexture(materialName: string): THREE.Texture | null {
   switch (materialName) {
     case 'wall':
@@ -119,8 +119,24 @@ export function getPropTexture(materialName: string): THREE.Texture | null {
     case 'treeB':
       return CACHE['prop-treeB'] ?? null;
     case 'wall_metal':
-      return CACHE['prop-metal'] ?? null;
+      return CACHE['prop-metal_wall'] ?? null;
+    case 'concrete':
+      return CACHE['prop-concrete'] ?? null;
+    case 'signs':
+      return CACHE['prop-signs'] ?? null;
+    case 'roof':
+      return CACHE['prop-roof'] ?? null;
+    case 'dirt':
+      return CACHE['prop-dirt'] ?? null;
     default:
       return null;
   }
+}
+
+// Ground tile texture: separate from per-MTL prop textures so the
+// caller can apply a custom repeat factor (the ground tile spans the
+// whole playfield and needs to repeat many times to read as a field
+// of grass rather than one stretched tile).
+export function getGrassTexture(): THREE.Texture | null {
+  return CACHE['prop-grass'] ?? null;
 }

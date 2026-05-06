@@ -131,8 +131,12 @@ export function createVehicle(kind: VehicleKind): THREE.Group {
     // Without the clone, every mesh of the same kind would share an
     // attribute buffer and any future per-instance tweak (vertex
     // colours from a future texture pass, e.g.) would leak to the
-    // others.
+    // others. BufferGeometry.clone deep-copies userData, so the clone
+    // inherits userData.shared from the template - explicitly unset
+    // it here so the scene-rebuild dispose pass actually frees the
+    // per-instance buffer.
     const geo = part.geometry.clone();
+    geo.userData.shared = false;
     const mesh = new THREE.Mesh(geo, materialFor(part.name, mats));
     group.add(mesh);
   }

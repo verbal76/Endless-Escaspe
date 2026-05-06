@@ -112,12 +112,11 @@ function rollObstacleHitbox(kind: ObstacleKind, rng: Rng): ObstacleHitbox {
     return { r: Math.hypot(halfW, halfL) + 0.05, halfW, halfL, rotY };
   }
   if (kind === 'crate') {
-    // dumpsterClosed scaled 2x: 1.2 m wide x 0.9 m deep. Asymmetric
-    // enough that a circle leaves a 0.14 m phantom on the short
-    // axis. Full 2*PI rotation is supported by the OBB collision
-    // path so we keep the visual variety.
-    const halfW = 0.6;
-    const halfL = 0.46;
+    // dumpsterClosed scaled 4x: 2.4 m wide x 1.84 m deep. OBB so
+    // the player can walk up to the actual face; full 2*PI rotation
+    // is supported by the OBB collision path.
+    const halfW = 1.2;
+    const halfL = 0.92;
     const rotY = rng() * Math.PI * 2;
     return { r: Math.hypot(halfW, halfL) + 0.05, halfW, halfL, rotY };
   }

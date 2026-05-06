@@ -144,9 +144,15 @@ function generateChunkContents(
   seam?: readonly Obstacle[],
 ): Obstacle[] {
   const obstacles: Obstacle[] = [];
-  const obstacleCount = randInt(rng, 8, 14);
+  // Roughly half the prior density (was 8-14 + 2-5 cover). The
+  // Kenney prop kit's larger footprints + the bumped car radius
+  // were turning the play area into a maze; cutting per-chunk
+  // counts lets the player thread between props without constant
+  // back-and-forth while keeping enough cover to actually hide
+  // behind.
+  const obstacleCount = randInt(rng, 4, 8);
   placeNonCoverScatter(rng, obstacles, startZ, obstacleCount, seam);
-  const coverCount = randInt(rng, 2, 5);
+  const coverCount = randInt(rng, 1, 3);
   placeCoverScatter(rng, obstacles, startZ, coverCount, seam);
   return obstacles;
 }

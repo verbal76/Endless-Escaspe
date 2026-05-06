@@ -1,8 +1,10 @@
 import * as THREE from 'three';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import type { Guard, Player } from '../types/world';
 import { dist2Sq } from '../util/math';
 import { PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
+import { dog_OBJ } from '../../assets/animals/dogObj';
 
 // Patrol dog. Behaviour summary:
 // - Trails its handler guard while the guard is patrolling.
@@ -14,26 +16,54 @@ import { markShared } from '../util/dispose';
 // - On reaching the player it costs a heart (caller handles the
 //   collision check via dogHits()).
 //
-// Visually a tan-and-black blocky quadruped. Cheap to render
-// (six primitives) so spawning two at once is a non-issue.
+// Visualised by a Kenney low-poly OBJ (assets/animals/dog.obj).
+// All UVs in that mesh cluster on a single column of the kit's
+// shared colormap.png, so the dog was designed as one uniform
+// colour - we apply a solid orange-red material that matches the
+// preview thumbnail.
 
-const BODY_W = 0.32;
-const BODY_H = 0.30;
-const BODY_L = 0.62;
-const HEAD_R = 0.18;
-const LEG_W = 0.10;
-const LEG_H = 0.32;
+// Native Kenney rig is ~0.67 m long; scale up a touch so the dog
+// reads at a similar footprint to the prior procedural one (~0.62 m).
+const DOG_SCALE = 1.4;
 
-const BODY_MAT = new THREE.MeshStandardMaterial({
-  color: 0x6b4828,
-  roughness: 0.85,
+// Solid orange-red material matching the kit preview. The dog OBJ's
+// UVs all sample u=0.719, v~0.1 of the kit's colormap.png (which
+// we don't have for the animal pack), so a single MeshStandardMaterial
+// stands in correctly without requiring the texture.
+const DOG_MAT = new THREE.MeshStandardMaterial({
+  color: 0xc26a3a,
+  emissive: 0xc26a3a,
+  emissiveIntensity: 0.20,
+  roughness: 0.7,
 });
-const HEAD_MAT = new THREE.MeshStandardMaterial({
-  color: 0x4a3018,
-  roughness: 0.85,
-});
+markShared(DOG_MAT);
 
-[BODY_MAT, HEAD_MAT].forEach((m) => markShared(m));
+// Cache: parse the OBJ once, then clone the geometry list per spawn.
+type ParsedDog = {
+  parts: Array<{ geometry: THREE.BufferGeometry }>;
+};
+let DOG_TEMPLATE: ParsedDog | null = null;
+function getDogTemplate(): ParsedDog {
+  if (DOG_TEMPLATE) return DOG_TEMPLATE;
+  const root = new OBJLoader().parse(dog_OBJ);
+  const parts: ParsedDog['parts'] = [];
+  root.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const geo = mesh.geometry as THREE.BufferGeometry;
+    // The Kenney rig has +X = forward (head at +X, tail at -X). The
+    // game's facing convention has +Z = forward (setDogTransform
+    // rotates the group around Y by d.facing assuming a +Z-forward
+    // model). Rotate the template geometry once at parse time so
+    // every spawned dog inherits the corrected orientation - cheaper
+    // than wrapping every group with a baseline-rotation child.
+    geo.rotateY(-Math.PI / 2);
+    markShared(geo);
+    parts.push({ geometry: geo });
+  });
+  DOG_TEMPLATE = { parts };
+  return DOG_TEMPLATE;
+}
 
 export const SMELL_RADIUS = 9;
 const SMELL_RADIUS_SQ = SMELL_RADIUS * SMELL_RADIUS;
@@ -62,35 +92,17 @@ export type Dog = {
 
 export function createDog(id: number, handlerGuardId: number, x: number, z: number): Dog {
   const group = new THREE.Group();
-
-  const body = new THREE.Mesh(
-    new THREE.BoxGeometry(BODY_W, BODY_H, BODY_L),
-    BODY_MAT,
-  );
-  body.position.set(0, BODY_H / 2 + LEG_H, 0);
-  group.add(body);
-
-  const head = new THREE.Mesh(
-    new THREE.SphereGeometry(HEAD_R, 14, 10),
-    HEAD_MAT,
-  );
-  head.position.set(0, BODY_H + LEG_H, BODY_L / 2 + HEAD_R * 0.4);
-  group.add(head);
-
-  // Four legs arranged in a rectangle under the body.
-  const legGeo = new THREE.BoxGeometry(LEG_W, LEG_H, LEG_W);
-  const legPositions: [number, number][] = [
-    [-BODY_W / 2 + LEG_W / 2, -BODY_L / 2 + LEG_W],
-    [+BODY_W / 2 - LEG_W / 2, -BODY_L / 2 + LEG_W],
-    [-BODY_W / 2 + LEG_W / 2, +BODY_L / 2 - LEG_W],
-    [+BODY_W / 2 - LEG_W / 2, +BODY_L / 2 - LEG_W],
-  ];
-  for (const [lx, lz] of legPositions) {
-    const leg = new THREE.Mesh(legGeo, BODY_MAT);
-    leg.position.set(lx, LEG_H / 2, lz);
-    group.add(leg);
+  const template = getDogTemplate();
+  for (const part of template.parts) {
+    // Per-instance geometry clone so the dispose pass on scene
+    // rebuild can free this dog's GPU buffers without touching the
+    // shared template. Unmark shared on the clone so the walker
+    // doesn't skip it.
+    const geo = part.geometry.clone();
+    geo.userData.shared = false;
+    group.add(new THREE.Mesh(geo, DOG_MAT));
   }
-
+  group.scale.setScalar(DOG_SCALE);
   group.position.set(x, 0, z);
   return { id, handlerGuardId, x, z, facing: 0, state: 'leash', group };
 }

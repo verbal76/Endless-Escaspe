@@ -25,7 +25,11 @@ const SPAWN_X_MAX = PLAY_HALF_W - 0.7;
 const SPACING_BUFFER = 0.6; // extra metres on top of (a.r + b.r)
 const SLAB_STEP = 1.0;
 const SLAB_HALF_DEPTH = 1.2;
-const REQUIRED_GAP_W = PLAYER_RADIUS * 4;
+// Player needs at minimum a 2.5 m wide corridor at every Z slab.
+// (Bumped from PLAYER_RADIUS*4 = 1.6 m: with the larger Kenney prop
+// footprints + 2.7 m car radius two cars at opposite walls used to
+// leave a barely-1.6 m gap that read visually as a wall.)
+const REQUIRED_GAP_W = 2.5;
 
 // Distance gate. The optional `seam` list lets the caller include
 // obstacles from the previous chunk so the check spans the chunk
@@ -117,12 +121,22 @@ function placeCoverScatter(
 // Sweep across Z slabs; require at least one X-window of width
 // REQUIRED_GAP_W that is free of non-cover obstacles. Cover blocks
 // are pass-through, so they don't count as obstructions.
+//
+// Slab inclusion uses each obstacle's actual Z extent (z +/- r) vs
+// the slab's half-depth. The earlier center-only check missed big
+// props like the 2.7 m radius cars: a car at z=10 spans z=7.3..12.7
+// but the old test only included it in slabs within +/- 1.2 m of
+// z=10, so two cars at offset Z could collude to block the corridor
+// without a single slab seeing both.
 function isSolvable(obstacles: Obstacle[], startZ: number, endZ: number): boolean {
   for (let z = startZ; z <= endZ; z += SLAB_STEP) {
     const blockers: Array<{ lo: number; hi: number }> = [];
     for (const o of obstacles) {
       if (o.isCover) continue;
-      if (o.z < z - SLAB_HALF_DEPTH || o.z > z + SLAB_HALF_DEPTH) continue;
+      // Skip the obstacle only if its full Z footprint sits entirely
+      // outside this slab's depth band.
+      if (o.z + o.r < z - SLAB_HALF_DEPTH) continue;
+      if (o.z - o.r > z + SLAB_HALF_DEPTH) continue;
       blockers.push({ lo: o.x - o.r - PLAYER_RADIUS, hi: o.x + o.r + PLAYER_RADIUS });
     }
     blockers.sort((a, b) => a.lo - b.lo);

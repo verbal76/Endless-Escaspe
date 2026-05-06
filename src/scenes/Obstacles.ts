@@ -29,9 +29,14 @@ const SCALE_COVER = new THREE.Vector3(3.03, 4.24, 4.17);
 const SCALE_BOULDER = new THREE.Vector3(2.0, 2.0, 2.0);
 // dumpsterOpen native 0.6 x 0.55 x 0.48 -> 0.84 x 1.05 x 0.84
 const SCALE_BARREL = new THREE.Vector3(1.40, 1.91, 1.75);
-// pine native 0.7 x 0.4 x 0.7 -> 1.05 x 2.0 x 1.05 (anisotropic to
-// stretch the short Kenney pine into a full game-scale tree)
-const SCALE_TREE = new THREE.Vector3(1.50, 5.00, 1.50);
+// Pine model uses crossed alpha-cut billboard planes; the visible
+// silhouette only fills the central column of the 64x64 texture, so
+// the scale has to overshoot the desired visible footprint to make
+// the tree read as more than a sprig. (3.0, 6.5, 3.0) lands the
+// silhouette at roughly 1.5 m wide x 2.6 m tall after the alpha-cut
+// crops it - a chunky bush-tree rather than the prior arborvitae-
+// scale shrub the (1.5, 5.0, 1.5) tuning produced.
+const SCALE_TREE = new THREE.Vector3(3.00, 6.50, 3.00);
 // block native 0.5 x 0.5 x 0.5 -> 2.6 x 1.1 x 0.7 (long concrete wall)
 const SCALE_HEDGEROW = new THREE.Vector3(5.20, 2.20, 1.40);
 
@@ -53,7 +58,9 @@ export const OBSTACLE_RADIUS: Record<ObstacleKind, number> = {
   // where every car had a 4 m invisible bubble making the police
   // feel uncrossable.
   car: 2.7,
-  tree: 0.4,
+  // Bumped from 0.4 to 0.7 to match the larger tree scale (visible
+  // alpha-cut silhouette is ~1.5 m wide after SCALE_TREE bump).
+  tree: 0.7,
   hedgerow: 1.35,
 };
 

@@ -47,23 +47,6 @@ const MOUNTAIN_SNOW_MAT = new THREE.MeshStandardMaterial({
   roughness: 1,
   flatShading: true,
 });
-// Backdrop trunk + leaves carry a low emissive matching their hue so
-// distant trees don't crush to pure black under the deep-night
-// palette. Same trick as the obstacle materials: invisible in
-// daylight, lifts the silhouettes by ~30% under moonlit ambient.
-const TRUNK_MAT = new THREE.MeshStandardMaterial({
-  color: 0x5a3c20,
-  emissive: 0x3a2614,
-  emissiveIntensity: 0.40,
-  roughness: 1,
-});
-const LEAVES_MAT = new THREE.MeshStandardMaterial({
-  color: 0x3f7036,
-  emissive: 0x2a4f22,
-  emissiveIntensity: 0.42,
-  roughness: 1,
-  flatShading: true,
-});
 const CLOUD_MAT = new THREE.MeshBasicMaterial({
   color: 0xf2f2f7,
   transparent: true,
@@ -83,24 +66,9 @@ const BIRD_MAT = new THREE.MeshBasicMaterial({
 // icosahedron-detail tier so the distant tree silhouettes don't
 // read as obvious low-poly cylinders + spiky icosahedra against
 // the sky.
-const TRUNK_GEO = new THREE.CylinderGeometry(0.32, 0.45, 2.6, 14);
-const LEAVES_GEO = new THREE.IcosahedronGeometry(1.6, 2);
-// Half-sphere shell that drapes the top of the leaves on snow days.
-// Built once and shared across all backdrop trees.
-const TREE_SNOW_GEO = new THREE.SphereGeometry(
-  1.45,
-  16,
-  8,
-  0,
-  Math.PI * 2,
-  0,
-  Math.PI / 2,
-);
-const TREE_SNOW_MAT = new THREE.MeshStandardMaterial({
-  color: 0xeef3fb,
-  roughness: 1,
-  flatShading: true,
-});
+// Backdrop trees are Kenney pine OBJ models now (see buildTreeMesh
+// below); the procedural trunk/leaves geos and snow-cap dome are
+// retired with the swap.
 
 function buildMountainMesh(rng: () => number): THREE.Group {
   // Triangle peak made from a custom BufferGeometry: base at y=0
@@ -172,26 +140,22 @@ function buildMountainMesh(rng: () => number): THREE.Group {
   return group;
 }
 
-function buildTreeMesh(rng: () => number): { group: THREE.Group; snowCap: THREE.Mesh } {
+function buildTreeMesh(rng: () => number): { group: THREE.Group } {
   // Backdrop trees outside the fence reuse the same Kenney pine model
   // the procgen spawns inside the play area, with the same 50/50
-  // treeA / treeB texture mix - the only thing different about the
-  // distant ones is a larger uniform scale so they read as full-size
-  // distant trees against the mountain row instead of pocket bushes.
+  // treeA / treeB texture mix. No snow cap - the old sphere-drape
+  // cap was sized for the prior icosahedron leaves and doesn't fit
+  // the conical pine silhouette (it just covered the tree as a big
+  // white dome). Falling snow + the ground tint communicate the
+  // weather adequately on their own.
   const variant = rng() < 0.5 ? 'treeB' : 'treeA';
-  // Native 0.7 x 0.4 x 0.7 -> 4.2 x 2.4 x 4.2 (same proportions as
-  // procgen trees, just bigger so they stand up next to the 70-160 m
-  // mountain row without looking like saplings).
-  const treeScale = new THREE.Vector3(2.6, 6.0, 2.6);
+  // Distant trees scale the same way procgen trees do (alpha-cut
+  // crops the silhouette to the central column of the texture so we
+  // overshoot in X/Z) plus extra height so the row reads against
+  // the 70-160 m mountain range without looking like saplings.
+  const treeScale = new THREE.Vector3(4.0, 8.0, 4.0);
   const group = createKitProp('treePine', treeScale, variant);
-  // Snow cap on backdrop trees was a sphere drape that doesn't fit
-  // the new conical pine silhouette. Hidden invisible mesh kept here
-  // (visibility toggled by setBackdropSnow) so the existing snow-
-  // toggle path keeps compiling - it just renders nothing.
-  const snowCap = new THREE.Mesh(TREE_SNOW_GEO, TREE_SNOW_MAT);
-  snowCap.visible = false;
-  group.add(snowCap);
-  return { group, snowCap };
+  return { group };
 }
 
 function buildCloudMesh(rng: () => number): THREE.Mesh {
@@ -248,10 +212,6 @@ export type Backdrop = {
   group: THREE.Group;
   birds: Bird[];
   clouds: Cloud[];
-  // Snow caps on every backdrop tree. Toggled visible / hidden per
-  // segment by setBackdropSnow so the distant trees match the
-  // current weather.
-  treeSnowCaps: THREE.Mesh[];
   bounds: { left: number; right: number };
 };
 
@@ -274,17 +234,15 @@ export function createBackdrop(): Backdrop {
   }
 
   // Tree line on each side of the playfield.
-  const treeSnowCaps: THREE.Mesh[] = [];
   for (let i = 0; i < TREE_COUNT_PER_SIDE; i++) {
     const z = (i / (TREE_COUNT_PER_SIDE - 1)) * (segLen + 40) + (rng() - 0.5) * 4;
     for (const sign of [-1, 1]) {
       const xJitter = rng() * (TREE_LINE_FAR - TREE_LINE_OUTER);
       const built = buildTreeMesh(rng);
       built.group.position.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
-      built.group.scale.setScalar(0.85 + rng() * 0.5);
+      built.group.scale.multiplyScalar(0.85 + rng() * 0.5);
       built.group.rotation.y = rng() * Math.PI * 2;
       root.add(built.group);
-      treeSnowCaps.push(built.snowCap);
     }
   }
 
@@ -316,16 +274,18 @@ export function createBackdrop(): Backdrop {
     });
   }
 
-  return { group: root, birds, clouds, treeSnowCaps, bounds: BACKDROP_BOUNDS };
+  return { group: root, birds, clouds, bounds: BACKDROP_BOUNDS };
 }
 
 // Toggle snow caps on every backdrop tree. Called by Game.tsx after
 // each scene rebuild so the distant trees match the just-picked
 // weather without us having to rebuild the backdrop itself.
-export function setBackdropSnow(b: Backdrop, on: boolean) {
-  for (const cap of b.treeSnowCaps) {
-    cap.visible = on;
-  }
+// No-op kept for the existing call-site in Game.tsx. Backdrop trees
+// no longer carry snow caps (the sphere drape didn't fit the conical
+// pine silhouette and read as a giant white dome covering the tree),
+// so toggling weather on the backdrop is a visual no-op now.
+export function setBackdropSnow(_b: Backdrop, _on: boolean) {
+  // intentionally empty
 }
 
 // Animate clouds and birds. Both wrap around horizontally so the

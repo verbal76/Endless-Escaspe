@@ -3,6 +3,7 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { markShared } from '../util/dispose';
 import { firetruck_OBJ } from '../../assets/vehicles/firetruckObj';
 import { police_OBJ } from '../../assets/vehicles/policeObj';
+import { getVehicleColormap } from '../util/textures';
 
 // Kenney-modelled drivable obstacles. Replaces the procedural box-
 // car that used to populate Obstacles.ts's `'car'` branch with one
@@ -69,14 +70,45 @@ function getMaterials(kind: VehicleKind): Record<string, THREE.Material> {
   const cached = MATERIALS[kind];
   if (cached) return cached;
   const palette = PALETTES[kind];
+  // Both Kenney vehicles share a single colormap.png palette atlas:
+  // each named group's UVs sample a specific cell (navy for police
+  // body, red for firetruck body, dark grey for wheels, chrome for
+  // grills, etc.). One textured material covers every part - the
+  // UVs already encode the per-part colouring.
+  const tex = getVehicleColormap();
+  const sharedMat = tex
+    ? markShared(
+        new THREE.MeshStandardMaterial({
+          map: tex,
+          roughness: 0.55,
+          metalness: 0.20,
+          // Slight self-illumination via emissiveMap so the silhouette
+          // stays legible against the deep-night palette without
+          // washing out the texture under daylight.
+          emissive: 0xffffff,
+          emissiveMap: tex,
+          emissiveIntensity: 0.18,
+        }),
+      )
+    : null;
+  if (sharedMat) {
+    // Every part references the same textured material; the UVs do
+    // the per-region tinting.
+    const mats: Record<string, THREE.Material> = {
+      body: sharedMat,
+      grill: sharedMat,
+      wheels: sharedMat,
+    };
+    MATERIALS[kind] = mats;
+    return mats;
+  }
+  // Texture preload failed: fall back to per-group solid colours so
+  // the vehicle still renders distinguishable parts.
   const make = (color: number) =>
     markShared(
       new THREE.MeshStandardMaterial({
         color,
         emissive: color,
-        // Vehicles get a moderate emissive so they read at night the
-        // same way obstacle materials do (see Obstacles.ts), keeping
-        // their colour distinct from the ambient floor.
         emissiveIntensity: 0.20,
         roughness: 0.55,
         metalness: 0.20,

@@ -8,8 +8,14 @@ import { markShared } from '../util/dispose';
 // slab), and rendered with polygonOffset so it sits visually on the
 // obstacle surface without z-fighting.
 
+// Cap material is mostly emissive so warm afternoon / dim night
+// lighting can't tint it red-brown. Without this, snow caps under
+// stage 2 (warm afternoon) ambient pick up the orange / red light
+// and read as a strange "rust" stain on top of every obstacle.
 const CAP_MAT = markShared(new THREE.MeshStandardMaterial({
   color: 0xeef3fb,
+  emissive: 0xeef3fb,
+  emissiveIntensity: 0.85,
   roughness: 1,
   flatShading: true,
   polygonOffset: true,

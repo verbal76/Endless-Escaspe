@@ -4,6 +4,7 @@ import type { Stance } from '../types/world';
 import { character_d_OBJ } from '../../assets/characters/characterDObj';
 import { character_g_OBJ } from '../../assets/characters/characterGObj';
 import { character_j_OBJ } from '../../assets/characters/characterJObj';
+import { getCharacterTexture } from '../util/textures';
 
 // 3D-modeled character figure. Replaces the procedural BlockyFigure
 // for player + guard so the silhouette reads as a real character
@@ -158,18 +159,31 @@ export function createModelFigure(kind: ModelKind): ModelFigure {
   const template = parseTemplate(kind);
   const palette = PALETTES[kind];
 
-  const bodyMat = new THREE.MeshStandardMaterial({
-    color: palette.body,
-    emissive: palette.body,
-    emissiveIntensity: 0.18,
-    roughness: 0.7,
-  });
-  const headMat = new THREE.MeshStandardMaterial({
-    color: palette.head,
-    emissive: palette.head,
-    emissiveIntensity: 0.18,
-    roughness: 0.6,
-  });
+  // Try the textured material first. If the asset preload couldn't
+  // resolve the image (network glitch on first launch, etc.) we fall
+  // back to the solid-colour palette so the figure still renders
+  // recognisably. One material is shared across every limb because
+  // the OBJ's UVs map all body parts onto a single texture sheet.
+  const tex = getCharacterTexture(kind);
+  const sharedMat = tex
+    ? new THREE.MeshStandardMaterial({
+        map: tex,
+        roughness: 0.7,
+        // Bump emissive map slightly so the figure stays legible
+        // against the dark night palette without dimming the texture
+        // brightness in daylight.
+        emissive: 0xffffff,
+        emissiveMap: tex,
+        emissiveIntensity: 0.20,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: palette.body,
+        emissive: palette.body,
+        emissiveIntensity: 0.18,
+        roughness: 0.7,
+      });
+  const bodyMat = sharedMat;
+  const headMat = sharedMat;
 
   const group = new THREE.Group();
 

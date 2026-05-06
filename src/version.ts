@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #46 · police 2x, firetruck 3x, 80/20 weighting';
+export const OTA_VERSION = 'OTA #47 · textured characters + vehicles; snow caps no longer tint red';

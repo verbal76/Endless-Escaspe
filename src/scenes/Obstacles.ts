@@ -44,23 +44,28 @@ const SCALE_HEDGEROW = new THREE.Vector3(5.20, 2.20, 1.40);
 // min-spacing rule. Long shapes (car, hedgerow) get larger radii so
 // the procgen leaves room around them.
 export const OBSTACLE_RADIUS: Record<ObstacleKind, number> = {
-  crate: 0.6,
+  // Crate (dumpsterClosed scaled 2x) is asymmetric (1.2 x 0.9 m), so
+  // it uses a circle-vs-OBB hitbox via halfW/halfL/rotY rolled by
+  // the procgen. `r` here is the bounding circle - used by procgen
+  // min-spacing only.
+  crate: 0.76,
   lowwall: 0.6,
   cover: 0.9,
-  boulder: 0.65,
+  // Block scaled to a 1 m cube. Inscribed (= half-width) is 0.5;
+  // tightening from 0.65 eliminates the ~0.15 m phantom zone the
+  // larger r left around every cube face. The block is rotationally
+  // symmetric enough that a circle approximation is correct here.
+  boulder: 0.5,
+  // Open-dumpster footprint is ~0.84 m square; r = 0.45 sits 0.03 m
+  // outside the inscribed circle so the phantom zone is sub-tile and
+  // doesn't read as a ghost wall.
   barrel: 0.45,
-  // Sized to fit the 2x-scale police cruiser (~4.84 m long, half-
-  // length 2.42 m). Plus PLAYER_RADIUS gives roughly half a metre of
-  // clearance off the cruiser bumper. The 3x firetruck overshoots
-  // this radius by ~1.5 m at each end - the procgen will sometimes
-  // place a small prop inside the truck's silhouette, but that's
-  // acceptable for a 20%-spawn-rate landmark vs the prior tuning
-  // where every car had a 4 m invisible bubble making the police
-  // feel uncrossable.
   car: 2.7,
-  // Bumped from 0.4 to 0.7 to match the larger tree scale (visible
-  // alpha-cut silhouette is ~1.5 m wide after SCALE_TREE bump).
-  tree: 0.7,
+  // Tree mesh is a 2.1 m crossed-billboard plane but the alpha-cut
+  // pine silhouette only covers the central column of the texture
+  // (~0.4-0.5 m visible half-width). r = 0.5 lines the player up to
+  // the actual silhouette instead of the rectangular plane edges.
+  tree: 0.5,
   hedgerow: 1.35,
 };
 
@@ -111,9 +116,11 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
     case 'crate': {
       // Closed dumpster as a chest-high prop the player can hide
       // behind. Sits flat on the ground (model bottom at y=0 native).
+      // rotY is pre-rolled by the procgen so the OBB hitbox stays
+      // synced with the visual rotation.
       const g = createKitProp('dumpsterClosed', SCALE_CRATE);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = Math.random() * Math.PI * 2;
+      g.rotation.y = o.rotY ?? Math.random() * Math.PI * 2;
       return g;
     }
     case 'lowwall': {

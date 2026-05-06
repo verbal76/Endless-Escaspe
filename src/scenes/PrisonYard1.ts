@@ -6,12 +6,18 @@ import {
   PLAY_HALF_W,
   VISION_CONE_DEG,
 } from '../util/geometry';
-import { createBlockyFigure, type BlockyFigure } from './BlockyFigure';
+import { createModelFigure, type ModelFigure } from './ModelFigure';
 
-// Muted, brownish DOC jumpsuit orange (the bright safety-cone version
-// reads as cosplay; this sits closer to washed-out coverall fabric).
+// Player + guard figures are now Kenney-modelled OBJs (see
+// ModelFigure.ts) instead of the procedural blocks. Public API names
+// (createPlayerFigure / createGuardFigure / BlockyFigure-shaped result)
+// stay the same so the rest of the codebase keeps working through
+// a `ModelFigure` type alias.
+export type BlockyFigure = ModelFigure;
+// Legacy colour exports kept for compatibility with any caller that
+// pulled them in (e.g. UI tints). The actual figure colours now live
+// in ModelFigure.PALETTES, keyed by character kind.
 export const PLAYER_COLOR = 0xa05423;
-// Police-blue uniform.
 export const GUARD_COLOR = 0x2b4f8e;
 
 // Skin tone palette - shared by player choice and randomised guard
@@ -37,8 +43,12 @@ export function createPlayer(): Player {
   };
 }
 
-export function createPlayerFigure(skin: 'beige' | 'brown' = 'beige'): BlockyFigure {
-  return createBlockyFigure(PLAYER_COLOR, skinHex(skin));
+// Player figure: maps the two save-skin choices onto the two prisoner
+// uniforms.
+//   beige -> character D (yellow striped jumpsuit)
+//   brown -> character G (grey + red striped jumpsuit)
+export function createPlayerFigure(skin: 'beige' | 'brown' = 'beige'): ModelFigure {
+  return createModelFigure(skin === 'brown' ? 'g' : 'd');
 }
 
 export type GuardConfig = {
@@ -97,11 +107,12 @@ export function createGuardConfigs(
   return configs;
 }
 
-// Guards get randomised beige or brown heads at spawn time so the
-// crew feels less cloned. 50/50 split.
-export function createGuardFigure(): BlockyFigure {
-  const skin = Math.random() < 0.5 ? SKIN_BEIGE : SKIN_BROWN;
-  return createBlockyFigure(GUARD_COLOR, skin);
+// Every guard uses character J (police uniform). Variation between
+// guards used to come from beige/brown skin tones; with the textured
+// model we get the moustache + uniform "for free" and the crew is
+// readable as a uniform police force at a glance.
+export function createGuardFigure(): ModelFigure {
+  return createModelFigure('j');
 }
 
 // Flat triangular cone on the ground showing the guard's actual

@@ -118,10 +118,10 @@ import {
   type LightTower,
 } from '../scenes/LightTower';
 import {
-  type BlockyFigure,
-  setFigurePosition,
-  updateFigurePose,
-} from '../scenes/BlockyFigure';
+  type ModelFigure as BlockyFigure,
+  setModelFigurePosition as setFigurePosition,
+  updateModelFigurePose as updateFigurePose,
+} from '../scenes/ModelFigure';
 import { attachGuardEquipment, poseGuardArms, type GuardEquipment } from '../scenes/GuardEquipment';
 import {
   createGuardStateMarker,

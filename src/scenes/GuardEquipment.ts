@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { BlockyFigure } from './BlockyFigure';
+import type { ModelFigure } from './ModelFigure';
 import { VISION_CONE_DEG } from '../util/geometry';
 import { markShared } from '../util/dispose';
 
@@ -68,11 +68,6 @@ export type GuardEquipment = {
   pistol: THREE.Mesh;
 };
 
-// Arm length used by BlockyFigure for the limb mesh (the arm
-// geometry is pivoted at the top, so the hand sits at local y=-ARM_H
-// inside the arm's frame).
-const ARM_H = 0.62;
-
 function buildBeam(visionRange: number): THREE.Mesh {
   const halfAngle = (VISION_CONE_DEG * Math.PI) / 180 / 2;
   const baseR = Math.tan(halfAngle) * visionRange;
@@ -89,42 +84,37 @@ function buildBeam(visionRange: number): THREE.Mesh {
 }
 
 export function attachGuardEquipment(
-  figure: BlockyFigure,
+  figure: ModelFigure,
   visionRange: number,
 ): GuardEquipment {
-  // Right arm: flashlight body mounted at the hand, pointing forward
-  // (visual prop only; the actual beam is parented to the figure
-  // root - see below).
+  // Pull the resolved arm geometry from the figure so positioning
+  // tracks whatever character variant is loaded (Kenney models all
+  // share a rig but limb dimensions can shift slightly between
+  // textures; this also lets future figure variants drop in cleanly).
+  const { armH, shoulderX, shoulderY } = figure.dims;
+
+  // Right arm: flashlight body mounted at the hand, pointing forward.
+  // Position is in armR's local frame (origin at the shoulder pivot,
+  // arm hanging in -Y), so the hand sits at local y=-armH.
   const flashlight = new THREE.Mesh(
     new THREE.BoxGeometry(FLASHLIGHT_BODY_W, FLASHLIGHT_BODY_H, FLASHLIGHT_BODY_L),
     FLASHLIGHT_MAT,
   );
-  flashlight.position.set(0, -ARM_H, FLASHLIGHT_BODY_L / 2 + 0.02);
+  flashlight.position.set(0, -armH, FLASHLIGHT_BODY_L / 2 + 0.02);
   figure.armR.add(flashlight);
 
   // BEAM: parented to the figure GROUP root (not the swinging arm)
   // so it stays aimed reliably along the guard's facing direction
   // even though the flashlight hand-pose is fixed by poseGuardArms.
-  // Apex sits at the FLASHLIGHT tip so the cone visually pours out
-  // of the device the guard is holding.
-  //
-  // With armR forced into rotation.x = -PI/2 (extended forward) by
-  // poseGuardArms, the flashlight ends up at roughly:
-  //   armR.position(x = TORSO_W/2 + ARM_W/2 + 0.02 ~= 0.4)
-  // and after the rotation, the hand sits at +Z = ARM_H ~= 0.62
-  // in front of the shoulder, with the flashlight body extending
-  // FLASHLIGHT_BODY_L further forward. So the flashlight tip is
-  // around (0.4, 1.5 + something small, ARM_H + FLASHLIGHT_BODY_L).
-  // Anchor the beam apex there in figure-local space.
-  // Numbers below are the resolved figure pivots from BlockyFigure
-  // constants (TORSO_W=0.62, ARM_W=0.18, ARM_H=0.62, SHOULDER_Y=1.5);
-  // hardcoding rather than re-importing keeps this module self-
-  // contained.
+  // After poseGuardArms rotates armR by -PI/2 around X, the hand
+  // (originally at local (0, -armH, 0)) ends up at +Z = armH from
+  // the shoulder, so the flashlight tip sits at world:
+  //   (shoulderX, shoulderY, armH + FLASHLIGHT_BODY_L).
   const beam = buildBeam(visionRange);
   beam.position.set(
-    0.42,                          // shoulder X (right side)
-    1.55,                          // hand height after extending arm
-    ARM_H + FLASHLIGHT_BODY_L,    // forward of shoulder by arm length + flashlight tip
+    shoulderX,
+    shoulderY,
+    armH + FLASHLIGHT_BODY_L,
   );
   figure.group.add(beam);
 
@@ -133,7 +123,7 @@ export function attachGuardEquipment(
     new THREE.BoxGeometry(PISTOL_W, PISTOL_H, PISTOL_L),
     PISTOL_MAT,
   );
-  pistol.position.set(0, -ARM_H, PISTOL_L / 2 + 0.02);
+  pistol.position.set(0, -armH, PISTOL_L / 2 + 0.02);
   figure.armL.add(pistol);
 
   return { flashlight, beam, pistol };
@@ -142,7 +132,7 @@ export function attachGuardEquipment(
 // Force a guard's arms into the "extended forward" pose so the
 // flashlight + pistol point reliably down the figure's facing
 // direction rather than swinging with the walk cycle.
-export function poseGuardArms(figure: BlockyFigure) {
+export function poseGuardArms(figure: ModelFigure) {
   // Rotate each arm forward (around X) so it points along +Z. -PI/2
   // around X makes a downward arm point along +Z (forward).
   figure.armR.rotation.set(-Math.PI / 2, 0, 0);

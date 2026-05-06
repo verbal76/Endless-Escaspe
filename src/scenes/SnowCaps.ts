@@ -91,8 +91,13 @@ function buildCap(kind: ObstacleKind): CapResult | null {
       return { mesh: m, yOffset: 0.4 };
     }
     case 'car':
-      // Cabin top only (1.6 x 1.1 inside the car group).
-      return { mesh: new THREE.Mesh(box(1.60, T, 1.10), CAP_MAT), yOffset: T / 2 };
+      // Skipped on cars now that the procedural box-cabin is gone:
+      // the Kenney vehicle silhouettes (police cruiser, fire truck)
+      // have curved roofs at different heights, so a flat box cap
+      // either floats or clips depending on which kind was rolled.
+      // The vehicle bodies themselves are saturated enough (red /
+      // navy) to read against the snowy ground without a cap.
+      return null;
   }
 }
 

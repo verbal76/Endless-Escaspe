@@ -1,30 +1,29 @@
 import * as THREE from 'three';
 import type { Obstacle, ObstacleKind } from '../types/world';
 import { markShared } from '../util/dispose';
+import { createVehicle } from './Vehicle';
 
 // Obstacle mesh factory + per-kind metadata. Procgen picks a kind
 // randomly, then this module produces the matching three.js mesh
 // and reports the collision radius the procgen should reserve.
 //
-// All shapes are built from primitives - no asset pipeline. Heights
-// are tuned so guards' line of sight rule (crates and cover block,
-// low walls don't) reads sensibly: anything tall enough to hide
-// behind blocks; anything below knee height doesn't.
+// Most shapes are built from primitives. Cars are an exception:
+// they're now Kenney-modelled OBJ groups (see Vehicle.ts), randomly
+// either a police cruiser or a fire truck. Heights are tuned so
+// guards' line of sight rule (crates and cover block, low walls
+// don't) reads sensibly.
 
 const CRATE_GEO = markShared(new THREE.BoxGeometry(1.1, 1.1, 1.1));
 const WALL_GEO = markShared(new THREE.BoxGeometry(1.6, 0.6, 0.6));
 const COVER_GEO = markShared(new THREE.BoxGeometry(2.0, 1.4, 1.0));
 // Segment counts bumped from the prototype values to give curved
 // shapes a bit more polish without blowing the per-frame budget:
-// barrels go 14 -> 20 sides, car wheels 12 -> 18, tree trunks
-// 10 -> 16. Boulder + leaves moved up an icosahedron-detail tier
-// for less-faceted silhouettes (20 faces -> 80, 80 faces -> 320).
+// barrels go 14 -> 20 sides, tree trunks 10 -> 16. Boulder + leaves
+// moved up an icosahedron-detail tier for less-faceted silhouettes
+// (20 faces -> 80, 80 faces -> 320).
 const BARREL_GEO = markShared(new THREE.CylinderGeometry(0.42, 0.42, 1.05, 20));
 const BOULDER_GEO = markShared(new THREE.IcosahedronGeometry(0.7, 1));
 const HEDGE_GEO = markShared(new THREE.BoxGeometry(2.6, 1.1, 0.7));
-const CAR_BODY_GEO = markShared(new THREE.BoxGeometry(2.4, 0.9, 1.25));
-const CAR_CABIN_GEO = markShared(new THREE.BoxGeometry(1.6, 0.6, 1.1));
-const CAR_WHEEL_GEO = markShared(new THREE.CylinderGeometry(0.27, 0.27, 0.18, 18));
 const TRUNK_GEO = markShared(new THREE.CylinderGeometry(0.22, 0.28, 1.6, 16));
 const LEAVES_GEO = markShared(new THREE.IcosahedronGeometry(0.95, 2));
 
@@ -73,26 +72,6 @@ const HEDGE_MAT = new THREE.MeshStandardMaterial({
   roughness: 0.9,
   flatShading: true,
 });
-const CAR_BODY_MAT = new THREE.MeshStandardMaterial({
-  color: 0x6286a4,
-  emissive: 0x466782,
-  emissiveIntensity: 0.42,
-  roughness: 0.55,
-  metalness: 0.4,
-});
-const CAR_CABIN_MAT = new THREE.MeshStandardMaterial({
-  color: 0x4a607a,
-  emissive: 0x394a60,
-  emissiveIntensity: 0.42,
-  roughness: 0.5,
-  metalness: 0.4,
-});
-const CAR_WHEEL_MAT = new THREE.MeshStandardMaterial({
-  color: 0x2a2a30,
-  emissive: 0x202024,
-  emissiveIntensity: 0.40,
-  roughness: 0.95,
-});
 const TRUNK_MAT = new THREE.MeshStandardMaterial({
   color: 0x70502c,
   emissive: 0x563d22,
@@ -112,7 +91,7 @@ const LEAVES_MAT = new THREE.MeshStandardMaterial({
 // future obstacle spawn).
 [
   CRATE_MAT, WALL_MAT, COVER_MAT, BARREL_MAT, BOULDER_MAT,
-  HEDGE_MAT, CAR_BODY_MAT, CAR_CABIN_MAT, CAR_WHEEL_MAT,
+  HEDGE_MAT,
   TRUNK_MAT, LEAVES_MAT,
 ].forEach((m) => markShared(m));
 
@@ -144,7 +123,11 @@ export const OBSTACLE_HEIGHT: Record<ObstacleKind, number> = {
   cover: 1.4,
   boulder: 1.0,
   barrel: 1.05,
-  car: 1.5,
+  // Police cruiser scaled tops at ~1.0 m, fire truck at ~1.33 m.
+  // Pick the smaller to be conservative: even if the spawn rolls a
+  // police cruiser the LOS rule still places it just above the
+  // standing-cover threshold (1.0 m).
+  car: 1.05,
   tree: 1.6, // trunk; the leaves above don't matter for ground LOS
   hedgerow: 1.1,
 };
@@ -214,27 +197,19 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
       return m;
     }
     case 'car': {
-      const g = new THREE.Group();
-      const body = new THREE.Mesh(CAR_BODY_GEO, CAR_BODY_MAT);
-      body.position.y = 0.55;
-      g.add(body);
-      const cabin = new THREE.Mesh(CAR_CABIN_GEO, CAR_CABIN_MAT);
-      cabin.position.set(-0.1, 1.2, 0);
-      g.add(cabin);
-      const wheelOffsets: Array<[number, number]> = [
-        [-0.85, -0.55],
-        [-0.85, 0.55],
-        [0.85, -0.55],
-        [0.85, 0.55],
-      ];
-      for (const [wx, wz] of wheelOffsets) {
-        const wheel = new THREE.Mesh(CAR_WHEEL_GEO, CAR_WHEEL_MAT);
-        wheel.rotation.z = Math.PI / 2;
-        wheel.position.set(wx, 0.27, wz);
-        g.add(wheel);
-      }
+      // 50/50 between police cruiser and fire truck so the yard reads
+      // as a real impound mix rather than a fleet of identical cars.
+      // createVehicle returns a pre-scaled Group; we just position +
+      // yaw it. The procgen min-spacing radius (OBSTACLE_RADIUS.car)
+      // is unchanged because the scaled Kenney rig fits inside the
+      // same footprint as the prior procedural car.
+      const kind = Math.random() < 0.5 ? 'police' : 'firetruck';
+      const g = createVehicle(kind);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = Math.random() < 0.5 ? 0 : Math.PI / 2;
+      // Random Y rotation in 90-degree steps so cars sit length-wise
+      // OR width-wise across the path - feels less staged than every
+      // car pointing the same way.
+      g.rotation.y = (Math.floor(Math.random() * 4) * Math.PI) / 2;
       return g;
     }
     case 'tree': {

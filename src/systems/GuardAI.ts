@@ -9,19 +9,20 @@ import { PLAY_HALF_W } from '../util/geometry';
 // returns home when it dies down. Two guards therefore feel
 // independent rather than two clones of each other.
 
+// Speed tuning rule of thumb (player walk = 3.5, player run = 7.0):
+//   wander       - meander
+//   alert trail  - slower than walk; "noticed you, not committed"
+//   investigate  - just above walk; closes on a walking target
+//   chase        - clearly above walk, clearly below run
+//
+// At chase speed the guard catches a player who's only walking but
+// loses ground against a running player on open ground - the player
+// can only get caught while sprinting if a bottleneck (corner, two
+// obstacles) slows them. That's the intended risk model.
 const SPEED_WANDER = 1.6;
-// Bumped from 3.2 -> 4.5 so an investigating guard actually closes
-// distance on a player walking away (player walk = 3.5). The prior
-// 3.2 left guards permanently a half-metre behind a walking target,
-// which made "the cops only walk and never get me" a reliable
-// strategy.
-const SPEED_INVESTIGATE = 4.5;
-// Slow trail speed used during the alert state. Below walk so the
-// guard reads as "noticed you, looking" rather than "committed to
-// pursuit", but above zero so the player can't trivially stroll
-// away while the alert pause ticks down.
 const SPEED_ALERT_TRAIL = 1.8;
-const SPEED_CHASE = 6.5;
+const SPEED_INVESTIGATE = 4.0;
+const SPEED_CHASE = 5.0;
 const SPEED_RETURN = 2.4;
 
 const WANDER_RETARGET_S = 4.5; // re-pick a wander target this often

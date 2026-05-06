@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #60 · guards trail on alert; trees get trunks + bigger scale';
+export const OTA_VERSION = 'OTA #61 · guard chase tuned; tree trunks use planks texture';

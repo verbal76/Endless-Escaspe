@@ -95,6 +95,7 @@ export async function preloadAllTextures(): Promise<void> {
     loadAssetTexture('prop-roof', require('../../assets/props/roof.png')),
     loadAssetTexture('prop-grass', require('../../assets/props/grass.png')),
     loadAssetTexture('prop-dirt', require('../../assets/props/dirt.png')),
+    loadAssetTexture('prop-planks', require('../../assets/props/planks.png')),
   ]);
 }
 
@@ -142,4 +143,11 @@ export function getPropTexture(materialName: string): THREE.Texture | null {
 // of grass rather than one stretched tile).
 export function getGrassTexture(): THREE.Texture | null {
   return CACHE['prop-grass'] ?? null;
+}
+
+// Wood-plank texture, used for procedural tree trunks. Same separate-
+// from-getPropTexture convention as grass: caller usually wants a
+// per-instance clone with custom repeat.
+export function getPlanksTexture(): THREE.Texture | null {
+  return CACHE['prop-planks'] ?? null;
 }

@@ -3,22 +3,53 @@ import type { Obstacle, ObstacleKind } from '../types/world';
 import { markShared } from '../util/dispose';
 import { createKitProp } from './KitProps';
 import { createVehicle } from './Vehicle';
+import { getPlanksTexture } from '../util/textures';
 
 // Procedural tree trunk: the Kenney pine OBJ is a flat alpha-cut
 // billboard whose texture trunk is too narrow to survive the
 // alpha-test threshold (looks like the tree is floating with no
-// trunk). A small brown cylinder at the base grounds it visually.
+// trunk). A small cylinder at the base grounds it visually; the
+// material uses the kit's planks.png so the trunk reads as wood
+// rather than a flat brown cylinder.
 const TREE_TRUNK_GEO = markShared(
   new THREE.CylinderGeometry(0.18, 0.22, 1.0, 10),
 );
-const TREE_TRUNK_MAT = markShared(
-  new THREE.MeshStandardMaterial({
-    color: 0x5a3c20,
-    emissive: 0x3a2614,
-    emissiveIntensity: 0.40,
-    roughness: 0.95,
-  }),
-);
+
+let CACHED_TRUNK_MAT: THREE.MeshStandardMaterial | null = null;
+function getTrunkMaterial(): THREE.MeshStandardMaterial {
+  if (CACHED_TRUNK_MAT) return CACHED_TRUNK_MAT;
+  const tex = getPlanksTexture();
+  if (tex) {
+    // Per-instance clone of the texture so the trunk's wrap / repeat
+    // settings don't leak into other materials sharing this texture.
+    // Repeat tiles vertically along the trunk so a tall trunk shows
+    // multiple plank rows; circumferential wrap is a single tile.
+    const trunkTex = tex.clone();
+    trunkTex.needsUpdate = true;
+    trunkTex.wrapS = THREE.RepeatWrapping;
+    trunkTex.wrapT = THREE.RepeatWrapping;
+    trunkTex.repeat.set(1, 2);
+    trunkTex.magFilter = THREE.NearestFilter;
+    trunkTex.minFilter = THREE.NearestFilter;
+    CACHED_TRUNK_MAT = new THREE.MeshStandardMaterial({
+      map: trunkTex,
+      emissive: 0xffffff,
+      emissiveMap: trunkTex,
+      emissiveIntensity: 0.30,
+      roughness: 0.95,
+    });
+  } else {
+    // Fallback solid brown if the asset preload didn't resolve.
+    CACHED_TRUNK_MAT = new THREE.MeshStandardMaterial({
+      color: 0x5a3c20,
+      emissive: 0x3a2614,
+      emissiveIntensity: 0.40,
+      roughness: 0.95,
+    });
+  }
+  markShared(CACHED_TRUNK_MAT);
+  return CACHED_TRUNK_MAT;
+}
 
 // Build a tree group: trunk cylinder + alpha-cut pine billboards
 // stacked at the right Y. `sceneScale` is the foliage's scale Vector3
@@ -34,8 +65,9 @@ export function buildTreeGroup(variant: 'treeA' | 'treeB', sceneScale: THREE.Vec
   g.add(foliage);
   // Trunk: scale Y to the requested height so the trunk sits
   // proportional to the foliage. Radius is left at native (looks
-  // right at the size we ship today).
-  const trunk = new THREE.Mesh(TREE_TRUNK_GEO, TREE_TRUNK_MAT);
+  // right at the size we ship today). Material is built lazily so
+  // the texture preload has finished before we read it.
+  const trunk = new THREE.Mesh(TREE_TRUNK_GEO, getTrunkMaterial());
   trunk.scale.y = trunkH;
   trunk.position.y = trunkH / 2;
   g.add(trunk);

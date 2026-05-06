@@ -113,7 +113,13 @@ function materialFor(name: string): THREE.MeshStandardMaterial {
 // group (so a dumpster with wall + wall_metal + roof yields three
 // submeshes). Geometries are markShared so per-spawn clones can be
 // disposed independently while the template buffers stay resident.
-type SubMesh = { geometry: THREE.BufferGeometry; materialName: string };
+//
+// When OBJLoader hits multiple `usemtl` switches in one `g` group it
+// builds ONE Mesh with an array of materials + matching geometry
+// groups (multi-material). We capture every material name so the
+// per-spawn factory can apply the correct palette material to each
+// group instead of forcing the whole mesh through one material.
+type SubMesh = { geometry: THREE.BufferGeometry; materialNames: string[] };
 const TEMPLATES: Partial<Record<KitKind, SubMesh[]>> = {};
 
 function parseTemplate(kind: KitKind): SubMesh[] {
@@ -127,12 +133,14 @@ function parseTemplate(kind: KitKind): SubMesh[] {
     if (!mesh.isMesh) return;
     const geo = mesh.geometry as THREE.BufferGeometry;
     markShared(geo);
-    // OBJLoader sets each mesh's material to a default whose name
-    // mirrors the OBJ's `usemtl X`. Read X back to drive our
-    // palette lookup.
     const material = mesh.material as THREE.Material | THREE.Material[];
-    const name = Array.isArray(material) ? material[0].name : material.name;
-    subs.push({ geometry: geo, materialName: name || 'concrete' });
+    let materialNames: string[];
+    if (Array.isArray(material)) {
+      materialNames = material.map((m) => m.name || 'concrete');
+    } else {
+      materialNames = [material.name || 'concrete'];
+    }
+    subs.push({ geometry: geo, materialNames });
   });
   TEMPLATES[kind] = subs;
   return subs;
@@ -143,9 +151,12 @@ function parseTemplate(kind: KitKind): SubMesh[] {
 // scaling to fit their existing hitbox - e.g. lowwall stretches the
 // short barrier model along X).
 //
-// `materialOverride` swaps the OBJ's baked-in `usemtl` name for one
-// in the palette - used by the tree spawner to pick treeA or treeB
-// at random while reusing the same pine geometry.
+// `materialOverride` replaces every `usemtl` name with the supplied
+// palette key so the whole prop renders as that single material -
+// useful for variant-skin spawns. Without it each material name
+// from the OBJ is looked up individually so a multi-material rig
+// (e.g. tall-pine = woodBarkDark + leafsDark) gets the correct
+// per-section colour.
 export function createKitProp(
   kind: KitKind,
   scale: number | THREE.Vector3,
@@ -162,10 +173,14 @@ export function createKitProp(
     // rebuild dispose pass actually frees the per-instance buffer.
     const geo = s.geometry.clone();
     geo.userData.shared = false;
-    const mesh = new THREE.Mesh(
-      geo,
-      materialFor(materialOverride ?? s.materialName),
+    const mats = s.materialNames.map((n) =>
+      materialFor(materialOverride ?? n),
     );
+    // Three.js matches a material array against geometry.groups -
+    // each face's group.materialIndex picks from the array. Pass an
+    // array for multi-material rigs; a single Material for single-
+    // material ones.
+    const mesh = new THREE.Mesh(geo, mats.length > 1 ? mats : mats[0]);
     group.add(mesh);
   }
   if (typeof scale === 'number') {

@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #62 · 3D tall-pine trees replace alpha-cut billboards';
+export const OTA_VERSION = 'OTA #63 · trees: trunk = bark, leaves = teal (multi-material fix)';

@@ -90,10 +90,7 @@ export async function preloadAllTextures(): Promise<void> {
     loadAssetTexture('prop-signs', require('../../assets/props/signs.png')),
     loadAssetTexture('prop-roof', require('../../assets/props/roof.png')),
     loadAssetTexture('prop-grass', require('../../assets/props/grass.png')),
-    // Stand-in for dirt.png (not yet in the asset batch). The Kenney
-    // rock texture reads as a gritty brown surface that's a passable
-    // substitute for the dumpster's dirt-pile interior.
-    loadAssetTexture('prop-dirt', require('../../assets/props/rock.png')),
+    loadAssetTexture('prop-dirt', require('../../assets/props/dirt.png')),
   ]);
 }
 

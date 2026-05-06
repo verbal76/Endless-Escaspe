@@ -39,10 +39,13 @@ async function loadAssetTexture(
         // check still passes.
       },
     } as unknown as HTMLImageElement;
-    // Kenney textures are authored with UV.y = 0 at the bottom (OpenGL
-    // convention). three.js defaults flipY=true (DOM image convention).
-    // Disable flip so the model's UVs land on the right palette cell.
-    tex.flipY = false;
+    // Leave flipY at its three.js default (true). expo-gl's native
+    // texImage2D path uploads the PNG already oriented for GL's
+    // bottom-up V, so our earlier flipY=false produced a double-no-
+    // flip and Kenney OBJ UVs landed on the wrong row of the palette
+    // (police body sampling brown, lights sampling green, etc.). With
+    // the default, V=0 sits at the bottom of the source PNG and the
+    // OBJ UVs index the cells the kit author intended.
     tex.needsUpdate = true;
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;

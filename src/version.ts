@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #50 · real dirt texture replaces rock stand-in';
+export const OTA_VERSION = 'OTA #51 · texture V flip fixed; vehicle colors should sample right cells';

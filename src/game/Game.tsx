@@ -141,7 +141,7 @@ import {
   type WeatherKind,
 } from '../scenes/Weather';
 import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
-import { applyStageLighting } from '../scenes/Lighting';
+import { applyDynamicLighting, applyStageLighting } from '../scenes/Lighting';
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
 import {
   createPickupSounds,
@@ -564,6 +564,11 @@ export function Game() {
     // wherever the splash-demo left them and back to spawn.
     let lastRunState = useStore.getState().runState;
     let animTime = 0;
+    // Day/night cycle clock. Independent of animTime (which resets
+    // on each segment) so the cycle progresses continuously across
+    // resets / restarts and the player sees an unbroken sun-up
+    // sun-down loop. Bumped each frame from the update tick.
+    let cycleTime = 0;
     // Boss-arena countdown. Initialised from the scene's
     // bossSurviveSeconds at build / rebuild; the update loop
     // decrements it during gameplay and fires handleWin at zero.
@@ -892,6 +897,9 @@ export function Game() {
         if (st.runState === 'idle' && !st.paused) {
           demoTime += dt;
           animTime += dt;
+          // Bump the day/night cycle on the splash too so the
+          // start screen shows the world fading the same way.
+          cycleTime += dt;
           // Forward bias with a slow x-wander. The 0.62 forward
           // scalar keeps the cycle leisurely; the sin term makes the
           // path feel hand-piloted rather than ruler-straight.
@@ -918,6 +926,10 @@ export function Game() {
 
       runTime += dt;
       animTime += dt;
+      // Cycle uses raw dt (not effDt) so slow-mo + pause don't
+      // freeze the day/night progression; the lighting feels alive
+      // even during a slow-mo capture.
+      cycleTime += dt;
       if (shakeRemaining > 0) {
         shakeRemaining = Math.max(0, shakeRemaining - dt);
       }
@@ -1351,6 +1363,14 @@ export function Game() {
 
 
     const render = (_alpha: number) => {
+      // Day/night cycle: applyDynamicLighting writes a smoothly
+      // blended palette into the renderer + scene each frame so the
+      // world fades through bright -> dusk -> night -> dawn -> ...
+      // continuously, mirrored over a 3-minute round trip. Cheap
+      // (lerps + uniform updates only) so the per-frame call doesn't
+      // measurably affect framerate.
+      applyDynamicLighting(r.renderer, r.scene, cycleTime);
+
       // Idle bob/spin on every uncollected pickup. Cheap; only the
       // mesh transform is touched.
       for (const p of scene.procgen.pickups()) animatePickup(p, animTime);

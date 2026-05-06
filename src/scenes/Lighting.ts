@@ -84,12 +84,62 @@ export function getStageLighting(stage: number): StageLighting {
   return STAGES[idx];
 }
 
-export function applyStageLighting(
+// 8-bit-per-channel hex colour lerp. Output is the same packed-int
+// form the rest of the lighting code uses.
+function lerpColor(a: number, b: number, t: number): number {
+  const ar = (a >> 16) & 0xff;
+  const ag = (a >> 8) & 0xff;
+  const ab = a & 0xff;
+  const br = (b >> 16) & 0xff;
+  const bg = (b >> 8) & 0xff;
+  const bb = b & 0xff;
+  const r = Math.round(ar + (br - ar) * t);
+  const g = Math.round(ag + (bg - ag) * t);
+  const bv = Math.round(ab + (bb - ab) * t);
+  return (r << 16) | (g << 8) | bv;
+}
+
+function lerpStage(a: StageLighting, b: StageLighting, t: number): StageLighting {
+  return {
+    sky: lerpColor(a.sky, b.sky, t),
+    fog: lerpColor(a.fog, b.fog, t),
+    ambientColor: lerpColor(a.ambientColor, b.ambientColor, t),
+    ambientIntensity: a.ambientIntensity + (b.ambientIntensity - a.ambientIntensity) * t,
+    sunColor: lerpColor(a.sunColor, b.sunColor, t),
+    sunIntensity: a.sunIntensity + (b.sunIntensity - a.sunIntensity) * t,
+  };
+}
+
+// Cycle through the five STAGES palettes mirrored over a full
+// CYCLE_DURATION_S (bright -> dark -> bright -> dark -> ...). At any
+// time within the cycle the result is a smooth blend between two
+// adjacent palettes - colours and intensities both lerp - so the
+// world fades gradually instead of snapping between presets.
+const CYCLE_DURATION_S = 180; // 3 minutes per full bright->dark->bright loop
+export function getCycleLighting(cycleTimeS: number): StageLighting {
+  // Wrap the time into [0, CYCLE_DURATION_S) and normalise to t01.
+  const wrapped = ((cycleTimeS % CYCLE_DURATION_S) + CYCLE_DURATION_S) % CYCLE_DURATION_S;
+  const t01 = wrapped / CYCLE_DURATION_S;
+  // Mirror: 0..0.5 maps to phase 0..1 (bright -> dark), 0.5..1 maps
+  // to phase 1..0 (dark -> bright). The eye sees a smooth sun-up
+  // sun-down loop instead of a snap-back at the loop boundary.
+  const phase = t01 < 0.5 ? t01 * 2 : (1 - t01) * 2;
+  // Map phase to a fractional palette index across the STAGES table.
+  const idx = phase * (STAGES.length - 1);
+  const lo = Math.floor(idx);
+  const hi = Math.min(STAGES.length - 1, lo + 1);
+  const f = idx - lo;
+  return lerpStage(STAGES[lo], STAGES[hi], f);
+}
+
+// Apply a fully-resolved StageLighting struct to the scene. Used by
+// both the per-frame cycle path and the legacy applyStageLighting
+// entry point.
+function applyResolved(
   renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,
-  stage: number,
+  light: StageLighting,
 ) {
-  const light = getStageLighting(stage);
   renderer.setClearColor(light.sky, 1);
   if (scene.fog && scene.fog instanceof THREE.Fog) {
     scene.fog.color.setHex(light.fog);
@@ -105,4 +155,24 @@ export function applyStageLighting(
       d.intensity = light.sunIntensity;
     }
   });
+}
+
+export function applyStageLighting(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  stage: number,
+) {
+  applyResolved(renderer, scene, getStageLighting(stage));
+}
+
+// Per-frame entry point for the day/night cycle. Resolves the
+// blended palette for the supplied cycleTime and writes it into the
+// renderer + scene lights. Cheap (just lerps + uniform updates), so
+// it can run every frame without measurable cost.
+export function applyDynamicLighting(
+  renderer: THREE.WebGLRenderer,
+  scene: THREE.Scene,
+  cycleTimeS: number,
+) {
+  applyResolved(renderer, scene, getCycleLighting(cycleTimeS));
 }

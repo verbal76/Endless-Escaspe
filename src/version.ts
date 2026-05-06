@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #52 · snow caps removed; obstacle density halved';
+export const OTA_VERSION = 'OTA #53 · tree silhouettes via alpha-test; spotlights +20% faster';

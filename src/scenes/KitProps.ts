@@ -80,6 +80,14 @@ function materialFor(name: string): THREE.MeshStandardMaterial {
   // hand-picked solid colour from PALETTE for materials whose PNGs
   // we don't have yet (concrete / signs / roof / dirt / grass).
   const tex = getPropTexture(name);
+  // Tree foliage is authored as crossed billboard planes with an
+  // alpha-keyed pine silhouette; without alpha-test the rectangular
+  // planes render solid green and the tree looks like a flat cutout.
+  // alphaTest=0.5 discards transparent pixels at the silhouette edge
+  // so the tree reads as a 3D-shaped bush from any angle. Other
+  // textures (concrete, dumpster wall, etc.) tile across opaque
+  // surfaces - alpha-test would do nothing useful for them.
+  const isFoliage = name === 'treeB';
   const mat = tex
     ? new THREE.MeshStandardMaterial({
         map: tex,
@@ -88,6 +96,9 @@ function materialFor(name: string): THREE.MeshStandardMaterial {
         emissiveIntensity: def.emissiveIntensity,
         roughness: 0.7,
         metalness: def.metalness ?? 0.1,
+        transparent: isFoliage,
+        alphaTest: isFoliage ? 0.5 : 0,
+        side: isFoliage ? THREE.DoubleSide : THREE.FrontSide,
       })
     : new THREE.MeshStandardMaterial({
         color: def.color,

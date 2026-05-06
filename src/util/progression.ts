@@ -46,14 +46,15 @@ export function lightVisionBonusFor(stage: number): number {
 }
 
 // Per-second floodlight detection bumps (standing / crouched).
-// Halved from the pre-progression baseline; ramps back up at high
-// stages so the late-game spotlight isn't a non-threat compared to
-// guards.
+// Bumped 20% over the prior 0.125 / 0.05 baseline so being caught in
+// a beam fills the meter visibly faster - the prior tuning let a
+// player saunter through an early-stage beam without the meter
+// moving much.
 export function floodlightStandingRateFor(stage: number): number {
-  return rampConcave(stage, 0.125, 0.30, 18);
+  return rampConcave(stage, 0.150, 0.36, 18);
 }
 export function floodlightCrouchedRateFor(stage: number): number {
-  return rampConcave(stage, 0.05, 0.13, 18);
+  return rampConcave(stage, 0.06, 0.156, 18);
 }
 
 // Multiplier on the (visionAdd + noiseAdd) sum. Baseline /6 at stage

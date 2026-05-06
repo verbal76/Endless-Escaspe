@@ -24,7 +24,12 @@ const MOUNTAIN_COUNT = 14;
 // Mid-ground tree line flanks the playfield.
 const TREE_LINE_OUTER = PLAY_HALF_W + 8;
 const TREE_LINE_FAR = PLAY_HALF_W + 24;
-const TREE_COUNT_PER_SIDE = 28;
+// 28 -> 168 (6x) so the outside-fence tree line reads as a real
+// pine forest pressing in on the yard rather than a sparse picket
+// of distant landmarks. Spread is the same z-range; the per-side
+// trees just pack tighter and the random x-jitter inside the
+// TREE_LINE_OUTER..TREE_LINE_FAR band gives them depth.
+const TREE_COUNT_PER_SIDE = 168;
 
 // Sky props
 const CLOUD_COUNT = 6;

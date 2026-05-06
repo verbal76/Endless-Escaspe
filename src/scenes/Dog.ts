@@ -5,6 +5,7 @@ import { dist2Sq } from '../util/math';
 import { PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
 import { dog_OBJ } from '../../assets/animals/dogObj';
+import { getVehicleColormap } from '../util/textures';
 
 // Patrol dog. Behaviour summary:
 // - Trails its handler guard while the guard is patrolling.
@@ -26,17 +27,35 @@ import { dog_OBJ } from '../../assets/animals/dogObj';
 // reads at a similar footprint to the prior procedural one (~0.62 m).
 const DOG_SCALE = 1.4;
 
-// Solid orange-red material matching the kit preview. The dog OBJ's
-// UVs all sample u=0.719, v~0.1 of the kit's colormap.png (which
-// we don't have for the animal pack), so a single MeshStandardMaterial
-// stands in correctly without requiring the texture.
-const DOG_MAT = new THREE.MeshStandardMaterial({
-  color: 0xc26a3a,
-  emissive: 0xc26a3a,
-  emissiveIntensity: 0.20,
-  roughness: 0.7,
-});
-markShared(DOG_MAT);
+// The Kenney animal pack and vehicle pack share the same colormap.png
+// palette atlas, so the dog's UVs (which cluster on a single column
+// of that atlas) index correctly into the texture we already loaded
+// for vehicles. Build the material lazily so the texture preload has
+// finished by the time createDog runs.
+let CACHED_DOG_MAT: THREE.MeshStandardMaterial | null = null;
+function getDogMaterial(): THREE.MeshStandardMaterial {
+  if (CACHED_DOG_MAT) return CACHED_DOG_MAT;
+  const tex = getVehicleColormap();
+  const mat = tex
+    ? new THREE.MeshStandardMaterial({
+        map: tex,
+        emissive: 0xffffff,
+        emissiveMap: tex,
+        emissiveIntensity: 0.18,
+        roughness: 0.7,
+      })
+    : new THREE.MeshStandardMaterial({
+        // Fallback if the texture preload didn't resolve: solid
+        // orange-red matching the kit preview thumbnail.
+        color: 0xc26a3a,
+        emissive: 0xc26a3a,
+        emissiveIntensity: 0.20,
+        roughness: 0.7,
+      });
+  markShared(mat);
+  CACHED_DOG_MAT = mat;
+  return mat;
+}
 
 // Cache: parse the OBJ once, then clone the geometry list per spawn.
 type ParsedDog = {
@@ -100,7 +119,7 @@ export function createDog(id: number, handlerGuardId: number, x: number, z: numb
     // doesn't skip it.
     const geo = part.geometry.clone();
     geo.userData.shared = false;
-    group.add(new THREE.Mesh(geo, DOG_MAT));
+    group.add(new THREE.Mesh(geo, getDogMaterial()));
   }
   group.scale.setScalar(DOG_SCALE);
   group.position.set(x, 0, z);

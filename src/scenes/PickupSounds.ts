@@ -1,6 +1,6 @@
 import { createAudioPlayer } from 'expo-audio';
 import type { AudioPlayer } from 'expo-audio';
-import { getPickupGrabUri, getPickupUseUri } from '../util/blips';
+import { getBonkUri, getPickupGrabUri, getPickupUseUri } from '../util/blips';
 
 // Two pre-loaded short tones for pickup events (grab / use). Each is
 // played by seeking to 0 and calling play() so rapid retriggers
@@ -16,6 +16,10 @@ const PEAK_VOLUME = 0.55;
 export type PickupSounds = {
   grab: AudioPlayer | null;
   use: AudioPlayer | null;
+  // Crowbar impact "bonk" - a dull metal thud + crackle, played when
+  // a crowbar swing actually connects with a guard (see Game.tsx
+  // applyCrowbarStun). Quiet on a swing-and-miss.
+  bonk: AudioPlayer | null;
   dispose: () => void;
 };
 
@@ -36,11 +40,13 @@ function makePlayer(uri: string): AudioPlayer | null {
 export function createPickupSounds(): PickupSounds {
   const grab = makePlayer(getPickupGrabUri());
   const use = makePlayer(getPickupUseUri());
+  const bonk = makePlayer(getBonkUri());
   return {
     grab,
     use,
+    bonk,
     dispose: () => {
-      for (const p of [grab, use]) {
+      for (const p of [grab, use, bonk]) {
         if (!p) continue;
         try {
           p.pause();
@@ -74,4 +80,8 @@ export function playPickupGrab(s: PickupSounds, masterVolume: number) {
 
 export function playPickupUse(s: PickupSounds, masterVolume: number) {
   playOnce(s.use, masterVolume);
+}
+
+export function playCrowbarBonk(s: PickupSounds, masterVolume: number) {
+  playOnce(s.bonk, masterVolume);
 }

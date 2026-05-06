@@ -283,6 +283,13 @@ export type ModelFigurePoseInput = {
   facing: number;
   time: number;
   hidden?: boolean;
+  // Stun progress 0..1 across the stunTimer's lifetime, where 0 = the
+  // moment the crowbar landed and 1 = the moment the guard wakes up.
+  // When > 0 the pose tick overrides walk / crouch with a knockout
+  // animation (drop to crouch, flatten face-down, hold flat, rise to
+  // crouch, rise to stand). Undefined / 0 means "not stunned, animate
+  // normally". Caller computes this as 1 - stunTimer / CROWBAR_STUN_DURATION.
+  stunProgress?: number;
 };
 
 function resetPose(fig: ModelFigure) {
@@ -315,13 +322,92 @@ function poseA_amount(phase: number): number {
   return (t - (1 - TRANSITION)) / (2 * TRANSITION);
 }
 
+// Knockout animation phases driven by stunProgress in [0, 1].
+//
+//   0.00 - 0.18  drop from standing into a crouch (knees buckle)
+//   0.18 - 0.32  pitch forward from crouch onto face-down flat
+//   0.32 - 0.68  hold flat (most of the stun)
+//   0.68 - 0.82  push back up from flat to crouch
+//   0.82 - 1.00  rise from crouch to stand
+//
+// Each phase returns a (crouchAmount, flatAmount) blend so the pose
+// can be built once and animated over the same body.
+function stunPhase(p: number): { crouchAmount: number; flatAmount: number } {
+  if (p <= 0) return { crouchAmount: 0, flatAmount: 0 };
+  if (p >= 1) return { crouchAmount: 0, flatAmount: 0 };
+  if (p < 0.18) {
+    // Stand -> crouch
+    const t = p / 0.18;
+    return { crouchAmount: t, flatAmount: 0 };
+  }
+  if (p < 0.32) {
+    // Crouch -> flat
+    const t = (p - 0.18) / 0.14;
+    return { crouchAmount: 1 - t, flatAmount: t };
+  }
+  if (p < 0.68) {
+    // Hold flat
+    return { crouchAmount: 0, flatAmount: 1 };
+  }
+  if (p < 0.82) {
+    // Flat -> crouch
+    const t = (p - 0.68) / 0.14;
+    return { crouchAmount: t, flatAmount: 1 - t };
+  }
+  // Crouch -> stand
+  const t = (p - 0.82) / 0.18;
+  return { crouchAmount: 1 - t, flatAmount: 0 };
+}
+
+// Apply the knockout pose to the figure. Mutates positions / rotations
+// in place; the caller has already run resetPose.
+function applyStunPose(fig: ModelFigure, crouchAmount: number, flatAmount: number) {
+  // Crouch lean: torso pitches forward, head drops. Reuses the same
+  // pivot tuning as the regular crouch animation.
+  const crouchTilt = (Math.PI / 2.4) * crouchAmount;
+  const flatTilt = (Math.PI / 2) * flatAmount;
+  fig.torso.rotation.x = crouchTilt + flatTilt;
+  // Drop the torso pivot down so the figure approaches the ground as
+  // it folds forward. flatAmount drops it the rest of the way.
+  const torsoDrop =
+    crouchAmount * 0.4 + flatAmount * (fig.rest.torso.y - 0.15);
+  fig.torso.position.y = Math.max(0.15, fig.rest.torso.y - torsoDrop);
+  fig.torso.position.z = 0.05 * crouchAmount + 0.25 * flatAmount;
+
+  fig.head.rotation.x = -Math.PI / 5 * crouchAmount - Math.PI / 6 * flatAmount;
+  fig.head.position.z = 0.25 * crouchAmount + 0.40 * flatAmount;
+  fig.head.position.y = fig.rest.head.y - 0.10 * flatAmount;
+
+  // Limbs splay outward when flat. Arms hang loose; legs sprawl back.
+  const armReachX = (Math.PI / 3) * crouchAmount + (Math.PI / 4) * flatAmount;
+  const legReachX =
+    (-Math.PI / 2 + 0.20) * crouchAmount + (-Math.PI / 6) * flatAmount;
+  fig.armL.rotation.x = armReachX;
+  fig.armR.rotation.x = armReachX;
+  fig.armL.rotation.y = -0.4 * flatAmount;
+  fig.armR.rotation.y = 0.4 * flatAmount;
+  fig.legL.rotation.x = legReachX;
+  fig.legR.rotation.x = legReachX;
+  fig.legL.rotation.y = 0.2 * flatAmount;
+  fig.legR.rotation.y = -0.2 * flatAmount;
+}
+
 export function updateModelFigurePose(
   fig: ModelFigure,
   input: ModelFigurePoseInput,
 ) {
-  const { stance, speed, isRunning, facing, time, hidden } = input;
+  const { stance, speed, isRunning, facing, time, hidden, stunProgress } = input;
   fig.group.rotation.y = -facing + Math.PI / 2;
   resetPose(fig);
+
+  // Stun knockout takes priority over every other pose: the AI froze
+  // the guard's movement, so the figure shouldn't be walking / aiming.
+  if (stunProgress !== undefined && stunProgress > 0 && stunProgress < 1) {
+    const { crouchAmount, flatAmount } = stunPhase(stunProgress);
+    applyStunPose(fig, crouchAmount, flatAmount);
+    void hidden;
+    return;
+  }
 
   const cycleHz = isRunning ? 4.5 : 2.4;
   const phase = time * cycleHz * 2 * Math.PI;

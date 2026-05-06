@@ -110,6 +110,12 @@ type Store = {
   // on every new segment so the banner doesn't stale-read after a
   // win + Next Segment.
   lastDeathCause: 'arrested' | 'killed' | null;
+  // Monotonic counter that increments on every catch (soft hit AND
+  // run-ending hit). The CatchFlash HUD subscribes to this so it can
+  // pop the shield+skull cue once per hit; the counter changing is
+  // what triggers the animation, not the runState (which only flips
+  // on the run-ending hit and would miss soft catches otherwise).
+  catchCounter: number;
   // Best star score (1..3) per stage for the *currently active save*.
   // Mirrored from save.bestStars when a save is loaded so existing
   // HUD code (Banner, etc.) can keep reading from the store. Resets
@@ -130,6 +136,7 @@ type Store = {
   setPaused: (b: boolean) => void;
   setLastStats: (s: RunStats | null) => void;
   setLastDeathCause: (c: 'arrested' | 'killed' | null) => void;
+  bumpCatchCounter: () => void;
   setWeather: (w: WeatherKind) => void;
   setBestStars: (b: Record<number, number>) => void;
   setWeatherEnabled: (b: boolean) => void;
@@ -182,6 +189,7 @@ export const useStore = create<Store>((set) => ({
   pendingStartMode: null,
   lastStats: null,
   lastDeathCause: null,
+  catchCounter: 0,
   bestStars: {},
   inventory: { ...EMPTY_INVENTORY },
   setRunState: (s) => set({ runState: s }),
@@ -216,6 +224,8 @@ export const useStore = create<Store>((set) => ({
   setLastStats: (s) => set({ lastStats: s }),
   setLastDeathCause: (c) =>
     set((st) => (st.lastDeathCause === c ? st : { lastDeathCause: c })),
+  bumpCatchCounter: () =>
+    set((st) => ({ catchCounter: st.catchCounter + 1 })),
   setWeather: (w) => set((st) => (st.weather === w ? st : { weather: w })),
   setWeatherEnabled: (b) =>
     set((st) => (st.weatherEnabled === b ? st : { weatherEnabled: b })),

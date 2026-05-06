@@ -102,6 +102,7 @@ import { StartScreen } from '../components/HUD/StartScreen';
 import { AlarmOverlay } from '../components/HUD/AlarmOverlay';
 import { SettingsScreen } from '../components/HUD/SettingsScreen';
 import { PickupBag } from '../components/HUD/PickupBag';
+import { CatchFlash } from '../components/HUD/CatchFlash';
 import { EventFlash } from '../components/HUD/EventFlash';
 import { Tutorial } from '../components/HUD/Tutorial';
 import { GameModal } from '../components/HUD/GameModal';
@@ -145,6 +146,7 @@ import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
 import {
   createPickupSounds,
   playPickupGrab,
+  playCrowbarBonk,
   playPickupUse,
   type PickupSounds,
 } from '../scenes/PickupSounds';
@@ -172,7 +174,14 @@ const CROWBAR_STUN_DURATION = 4.0;
 // No-op if no guard is in range. Resets that guard's investigation
 // state so the unstun re-enters wander rather than re-aggroing the
 // player from where they were standing when they swung.
-function applyCrowbarStun(px: number, pz: number, guards: readonly Guard[]) {
+// Returns true on a successful hit so the caller can fire the bonk
+// SFX + haptic feedback only when contact actually lands (a swing
+// into empty air should be silent).
+function applyCrowbarStun(
+  px: number,
+  pz: number,
+  guards: readonly Guard[],
+): boolean {
   let nearest: Guard | null = null;
   let nearestDistSq = CROWBAR_RANGE_SQ;
   for (const g of guards) {
@@ -185,12 +194,13 @@ function applyCrowbarStun(px: number, pz: number, guards: readonly Guard[]) {
       nearest = g;
     }
   }
-  if (!nearest) return;
+  if (!nearest) return false;
   nearest.stunTimer = CROWBAR_STUN_DURATION;
   nearest.state = 'wander';
   nearest.investigationTarget = null;
   nearest.behaviorTimer = 0;
   nearest.fireCooldown = Math.max(nearest.fireCooldown, 0.5);
+  return true;
 }
 
 function scoreStars(s: Omit<RunStats, 'stars'>): number {
@@ -669,6 +679,11 @@ export function Game() {
       const remaining = st.hearts - 1;
       st.setHearts(remaining);
       st.setLastDeathCause(cause);
+      // Trigger the shield+skull catch flash. CatchFlash subscribes
+      // to catchCounter; bumping it here means every hit (soft or
+      // run-ending) plays the same brief notification before the
+      // soft-restart respawn or the run-ending banner.
+      st.bumpCatchCounter();
       projectiles.clear();
       shakeRemaining = SHAKE_DURATION;
       if (remaining <= 0) {
@@ -990,12 +1005,16 @@ export function Game() {
       if (input.useCrowbar) {
         input.useCrowbar = false;
         if (st.consumePickup('crowbar')) {
-          applyCrowbarStun(player.x, player.z, scene.guards);
+          const hit = applyCrowbarStun(player.x, player.z, scene.guards);
           const arc = createSwingArc(player.x, player.z, CROWBAR_RANGE);
           r.worldRoot.add(arc.mesh);
           swingArcs.push(arc);
           haptics.pickupUse();
+          // Always play the swing whoosh; layer the bonk thump on top
+          // when contact actually lands. The two cue different things
+          // for the player: whoosh = "you swung", bonk = "you connected".
           playPickupUse(pickupSounds, st.masterVolume);
+          if (hit) playCrowbarBonk(pickupSounds, st.masterVolume);
         }
       }
       if (input.useSmokeBomb) {
@@ -1367,17 +1386,37 @@ export function Game() {
         const moving =
           fig.group.position.x !== g.x || fig.group.position.z !== g.z;
         const speed = moving ? 1.5 : 0;
+        // Knockout pose: the figure folds into a crouch, then flat
+        // face-down, holds, then rises back to standing as stunTimer
+        // ticks down. progress = 1 - stunTimer/CROWBAR_STUN_DURATION
+        // gives 0 the moment the crowbar lands and 1 when the guard
+        // wakes up.
+        const stunProgress =
+          g.stunTimer > 0
+            ? Math.max(0, Math.min(1, 1 - g.stunTimer / CROWBAR_STUN_DURATION))
+            : undefined;
         updateFigurePose(fig, {
           stance: 'walk',
           speed,
           isRunning: g.state === 'chase',
           facing: g.facing,
           time: animTime,
+          stunProgress,
         });
         setFigurePosition(fig, g.x, g.z);
         // Override the swinging arm pose so flashlight + pistol stay
-        // aimed reliably down the figure's facing direction.
-        poseGuardArms(fig);
+        // aimed reliably down the figure's facing direction. Skipped
+        // while stunned - the knockout pose owns the arms and we
+        // don't want the flashlight pointing forward from a flat-
+        // on-the-ground guard. The vision-cone beam is also hidden
+        // for the same reason: a face-down guard isn't lighting
+        // anything up.
+        if (stunProgress === undefined) {
+          poseGuardArms(fig);
+          entry.equipment.beam.visible = true;
+        } else {
+          entry.equipment.beam.visible = false;
+        }
         // Counter-rotate the state marker so it always faces the
         // camera direction (i.e. doesn't yaw with the figure). The
         // figure rotates around Y by figure.group.rotation.y; we
@@ -1442,6 +1481,7 @@ export function Game() {
       <AlarmBar />
       <BossTimer />
       <EventFlash />
+      <CatchFlash />
       <Banner />
       <StartScreen />
       <SettingsScreen />

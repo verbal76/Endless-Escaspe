@@ -90,6 +90,7 @@ function envelope(t: number, total: number): number {
 
 let cachedGrab: string | null = null;
 let cachedUse: string | null = null;
+let cachedBonk: string | null = null;
 
 // Pickup grab: short upward chirp from ~720Hz to ~1200Hz over 130ms.
 // Reads as a positive "got it" blip without being shrill.
@@ -103,6 +104,29 @@ export function getPickupGrabUri(): string {
     return Math.sin(phase) * envelope(t, dur);
   });
   return cachedGrab;
+}
+
+// Crowbar bonk: a low-frequency thud + brief noise crackle. Builds
+// from a fast-decaying ~140 Hz sine (the dull metal thump) plus a
+// short burst of band-limited noise (the "ow"-style impact crackle).
+// 180 ms total, hard-attack envelope, exponential decay.
+export function getBonkUri(): string {
+  if (cachedBonk) return cachedBonk;
+  const dur = 0.18;
+  let phase = 0;
+  cachedBonk = buildWavUri(dur, (t) => {
+    // Sine sweeping from 180 Hz down to 90 Hz - the "thud".
+    const freq = 180 - (180 - 90) * (t / dur);
+    phase += (2 * Math.PI * freq) / SAMPLE_RATE;
+    const tone = Math.sin(phase);
+    // Noise crackle, decays faster than the tone so it clusters at
+    // the front of the sound.
+    const noise = (Math.random() * 2 - 1) * Math.exp(-t * 30);
+    // Hard attack -> exponential decay envelope.
+    const env = t < 0.005 ? t / 0.005 : Math.exp(-(t - 0.005) * 12);
+    return (tone * 0.7 + noise * 0.4) * env;
+  });
+  return cachedBonk;
 }
 
 // Pickup use: lower, slightly longer downward sweep from ~620Hz to

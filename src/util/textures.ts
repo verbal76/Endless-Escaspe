@@ -81,6 +81,19 @@ export async function preloadAllTextures(): Promise<void> {
       'vehicle-colormap',
       require('../../assets/vehicles/colormap.png'),
     ),
+    // Prop textures: only the subset we have so far. The remaining
+    // MTL-referenced textures (concrete / signs / roof / dirt /
+    // grass / metal_wall) fall back to solid colours in KitProps
+    // until the matching PNGs land in assets/props/.
+    loadAssetTexture('prop-wall', require('../../assets/props/wall.png')),
+    loadAssetTexture('prop-treeB', require('../../assets/props/treeB.png')),
+    // Stand-in for metal_wall.png until the real Kenney atlas lands;
+    // the garage-door panel reads as galvanised metal and matches the
+    // dumpster trim well enough.
+    loadAssetTexture(
+      'prop-metal',
+      require('../../assets/props/wall_garage.png'),
+    ),
   ]);
 }
 
@@ -92,4 +105,22 @@ export function getCharacterTexture(
 
 export function getVehicleColormap(): THREE.Texture | null {
   return CACHE['vehicle-colormap'] ?? null;
+}
+
+// Prop texture lookup keyed by the MTL `newmtl` name from each
+// Kenney prop OBJ. Returns null if the texture wasn't preloaded
+// (caller falls back to a solid colour). The mapping captures
+// what we have today; the four missing names (concrete, signs,
+// roof, dirt, grass) return null and stay solid-coloured.
+export function getPropTexture(materialName: string): THREE.Texture | null {
+  switch (materialName) {
+    case 'wall':
+      return CACHE['prop-wall'] ?? null;
+    case 'treeB':
+      return CACHE['prop-treeB'] ?? null;
+    case 'wall_metal':
+      return CACHE['prop-metal'] ?? null;
+    default:
+      return null;
+  }
 }

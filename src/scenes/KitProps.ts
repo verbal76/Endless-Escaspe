@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { markShared } from '../util/dispose';
+import { getPropTexture } from '../util/textures';
 import { barrierA_OBJ } from '../../assets/props/barrierAObj';
 import { barrierB_OBJ } from '../../assets/props/barrierBObj';
 import { block_OBJ } from '../../assets/props/blockObj';
@@ -73,13 +74,28 @@ function materialFor(name: string): THREE.MeshStandardMaterial {
   const cached = SHARED_MATERIALS[name];
   if (cached) return cached;
   const def = PALETTE[name] ?? DEFAULT_DEF;
-  const mat = new THREE.MeshStandardMaterial({
-    color: def.color,
-    emissive: def.color,
-    emissiveIntensity: def.emissiveIntensity,
-    roughness: 0.7,
-    metalness: def.metalness ?? 0.1,
-  });
+  // If we have a real PNG for this MTL (currently wall, treeB, and
+  // a wall_garage stand-in for wall_metal), bind it as map +
+  // emissiveMap so the prop reads with detail. Falls back to the
+  // hand-picked solid colour from PALETTE for materials whose PNGs
+  // we don't have yet (concrete / signs / roof / dirt / grass).
+  const tex = getPropTexture(name);
+  const mat = tex
+    ? new THREE.MeshStandardMaterial({
+        map: tex,
+        emissive: 0xffffff,
+        emissiveMap: tex,
+        emissiveIntensity: def.emissiveIntensity,
+        roughness: 0.7,
+        metalness: def.metalness ?? 0.1,
+      })
+    : new THREE.MeshStandardMaterial({
+        color: def.color,
+        emissive: def.color,
+        emissiveIntensity: def.emissiveIntensity,
+        roughness: 0.7,
+        metalness: def.metalness ?? 0.1,
+      });
   markShared(mat);
   SHARED_MATERIALS[name] = mat;
   return mat;

@@ -10,14 +10,27 @@ import { PLAY_HALF_W } from '../util/geometry';
 // independent rather than two clones of each other.
 
 const SPEED_WANDER = 1.6;
-const SPEED_INVESTIGATE = 3.2;
+// Bumped from 3.2 -> 4.5 so an investigating guard actually closes
+// distance on a player walking away (player walk = 3.5). The prior
+// 3.2 left guards permanently a half-metre behind a walking target,
+// which made "the cops only walk and never get me" a reliable
+// strategy.
+const SPEED_INVESTIGATE = 4.5;
+// Slow trail speed used during the alert state. Below walk so the
+// guard reads as "noticed you, looking" rather than "committed to
+// pursuit", but above zero so the player can't trivially stroll
+// away while the alert pause ticks down.
+const SPEED_ALERT_TRAIL = 1.8;
 const SPEED_CHASE = 6.5;
 const SPEED_RETURN = 2.4;
 
 const WANDER_RETARGET_S = 4.5; // re-pick a wander target this often
 const ARRIVE_EPS_SQ = 0.6 * 0.6;
 
-const ALERT_PAUSE_S = 1.6;
+// Shorter alert pause so guards commit to investigating sooner.
+// The prior 1.6 s gave the player a long free window to break LOS
+// while the guard stood still scanning.
+const ALERT_PAUSE_S = 0.8;
 const INVESTIGATE_TIMEOUT_S = 7;
 const RETURN_HOME_RADIUS = 1.5;
 
@@ -150,17 +163,28 @@ export function updateGuard(
   // Behaviour-specific updates and time-outs.
   switch (g.state) {
     case 'alert': {
-      // Stand still and look toward suspected source. Tip out to
-      // investigate or back to wander based on how the meter moved.
+      // Trail toward the suspected source at a slow walk while the
+      // alert pause ticks down. The prior "stand still" tuning let
+      // the player walk freely away during the 1.6 s pause; trailing
+      // means the guard at least starts closing distance the moment
+      // they notice anything. After the pause ALWAYS commit to
+      // investigate (rather than only when detection is currently
+      // >= TH_INVESTIGATE) - the investigate-state timeout handles
+      // returning home if the trail goes cold. Without this the
+      // guard would bail back to wander if the player broke LOS for
+      // even a moment after being spotted.
       if (g.investigationTarget) {
-        g.facing = Math.atan2(
-          g.investigationTarget.z - g.z,
-          g.investigationTarget.x - g.x,
+        moveToward(
+          g,
+          g.investigationTarget.x,
+          g.investigationTarget.z,
+          SPEED_ALERT_TRAIL,
+          obstacles,
+          dt,
         );
       }
       if (g.behaviorTimer >= ALERT_PAUSE_S) {
-        if (detection >= TH_INVESTIGATE) setState(g, 'investigate', p);
-        else setState(g, 'return');
+        setState(g, 'investigate', p);
       }
       break;
     }

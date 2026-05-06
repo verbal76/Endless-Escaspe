@@ -1,7 +1,46 @@
 import * as THREE from 'three';
 import type { Obstacle, ObstacleKind } from '../types/world';
+import { markShared } from '../util/dispose';
 import { createKitProp } from './KitProps';
 import { createVehicle } from './Vehicle';
+
+// Procedural tree trunk: the Kenney pine OBJ is a flat alpha-cut
+// billboard whose texture trunk is too narrow to survive the
+// alpha-test threshold (looks like the tree is floating with no
+// trunk). A small brown cylinder at the base grounds it visually.
+const TREE_TRUNK_GEO = markShared(
+  new THREE.CylinderGeometry(0.18, 0.22, 1.0, 10),
+);
+const TREE_TRUNK_MAT = markShared(
+  new THREE.MeshStandardMaterial({
+    color: 0x5a3c20,
+    emissive: 0x3a2614,
+    emissiveIntensity: 0.40,
+    roughness: 0.95,
+  }),
+);
+
+// Build a tree group: trunk cylinder + alpha-cut pine billboards
+// stacked at the right Y. `sceneScale` is the foliage's scale Vector3
+// (matches the prior createKitProp call); the trunk is sized in
+// world units so it stays consistent regardless of foliage scale.
+// Exported so the backdrop tree-row uses the same helper.
+export function buildTreeGroup(variant: 'treeA' | 'treeB', sceneScale: THREE.Vector3, trunkH: number): THREE.Group {
+  const g = new THREE.Group();
+  // Foliage planes go in unscaled-y first, then scaled by the kit
+  // helper. Keep their bottom at y=0 so the tree appears to grow
+  // from the ground.
+  const foliage = createKitProp('treePine', sceneScale, variant);
+  g.add(foliage);
+  // Trunk: scale Y to the requested height so the trunk sits
+  // proportional to the foliage. Radius is left at native (looks
+  // right at the size we ship today).
+  const trunk = new THREE.Mesh(TREE_TRUNK_GEO, TREE_TRUNK_MAT);
+  trunk.scale.y = trunkH;
+  trunk.position.y = trunkH / 2;
+  g.add(trunk);
+  return g;
+}
 
 // Obstacle mesh factory + per-kind metadata. Procgen picks a kind
 // randomly, then this module produces the matching three.js mesh
@@ -32,11 +71,11 @@ const SCALE_BARREL = new THREE.Vector3(1.40, 1.91, 1.75);
 // Pine model uses crossed alpha-cut billboard planes; the visible
 // silhouette only fills the central column of the 64x64 texture, so
 // the scale has to overshoot the desired visible footprint to make
-// the tree read as more than a sprig. (3.0, 6.5, 3.0) lands the
-// silhouette at roughly 1.5 m wide x 2.6 m tall after the alpha-cut
-// crops it - a chunky bush-tree rather than the prior arborvitae-
-// scale shrub the (1.5, 5.0, 1.5) tuning produced.
-const SCALE_TREE = new THREE.Vector3(3.00, 6.50, 3.00);
+// the tree read as more than a sprig. (4.0, 9.0, 4.0) lands the
+// silhouette at roughly 2 m wide x 3.6 m tall after the alpha-cut
+// crops it - a real game-scale tree the player can hide behind,
+// rather than the prior arborvitae shrub.
+const SCALE_TREE = new THREE.Vector3(4.00, 9.00, 4.00);
 // block native 0.5 x 0.5 x 0.5 -> 2.6 x 1.1 x 0.7 (long concrete wall)
 const SCALE_HEDGEROW = new THREE.Vector3(5.20, 2.20, 1.40);
 
@@ -179,13 +218,12 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
       return g;
     }
     case 'tree': {
-      // Stretched pine model: tall thin Y, modest X/Z so the result
-      // reads as a real game-scale tree rather than a 0.4 m bush.
-      // 50/50 between the dark-green pine (treeB) and warm autumn
-      // foliage (treeA) so the row reads mixed-season instead of a
-      // forest of identical evergreens.
+      // Stretched pine model + a procedural trunk cylinder. 50/50
+      // between the dark-green pine (treeB) and warm autumn foliage
+      // (treeA). The trunk grounds the otherwise floating alpha-cut
+      // foliage so the tree reads as a real tree with a base.
       const variant = Math.random() < 0.5 ? 'treeB' : 'treeA';
-      const g = createKitProp('treePine', SCALE_TREE, variant);
+      const g = buildTreeGroup(variant, SCALE_TREE, 1.2);
       g.position.set(o.x, 0, o.z);
       g.rotation.y = Math.random() * Math.PI * 2;
       return g;

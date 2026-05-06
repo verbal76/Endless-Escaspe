@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
-import { createKitProp } from './KitProps';
+import { buildTreeGroup } from './Obstacles';
 
 // Layered backdrop: snow-capped mountains far back, a tree line in
 // the midground, drifting clouds, and birds crossing the sky. None
@@ -141,20 +141,15 @@ function buildMountainMesh(rng: () => number): THREE.Group {
 }
 
 function buildTreeMesh(rng: () => number): { group: THREE.Group } {
-  // Backdrop trees outside the fence reuse the same Kenney pine model
-  // the procgen spawns inside the play area, with the same 50/50
-  // treeA / treeB texture mix. No snow cap - the old sphere-drape
-  // cap was sized for the prior icosahedron leaves and doesn't fit
-  // the conical pine silhouette (it just covered the tree as a big
-  // white dome). Falling snow + the ground tint communicate the
-  // weather adequately on their own.
-  const variant = rng() < 0.5 ? 'treeB' : 'treeA';
-  // Distant trees scale the same way procgen trees do (alpha-cut
-  // crops the silhouette to the central column of the texture so we
-  // overshoot in X/Z) plus extra height so the row reads against
-  // the 70-160 m mountain range without looking like saplings.
-  const treeScale = new THREE.Vector3(4.0, 8.0, 4.0);
-  const group = createKitProp('treePine', treeScale, variant);
+  // Backdrop trees outside the fence share the same buildTreeGroup
+  // helper as the procgen-spawned trees - the alpha-cut Kenney pine
+  // billboard plus a procedural trunk cylinder so the tree reads as
+  // a tree (not floating foliage). Larger uniform scale + taller
+  // trunk than the procgen variants so the row reads at distance
+  // against the 70-160 m mountain range.
+  const variant: 'treeA' | 'treeB' = rng() < 0.5 ? 'treeB' : 'treeA';
+  const treeScale = new THREE.Vector3(4.5, 9.0, 4.5);
+  const group = buildTreeGroup(variant, treeScale, 1.8);
   return { group };
 }
 

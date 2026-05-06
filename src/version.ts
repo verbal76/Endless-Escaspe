@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #59 · audit pass: crate OBB, boulder + tree radii tightened';
+export const OTA_VERSION = 'OTA #60 · guards trail on alert; trees get trunks + bigger scale';

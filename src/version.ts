@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #57 · trees bigger + no domes; chunks reject fence-to-fence walls';
+export const OTA_VERSION = 'OTA #58 · rectangular hitboxes for cars + barriers + hedgerows';

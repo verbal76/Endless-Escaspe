@@ -21,6 +21,24 @@ export type Obstacle = {
   x: number;
   z: number;
   r: number;
+  // Optional sub-kind for obstacles whose visual variants need
+  // distinct collision shapes. Today only 'car' uses it: a 3x-scale
+  // firetruck has nearly 4 m of half-length that a 2x police
+  // cruiser doesn't, so the procgen rolls the variant up-front and
+  // stores it here so buildObstacleMesh + Obstacle.r both stay in
+  // sync. Undefined for every other kind.
+  subKind?: 'police' | 'firetruck';
+  // Optional oriented-bounding-box hitbox. When present (currently
+  // only for cars), the player's collision check uses circle-vs-OBB
+  // so the player can walk right up to a truck's side without
+  // hitting the bounding circle's much-larger phantom radius. `r`
+  // is still the OBB's enclosing circle radius and is what the
+  // procgen + line-of-sight sampling use for cheap circle tests.
+  // halfW / halfL are local-frame half-extents (before rotY) and
+  // rotY is the Y-rotation applied to that frame in world space.
+  halfW?: number;
+  halfL?: number;
+  rotY?: number;
   // World-space top of the obstacle, in metres above the ground.
   // DetectionSystem uses this to decide whether the obstacle is tall
   // enough to break line of sight against the player's current stance.

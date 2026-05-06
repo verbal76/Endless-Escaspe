@@ -60,6 +60,60 @@ function tooClose(
   return false;
 }
 
+// Per-spawn hitbox metadata. For elongated obstacles (cars, jersey
+// barriers, low walls, hedgerows) we roll a Y rotation up-front and
+// store the OBB half-extents + rotation so the player's collision
+// can use circle-vs-OBB instead of circle-vs-circle (the bounding
+// circle is much wider than the actual silhouette in one axis and
+// would block the player ~2 m away from the visible face). Square-
+// footprint obstacles (crate, boulder, barrel, tree) leave the OBB
+// fields undefined so the collision falls back to the circle.
+type ObstacleHitbox = {
+  r: number;
+  halfW?: number;
+  halfL?: number;
+  rotY?: number;
+  subKind?: 'police' | 'firetruck';
+};
+
+function rollObstacleHitbox(kind: ObstacleKind, rng: Rng): ObstacleHitbox {
+  if (kind === 'car') {
+    // 80/20 police / firetruck. Each has its own OBB; rotation is in
+    // 90-deg steps so cars sit length-wise OR width-wise across
+    // the path.
+    const subKind: 'police' | 'firetruck' = rng() < 0.8 ? 'police' : 'firetruck';
+    const halfW = subKind === 'firetruck' ? 1.755 : 1.17;
+    const halfL = subKind === 'firetruck' ? 3.98 : 2.42;
+    const rotY = (Math.floor(rng() * 4) * Math.PI) / 2;
+    // Bounding circle radius (worst-case diagonal) so procgen
+    // spacing leaves room for the rotated rectangle.
+    const r = Math.hypot(halfW, halfL) + 0.05;
+    return { r, halfW, halfL, rotY, subKind };
+  }
+  if (kind === 'lowwall') {
+    // barrierA scaled to 1.6 x 0.6 x 0.6.
+    const halfW = 0.8;
+    const halfL = 0.3;
+    const rotY = rng() < 0.5 ? 0 : Math.PI / 2;
+    return { r: Math.hypot(halfW, halfL) + 0.05, halfW, halfL, rotY };
+  }
+  if (kind === 'cover') {
+    // barrierB scaled to 2.0 x 1.4 x 1.0.
+    const halfW = 1.0;
+    const halfL = 0.5;
+    const rotY = rng() < 0.5 ? 0 : Math.PI / 2;
+    return { r: Math.hypot(halfW, halfL) + 0.05, halfW, halfL, rotY };
+  }
+  if (kind === 'hedgerow') {
+    // block stretched to 2.6 x 1.1 x 0.7.
+    const halfW = 1.3;
+    const halfL = 0.35;
+    const rotY = rng() < 0.5 ? 0 : Math.PI / 2;
+    return { r: Math.hypot(halfW, halfL) + 0.05, halfW, halfL, rotY };
+  }
+  return { r: OBSTACLE_RADIUS[kind] };
+}
+
 function placeNonCoverScatter(
   rng: Rng,
   obstacles: Obstacle[],
@@ -71,16 +125,20 @@ function placeNonCoverScatter(
     let placed = false;
     for (let attempt = 0; attempt < 14 && !placed; attempt++) {
       const kind: ObstacleKind = pick(rng, NON_COVER_KINDS);
-      const r = OBSTACLE_RADIUS[kind];
+      const meta = rollObstacleHitbox(kind, rng);
       const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
       const z = startZ + 1.5 + rng() * (CHUNK_LEN - 3);
-      if (tooClose(obstacles, x, z, r, seam)) continue;
+      if (tooClose(obstacles, x, z, meta.r, seam)) continue;
       obstacles.push({
         id: nextObstacleId++,
         kind,
+        subKind: meta.subKind,
         x,
         z,
-        r,
+        r: meta.r,
+        halfW: meta.halfW,
+        halfL: meta.halfL,
+        rotY: meta.rotY,
         height: OBSTACLE_HEIGHT[kind],
         isCover: false,
         mesh: null,
@@ -100,15 +158,23 @@ function placeCoverScatter(
   for (let i = 0; i < count; i++) {
     let placed = false;
     for (let attempt = 0; attempt < 14 && !placed; attempt++) {
+      // Cover obstacles use the same elongated barrierB hitbox as the
+      // non-cover spawns, so apply the same OBB roll - otherwise the
+      // 1.12 m bounding circle would block the player ~0.6 m past
+      // the visible face on the short axis.
+      const meta = rollObstacleHitbox('cover', rng);
       const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
       const z = startZ + 1.5 + rng() * (CHUNK_LEN - 3);
-      if (tooClose(obstacles, x, z, COVER_RADIUS, seam)) continue;
+      if (tooClose(obstacles, x, z, meta.r, seam)) continue;
       obstacles.push({
         id: nextObstacleId++,
         kind: 'cover',
         x,
         z,
-        r: COVER_RADIUS,
+        r: meta.r,
+        halfW: meta.halfW,
+        halfL: meta.halfL,
+        rotY: meta.rotY,
         height: OBSTACLE_HEIGHT.cover,
         isCover: true,
         mesh: null,

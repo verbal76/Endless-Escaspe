@@ -118,10 +118,11 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
     }
     case 'lowwall': {
       // Concrete jersey barrier - knee-high, doesn't block standing
-      // line of sight but breaks crouched LOS.
+      // line of sight but breaks crouched LOS. rotY is pre-rolled by
+      // the procgen so the OBB hitbox + visual mesh stay synced.
       const g = createKitProp('barrierA', SCALE_LOWWALL);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = Math.random() < 0.5 ? 0 : Math.PI / 2;
+      g.rotation.y = o.rotY ?? (Math.random() < 0.5 ? 0 : Math.PI / 2);
       return g;
     }
     case 'cover': {
@@ -129,7 +130,7 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
       // and reads as a "warning sign" landmark.
       const g = createKitProp('barrierB', SCALE_COVER);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = Math.random() < 0.5 ? 0 : Math.PI / 2;
+      g.rotation.y = o.rotY ?? (Math.random() < 0.5 ? 0 : Math.PI / 2);
       return g;
     }
     case 'barrel': {
@@ -153,21 +154,21 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
     }
     case 'hedgerow': {
       // Long concrete wall - same block model stretched along its
-      // X axis. Random Y rotation flips half of them width-wise so
-      // they don't all run along the same axis.
+      // X axis. rotY is pre-rolled by the procgen so the OBB
+      // hitbox + visual mesh stay synced.
       const g = createKitProp('block', SCALE_HEDGEROW);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = Math.random() < 0.5 ? 0 : Math.PI / 2;
+      g.rotation.y = o.rotY ?? (Math.random() < 0.5 ? 0 : Math.PI / 2);
       return g;
     }
     case 'car': {
-      // 80% police cruiser, 20% fire truck: the cruiser is the more
-      // common impound-yard sight and the (now much bigger) fire
-      // truck reads as a rare landmark rather than a regular hazard.
-      const kind = Math.random() < 0.8 ? 'police' : 'firetruck';
+      // Procgen pre-rolls the variant + Y rotation (so the hitbox
+      // OBB and the visual mesh stay synced).
+      const kind: 'police' | 'firetruck' =
+        o.subKind ?? (Math.random() < 0.8 ? 'police' : 'firetruck');
       const g = createVehicle(kind);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = (Math.floor(Math.random() * 4) * Math.PI) / 2;
+      g.rotation.y = o.rotY ?? (Math.floor(Math.random() * 4) * Math.PI) / 2;
       return g;
     }
     case 'tree': {

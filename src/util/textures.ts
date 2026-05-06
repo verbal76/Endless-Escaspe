@@ -87,15 +87,12 @@ export async function preloadAllTextures(): Promise<void> {
     // Prop textures - the 64x64 Kenney detail PNGs that the prop
     // OBJ MTLs reference. Tiled / repeated by the kit's UV layout.
     loadAssetTexture('prop-wall', require('../../assets/props/wall.png')),
-    loadAssetTexture('prop-treeB', require('../../assets/props/treeB.png')),
-    loadAssetTexture('prop-treeA', require('../../assets/props/treeA.png')),
     loadAssetTexture('prop-metal_wall', require('../../assets/props/metal_wall.png')),
     loadAssetTexture('prop-concrete', require('../../assets/props/concrete.png')),
     loadAssetTexture('prop-signs', require('../../assets/props/signs.png')),
     loadAssetTexture('prop-roof', require('../../assets/props/roof.png')),
     loadAssetTexture('prop-grass', require('../../assets/props/grass.png')),
     loadAssetTexture('prop-dirt', require('../../assets/props/dirt.png')),
-    loadAssetTexture('prop-planks', require('../../assets/props/planks.png')),
   ]);
 }
 
@@ -118,10 +115,6 @@ export function getPropTexture(materialName: string): THREE.Texture | null {
   switch (materialName) {
     case 'wall':
       return CACHE['prop-wall'] ?? null;
-    case 'treeB':
-      return CACHE['prop-treeB'] ?? null;
-    case 'treeA':
-      return CACHE['prop-treeA'] ?? null;
     case 'wall_metal':
       return CACHE['prop-metal_wall'] ?? null;
     case 'concrete':
@@ -143,11 +136,4 @@ export function getPropTexture(materialName: string): THREE.Texture | null {
 // of grass rather than one stretched tile).
 export function getGrassTexture(): THREE.Texture | null {
   return CACHE['prop-grass'] ?? null;
-}
-
-// Wood-plank texture, used for procedural tree trunks. Same separate-
-// from-getPropTexture convention as grass: caller usually wants a
-// per-instance clone with custom repeat.
-export function getPlanksTexture(): THREE.Texture | null {
-  return CACHE['prop-planks'] ?? null;
 }

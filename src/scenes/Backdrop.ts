@@ -140,16 +140,12 @@ function buildMountainMesh(rng: () => number): THREE.Group {
   return group;
 }
 
-function buildTreeMesh(rng: () => number): { group: THREE.Group } {
-  // Backdrop trees outside the fence share the same buildTreeGroup
-  // helper as the procgen-spawned trees - the alpha-cut Kenney pine
-  // billboard plus a procedural trunk cylinder so the tree reads as
-  // a tree (not floating foliage). Larger uniform scale + taller
-  // trunk than the procgen variants so the row reads at distance
-  // against the 70-160 m mountain range.
-  const variant: 'treeA' | 'treeB' = rng() < 0.5 ? 'treeB' : 'treeA';
-  const treeScale = new THREE.Vector3(4.5, 9.0, 4.5);
-  const group = buildTreeGroup(variant, treeScale, 1.8);
+function buildTreeMesh(_rng: () => number): { group: THREE.Group } {
+  // Backdrop trees use the same Kenney tall-pine helper as the
+  // procgen ones - real 3D geometry, no billboard. Larger uniform
+  // scale (3.5x ~ 5.4 m tall) so the row reads at distance against
+  // the 70-160 m mountain range.
+  const group = buildTreeGroup(3.5);
   return { group };
 }
 

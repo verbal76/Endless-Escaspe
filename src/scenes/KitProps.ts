@@ -7,7 +7,8 @@ import { barrierB_OBJ } from '../../assets/props/barrierBObj';
 import { block_OBJ } from '../../assets/props/blockObj';
 import { dumpsterClosed_OBJ } from '../../assets/props/dumpsterClosedObj';
 import { dumpsterOpen_OBJ } from '../../assets/props/dumpsterOpenObj';
-import { treePine_OBJ } from '../../assets/props/treePineObj';
+import { treePineTallA_OBJ } from '../../assets/props/treePineTallAObj';
+import { treePineTallADetailed_OBJ } from '../../assets/props/treePineTallADetailedObj';
 
 // Kenney prison-yard kit props. Each obstacle kind in Obstacles.ts
 // now maps to one of these models instead of a primitive box, giving
@@ -28,7 +29,8 @@ export type KitKind =
   | 'block'
   | 'dumpsterClosed'
   | 'dumpsterOpen'
-  | 'treePine';
+  | 'treePineTallA'
+  | 'treePineTallADetailed';
 
 const OBJ_BY_KIND: Record<KitKind, string> = {
   barrierA: barrierA_OBJ,
@@ -36,7 +38,8 @@ const OBJ_BY_KIND: Record<KitKind, string> = {
   block: block_OBJ,
   dumpsterClosed: dumpsterClosed_OBJ,
   dumpsterOpen: dumpsterOpen_OBJ,
-  treePine: treePine_OBJ,
+  treePineTallA: treePineTallA_OBJ,
+  treePineTallADetailed: treePineTallADetailed_OBJ,
 };
 
 // Per-MTL solid-colour palette. Names match the MTL file's `newmtl`
@@ -57,14 +60,13 @@ const PALETTE: Record<string, MaterialDef> = {
   roof: { color: 0x32323a, emissiveIntensity: 0.40 },
   // Dirt visible inside the open dumpster.
   dirt: { color: 0x6e5232, emissiveIntensity: 0.38 },
-  // Pine tree foliage + trunk all share a single material since the
-  // kit author baked everything to one texture. Two variants:
-  //   treeB - dark green pine (evergreen)
-  //   treeA - warm orange / autumn foliage
-  // The spawn site rolls between the two so the yard's tree row reads
-  // mixed-season instead of monocoloured.
-  treeB: { color: 0x3f6c30, emissiveIntensity: 0.44 },
-  treeA: { color: 0xb88838, emissiveIntensity: 0.44 },
+  // Tall-pine OBJ kit: real 3D geometry (trunk + stacked leaf cones)
+  // with two named MTL materials. Colours come straight from the
+  // kit's MTL Kd values (no texture - solid colour materials).
+  //   woodBarkDark - warm reddish-brown trunk
+  //   leafsDark    - teal/cyan-green leaf cones
+  woodBarkDark: { color: 0xcc7659, emissiveIntensity: 0.40 },
+  leafsDark: { color: 0x2ba6aa, emissiveIntensity: 0.42 },
 };
 
 // Default material for any unrecognised MTL name (so a future kit
@@ -85,14 +87,6 @@ function materialFor(name: string): THREE.MeshStandardMaterial {
   // hand-picked solid colour from PALETTE for materials whose PNGs
   // we don't have yet (concrete / signs / roof / dirt / grass).
   const tex = getPropTexture(name);
-  // Tree foliage is authored as crossed billboard planes with an
-  // alpha-keyed pine silhouette; without alpha-test the rectangular
-  // planes render solid green and the tree looks like a flat cutout.
-  // alphaTest=0.5 discards transparent pixels at the silhouette edge
-  // so the tree reads as a 3D-shaped bush from any angle. Other
-  // textures (concrete, dumpster wall, etc.) tile across opaque
-  // surfaces - alpha-test would do nothing useful for them.
-  const isFoliage = name === 'treeB' || name === 'treeA';
   const mat = tex
     ? new THREE.MeshStandardMaterial({
         map: tex,
@@ -101,9 +95,6 @@ function materialFor(name: string): THREE.MeshStandardMaterial {
         emissiveIntensity: def.emissiveIntensity,
         roughness: 0.7,
         metalness: def.metalness ?? 0.1,
-        transparent: isFoliage,
-        alphaTest: isFoliage ? 0.5 : 0,
-        side: isFoliage ? THREE.DoubleSide : THREE.FrontSide,
       })
     : new THREE.MeshStandardMaterial({
         color: def.color,

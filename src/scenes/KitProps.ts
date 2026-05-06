@@ -58,8 +58,13 @@ const PALETTE: Record<string, MaterialDef> = {
   // Dirt visible inside the open dumpster.
   dirt: { color: 0x6e5232, emissiveIntensity: 0.38 },
   // Pine tree foliage + trunk all share a single material since the
-  // kit author baked everything to one texture.
+  // kit author baked everything to one texture. Two variants:
+  //   treeB - dark green pine (evergreen)
+  //   treeA - warm orange / autumn foliage
+  // The spawn site rolls between the two so the yard's tree row reads
+  // mixed-season instead of monocoloured.
   treeB: { color: 0x3f6c30, emissiveIntensity: 0.44 },
+  treeA: { color: 0xb88838, emissiveIntensity: 0.44 },
 };
 
 // Default material for any unrecognised MTL name (so a future kit
@@ -87,7 +92,7 @@ function materialFor(name: string): THREE.MeshStandardMaterial {
   // so the tree reads as a 3D-shaped bush from any angle. Other
   // textures (concrete, dumpster wall, etc.) tile across opaque
   // surfaces - alpha-test would do nothing useful for them.
-  const isFoliage = name === 'treeB';
+  const isFoliage = name === 'treeB' || name === 'treeA';
   const mat = tex
     ? new THREE.MeshStandardMaterial({
         map: tex,
@@ -146,9 +151,14 @@ function parseTemplate(kind: KitKind): SubMesh[] {
 // Group; `scale` is applied here (some obstacle kinds need anisotropic
 // scaling to fit their existing hitbox - e.g. lowwall stretches the
 // short barrier model along X).
+//
+// `materialOverride` swaps the OBJ's baked-in `usemtl` name for one
+// in the palette - used by the tree spawner to pick treeA or treeB
+// at random while reusing the same pine geometry.
 export function createKitProp(
   kind: KitKind,
   scale: number | THREE.Vector3,
+  materialOverride?: string,
 ): THREE.Group {
   const subs = parseTemplate(kind);
   const group = new THREE.Group();
@@ -161,7 +171,10 @@ export function createKitProp(
     // rebuild dispose pass actually frees the per-instance buffer.
     const geo = s.geometry.clone();
     geo.userData.shared = false;
-    const mesh = new THREE.Mesh(geo, materialFor(s.materialName));
+    const mesh = new THREE.Mesh(
+      geo,
+      materialFor(materialOverride ?? s.materialName),
+    );
     group.add(mesh);
   }
   if (typeof scale === 'number') {

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
+import { createKitProp } from './KitProps';
 
 // Layered backdrop: snow-capped mountains far back, a tree line in
 // the midground, drifting clouds, and birds crossing the sky. None
@@ -171,19 +172,23 @@ function buildMountainMesh(rng: () => number): THREE.Group {
   return group;
 }
 
-function buildTreeMesh(): { group: THREE.Group; snowCap: THREE.Mesh } {
-  const group = new THREE.Group();
-  const trunk = new THREE.Mesh(TRUNK_GEO, TRUNK_MAT);
-  trunk.position.y = 1.3;
-  group.add(trunk);
-  const leaves = new THREE.Mesh(LEAVES_GEO, LEAVES_MAT);
-  leaves.position.y = 3.2;
-  group.add(leaves);
-  // Optional snow cap drapes the upper half of the leaf cluster.
-  // Always built; visibility is toggled per-segment by setBackdropSnow
-  // so non-snow stages don't see snowy distant trees.
+function buildTreeMesh(rng: () => number): { group: THREE.Group; snowCap: THREE.Mesh } {
+  // Backdrop trees outside the fence reuse the same Kenney pine model
+  // the procgen spawns inside the play area, with the same 50/50
+  // treeA / treeB texture mix - the only thing different about the
+  // distant ones is a larger uniform scale so they read as full-size
+  // distant trees against the mountain row instead of pocket bushes.
+  const variant = rng() < 0.5 ? 'treeB' : 'treeA';
+  // Native 0.7 x 0.4 x 0.7 -> 4.2 x 2.4 x 4.2 (same proportions as
+  // procgen trees, just bigger so they stand up next to the 70-160 m
+  // mountain row without looking like saplings).
+  const treeScale = new THREE.Vector3(2.6, 6.0, 2.6);
+  const group = createKitProp('treePine', treeScale, variant);
+  // Snow cap on backdrop trees was a sphere drape that doesn't fit
+  // the new conical pine silhouette. Hidden invisible mesh kept here
+  // (visibility toggled by setBackdropSnow) so the existing snow-
+  // toggle path keeps compiling - it just renders nothing.
   const snowCap = new THREE.Mesh(TREE_SNOW_GEO, TREE_SNOW_MAT);
-  snowCap.position.y = 3.45;
   snowCap.visible = false;
   group.add(snowCap);
   return { group, snowCap };
@@ -274,7 +279,7 @@ export function createBackdrop(): Backdrop {
     const z = (i / (TREE_COUNT_PER_SIDE - 1)) * (segLen + 40) + (rng() - 0.5) * 4;
     for (const sign of [-1, 1]) {
       const xJitter = rng() * (TREE_LINE_FAR - TREE_LINE_OUTER);
-      const built = buildTreeMesh();
+      const built = buildTreeMesh(rng);
       built.group.position.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
       built.group.scale.setScalar(0.85 + rng() * 0.5);
       built.group.rotation.y = rng() * Math.PI * 2;

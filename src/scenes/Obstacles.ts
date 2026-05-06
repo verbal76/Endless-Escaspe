@@ -44,11 +44,15 @@ export const OBSTACLE_RADIUS: Record<ObstacleKind, number> = {
   cover: 0.9,
   boulder: 0.65,
   barrel: 0.45,
-  // Sized to fit the 3x-scale firetruck (length ~7.95 m at scale
-  // 2.34). Conservative single value across both vehicle types means
-  // a 2x police cruiser gets extra breathing room but no obstacle
-  // ever spawns inside the truck's silhouette.
-  car: 4.0,
+  // Sized to fit the 2x-scale police cruiser (~4.84 m long, half-
+  // length 2.42 m). Plus PLAYER_RADIUS gives roughly half a metre of
+  // clearance off the cruiser bumper. The 3x firetruck overshoots
+  // this radius by ~1.5 m at each end - the procgen will sometimes
+  // place a small prop inside the truck's silhouette, but that's
+  // acceptable for a 20%-spawn-rate landmark vs the prior tuning
+  // where every car had a 4 m invisible bubble making the police
+  // feel uncrossable.
+  car: 2.7,
   tree: 0.4,
   hedgerow: 1.35,
 };
@@ -162,7 +166,11 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
     case 'tree': {
       // Stretched pine model: tall thin Y, modest X/Z so the result
       // reads as a real game-scale tree rather than a 0.4 m bush.
-      const g = createKitProp('treePine', SCALE_TREE);
+      // 50/50 between the dark-green pine (treeB) and warm autumn
+      // foliage (treeA) so the row reads mixed-season instead of a
+      // forest of identical evergreens.
+      const variant = Math.random() < 0.5 ? 'treeB' : 'treeA';
+      const g = createKitProp('treePine', SCALE_TREE, variant);
       g.position.set(o.x, 0, o.z);
       g.rotation.y = Math.random() * Math.PI * 2;
       return g;

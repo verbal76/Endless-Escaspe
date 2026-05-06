@@ -88,6 +88,7 @@ export async function preloadAllTextures(): Promise<void> {
     // OBJ MTLs reference. Tiled / repeated by the kit's UV layout.
     loadAssetTexture('prop-wall', require('../../assets/props/wall.png')),
     loadAssetTexture('prop-treeB', require('../../assets/props/treeB.png')),
+    loadAssetTexture('prop-treeA', require('../../assets/props/treeA.png')),
     loadAssetTexture('prop-metal_wall', require('../../assets/props/metal_wall.png')),
     loadAssetTexture('prop-concrete', require('../../assets/props/concrete.png')),
     loadAssetTexture('prop-signs', require('../../assets/props/signs.png')),
@@ -118,6 +119,8 @@ export function getPropTexture(materialName: string): THREE.Texture | null {
       return CACHE['prop-wall'] ?? null;
     case 'treeB':
       return CACHE['prop-treeB'] ?? null;
+    case 'treeA':
+      return CACHE['prop-treeA'] ?? null;
     case 'wall_metal':
       return CACHE['prop-metal_wall'] ?? null;
     case 'concrete':

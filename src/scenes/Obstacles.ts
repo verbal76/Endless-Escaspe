@@ -44,7 +44,11 @@ export const OBSTACLE_RADIUS: Record<ObstacleKind, number> = {
   cover: 0.9,
   boulder: 0.65,
   barrel: 0.45,
-  car: 1.35,
+  // Sized to fit the 3x-scale firetruck (length ~7.95 m at scale
+  // 2.34). Conservative single value across both vehicle types means
+  // a 2x police cruiser gets extra breathing room but no obstacle
+  // ever spawns inside the truck's silhouette.
+  car: 4.0,
   tree: 0.4,
   hedgerow: 1.35,
 };
@@ -58,11 +62,11 @@ export const OBSTACLE_HEIGHT: Record<ObstacleKind, number> = {
   cover: 1.40,    // barrierB scaled top
   boulder: 1.0,   // block scaled top
   barrel: 1.05,   // dumpsterOpen scaled top
-  // Police cruiser scaled tops at ~1.0 m, fire truck at ~1.33 m.
-  // Pick the smaller to be conservative: even if the spawn rolls a
-  // police cruiser the LOS rule still places it just above the
-  // standing-cover threshold (1.0 m).
-  car: 1.05,
+  // 2x police cruiser tops at ~2.03 m; 3x fire truck at ~3.98 m.
+  // Use the smaller value so the LOS rule reflects the worst-case
+  // obstruction (police): both still block standing line of sight
+  // since 2.03 > 1.0.
+  car: 2.0,
   tree: 2.0,      // pine scaled top
   hedgerow: 1.10, // block stretched top
 };
@@ -146,11 +150,10 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
       return g;
     }
     case 'car': {
-      // 50/50 between police cruiser and fire truck so the yard reads
-      // as a real impound mix rather than a fleet of identical cars.
-      // createVehicle returns a pre-scaled Group; we just position +
-      // yaw it.
-      const kind = Math.random() < 0.5 ? 'police' : 'firetruck';
+      // 80% police cruiser, 20% fire truck: the cruiser is the more
+      // common impound-yard sight and the (now much bigger) fire
+      // truck reads as a rare landmark rather than a regular hazard.
+      const kind = Math.random() < 0.8 ? 'police' : 'firetruck';
       const g = createVehicle(kind);
       g.position.set(o.x, 0, o.z);
       g.rotation.y = (Math.floor(Math.random() * 4) * Math.PI) / 2;

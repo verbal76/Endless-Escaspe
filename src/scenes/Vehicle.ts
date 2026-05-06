@@ -19,10 +19,16 @@ import { police_OBJ } from '../../assets/vehicles/policeObj';
 
 export type VehicleKind = 'police' | 'firetruck';
 
-// Native Kenney rig is ~3-3.5 m long. Scale down a touch so each
-// car obstacle sits near the same footprint as the procedural car
-// it replaces (which was 2.4 m long via OBSTACLE_RADIUS.car = 1.35).
-const SCALE = 0.78;
+// Per-kind uniform scale. Police is sized 2x the original 0.78
+// baseline (sits as a recognisable cruiser), firetruck 3x (a real
+// hulking emergency vehicle that dominates whatever cell it spawns
+// in). The procgen min-spacing radius (OBSTACLE_RADIUS.car) was
+// bumped accordingly so other props don't get placed inside the
+// firetruck's footprint.
+const SCALE_BY_KIND: Record<VehicleKind, number> = {
+  police: 0.78 * 2,    // 1.56
+  firetruck: 0.78 * 3, // 2.34
+};
 
 type Palette = {
   body: number;
@@ -140,6 +146,6 @@ export function createVehicle(kind: VehicleKind): THREE.Group {
     const mesh = new THREE.Mesh(geo, materialFor(part.name, mats));
     group.add(mesh);
   }
-  group.scale.setScalar(SCALE);
+  group.scale.setScalar(SCALE_BY_KIND[kind]);
   return group;
 }

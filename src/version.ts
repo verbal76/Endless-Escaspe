@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #45 · obstacles use Kenney prison-yard kit (no more primitives)';
+export const OTA_VERSION = 'OTA #46 · police 2x, firetruck 3x, 80/20 weighting';

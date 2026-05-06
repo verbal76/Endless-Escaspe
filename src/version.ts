@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #65 · day/night cycle: smooth blend through the lighting palettes';
+export const OTA_VERSION = 'OTA #66 · 60s cycle; guards sweep 3x larger area on alert';

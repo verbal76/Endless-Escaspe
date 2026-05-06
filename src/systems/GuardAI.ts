@@ -32,7 +32,18 @@ const ARRIVE_EPS_SQ = 0.6 * 0.6;
 // The prior 1.6 s gave the player a long free window to break LOS
 // while the guard stood still scanning.
 const ALERT_PAUSE_S = 0.8;
-const INVESTIGATE_TIMEOUT_S = 7;
+
+// Search radius around the last-known-target a guard sweeps after
+// reaching their investigation point. Combined with the 3x investigate
+// timeout below this triples the area an alerted guard covers before
+// giving up - the guard now visibly hunts for the player around the
+// last sighting instead of standing still and bailing home.
+const SEARCH_RADIUS = 6.0;
+// 7 -> 21 s: triples the time an alerted guard keeps hunting before
+// returning home. With the search-radius behaviour below, that's
+// roughly 3x the ground covered after a sighting - the player can't
+// just break LOS for a moment and have everyone forget them.
+const INVESTIGATE_TIMEOUT_S = 21;
 const RETURN_HOME_RADIUS = 1.5;
 
 const FIRE_COOLDOWN_S = 1.3;
@@ -195,9 +206,24 @@ export function updateGuard(
         const arrived =
           dist2Sq(g.x, g.z, g.investigationTarget.x, g.investigationTarget.z) <= ARRIVE_EPS_SQ;
         if (arrived) {
-          // Reached the spot. Hold for a beat as alert; if nothing
-          // new happens behaviorTimer will tick up and we'll abandon.
-          setState(g, 'alert', p);
+          // Reached the spot - now SWEEP the area instead of bailing
+          // home. Pick a new search target within SEARCH_RADIUS of
+          // the last known position; the guard will walk to that,
+          // arrive, and pick another, repeating until the investigate
+          // timeout fires. This triples the ground covered after a
+          // sighting so the player can't just step around a corner
+          // and have the guard immediately forget them.
+          const angle = Math.random() * Math.PI * 2;
+          const r = (0.4 + Math.random() * 0.6) * SEARCH_RADIUS;
+          const sx = Math.max(
+            -PLAY_HALF_W + 1,
+            Math.min(
+              PLAY_HALF_W - 1,
+              g.investigationTarget.x + Math.cos(angle) * r,
+            ),
+          );
+          const sz = Math.max(2, g.investigationTarget.z + Math.sin(angle) * r);
+          g.investigationTarget = { x: sx, z: sz };
         }
       }
       if (g.behaviorTimer >= INVESTIGATE_TIMEOUT_S && detection < TH_INVESTIGATE) {

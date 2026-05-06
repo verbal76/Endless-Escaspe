@@ -115,7 +115,7 @@ function lerpStage(a: StageLighting, b: StageLighting, t: number): StageLighting
 // time within the cycle the result is a smooth blend between two
 // adjacent palettes - colours and intensities both lerp - so the
 // world fades gradually instead of snapping between presets.
-const CYCLE_DURATION_S = 180; // 3 minutes per full bright->dark->bright loop
+const CYCLE_DURATION_S = 60; // 1 minute per full bright->dark->bright loop
 export function getCycleLighting(cycleTimeS: number): StageLighting {
   // Wrap the time into [0, CYCLE_DURATION_S) and normalise to t01.
   const wrapped = ((cycleTimeS % CYCLE_DURATION_S) + CYCLE_DURATION_S) % CYCLE_DURATION_S;

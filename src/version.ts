@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #69 · dumpsters +30%; music tracks + slider in pause menu';
+export const OTA_VERSION = 'OTA #70 · auto-boss every 10; about scrolls; slider no longer twitches';

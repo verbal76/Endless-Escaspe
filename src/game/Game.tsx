@@ -332,10 +332,12 @@ export function Game() {
 
       // Boss-arena variant: shorter playfield, no win line, no
       // horizon chunks, a back wall, extra guards, and a survive-
-      // the-timer win check (handled in the update loop). The
-      // toggle is a settings flag the player flips behind a
-      // dev-unlock code.
-      const isBossArena = useStore.getState().bossModeEnabled;
+      // Boss round trigger: every 10th stage (10, 20, 30, ...) the
+      // segment becomes a boss arena - smaller enclosed playfield
+      // with a survive-the-timer goal handled in the update loop.
+      // Replaces the prior dev-unlock toggle: the boss round is now
+      // a guaranteed checkpoint at every 10-stage milestone.
+      const isBossArena = stage > 0 && stage % 10 === 0;
       const ARENA_CHUNKS = 2; // ~48 m enclosed arena
       const ARENA_SURVIVE_SECONDS = 60;
 
@@ -565,11 +567,6 @@ export function Game() {
     let prevAnyDetected = false;
     let lastSegmentSeed = useStore.getState().segmentSeed;
     let lastStage = useStore.getState().stage;
-    // Track the boss-arena toggle so flipping it forces a rebuild
-    // even when neither stage nor seed changed - otherwise the
-    // user could turn the toggle off and still be stuck in the
-    // arena scene that was built while it was on.
-    let lastBossModeEnabled = useStore.getState().bossModeEnabled;
     let lastRestartCounter = useStore.getState().restartCounter;
     // Tracks the last observed runState so we can detect a fresh
     // transition into 'playing' (e.g. tapping START on a new save
@@ -706,11 +703,21 @@ export function Game() {
       shakeRemaining = SHAKE_DURATION;
       if (remaining <= 0) {
         haptics.caught();
-        // Final death: mirror handleWin's stats build so the death
-        // banner can render the same post-run summary the win banner
-        // uses. livesUsed equals the stage's starting hearts because
-        // every life was spent to reach this point. Stars=0 so the
-        // banner's death branch can render skulls instead.
+        // Boss-round failure isn't a run-ender: the user wants the
+        // arena to be a checkpoint that doesn't gate progression.
+        // Advance to the next stage with a fresh hearts pool and
+        // load the next segment instead of rolling the death banner.
+        if (scene.isBossArena) {
+          const nextStage = st.stage + 1;
+          st.setStage(nextStage);
+          st.setHearts(startingHeartsFor(nextStage));
+          st.setLastStats(null);
+          st.resetForSegment(st.segmentSeed + 1);
+          return;
+        }
+        // Final death (non-boss): mirror handleWin's stats build so
+        // the death banner can render the same post-run summary the
+        // win banner uses.
         const finalStats: RunStats = {
           timesSeen: timesSeenAcc,
           timeDetected: timeDetectedAcc,
@@ -854,14 +861,33 @@ export function Game() {
       // just back to spawn.
       if (
         st.segmentSeed !== lastSegmentSeed ||
-        st.stage !== lastStage ||
-        st.bossModeEnabled !== lastBossModeEnabled
+        st.stage !== lastStage
       ) {
         lastSegmentSeed = st.segmentSeed;
         lastStage = st.stage;
-        lastBossModeEnabled = st.bossModeEnabled;
         rebuildScene(st.stage, st.segmentSeed);
         resetSegment();
+        // Boss-round popup: every 10th stage (10, 20, 30, ...) is
+        // an arena. Pause the world and pop a "BOSS ROUND" modal
+        // before the survive-the-timer countdown starts so the
+        // player isn't dropped into a fight cold.
+        if (st.stage > 0 && st.stage % 10 === 0) {
+          st.setPaused(true);
+          st.setGameModal({
+            title: 'BOSS ROUND',
+            body: `Stage ${st.stage} is a boss arena. Survive 60 seconds inside the enclosed yard. Get caught and you advance to stage ${st.stage + 1} anyway - this round can't gate your run.`,
+            actions: [
+              {
+                label: 'START',
+                variant: 'primary',
+                onPress: () => {
+                  useStore.getState().setGameModal(null);
+                  useStore.getState().setPaused(false);
+                },
+              },
+            ],
+          });
+        }
       }
       // Skin change (typically from a save load on the start screen):
       // detach the existing player figure and rebuild it with the

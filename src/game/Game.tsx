@@ -143,6 +143,7 @@ import {
 import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
 import { applyDynamicLighting, applyStageLighting } from '../scenes/Lighting';
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
+import { createMusic, type MusicPlayer } from '../scenes/Music';
 import {
   createPickupSounds,
   playPickupGrab,
@@ -245,6 +246,18 @@ export function Game() {
 
     const siren: SirenHandle = createSiren();
     const pickupSounds: PickupSounds = createPickupSounds();
+    // Background music. Initial volume picked from the store so a
+    // returning player gets the slider-saved level instead of the
+    // default. The store-subscription below keeps the live track
+    // synced with the slider while the panel is open.
+    const music: MusicPlayer = createMusic(useStore.getState().musicVolume);
+    // Live-update the music volume whenever the slider moves. The
+    // returned unsubscribe is intentionally not called - the music
+    // is alive for the whole GLView lifetime, which matches the app's
+    // lifetime in this codebase.
+    void useStore.subscribe((st, prev) => {
+      if (st.musicVolume !== prev.musicVolume) music.setVolume(st.musicVolume);
+    });
     const projectiles = new ProjectileSystem(r.worldRoot);
 
     // Active smoke clouds dropped by the player. Each cloud lives for

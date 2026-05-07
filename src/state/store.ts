@@ -86,6 +86,10 @@ type Store = {
   // Master audio volume 0..1, applied on top of the siren's
   // detection-driven volume curve. Persisted via AsyncStorage.
   masterVolume: number;
+  // Music volume slider 0..1. Independent of masterVolume so the
+  // player can mute the soundtrack without losing SFX (or vice
+  // versa). Persisted via AsyncStorage.
+  musicVolume: number;
   // Player head skin tone. Mirrors the active save's skin while a
   // run is underway so the rest of the codebase can keep reading
   // playerSkin without caring about save plumbing.
@@ -146,6 +150,7 @@ type Store = {
   setBossModeEnabled: (b: boolean) => void;
   setBossTimeRemaining: (v: number) => void;
   setMasterVolume: (v: number) => void;
+  setMusicVolume: (v: number) => void;
   setPlayerSkin: (s: PlayerSkin) => void;
   setPlayerName: (n: string) => void;
   setSaves: (m: SavesMap) => void;
@@ -182,6 +187,7 @@ export const useStore = create<Store>((set) => ({
   bossModeEnabled: false,
   bossTimeRemaining: 0,
   masterVolume: 0.7,
+  musicVolume: 0.5,
   playerSkin: 'beige',
   playerName: '',
   saves: {},
@@ -244,6 +250,13 @@ export const useStore = create<Store>((set) => ({
       return Math.abs(st.masterVolume - clamped) < 0.005
         ? st
         : { masterVolume: clamped };
+    }),
+  setMusicVolume: (v) =>
+    set((st) => {
+      const clamped = Math.max(0, Math.min(1, v));
+      return Math.abs(st.musicVolume - clamped) < 0.005
+        ? st
+        : { musicVolume: clamped };
     }),
   setPlayerSkin: (s) =>
     set((st) => (st.playerSkin === s ? st : { playerSkin: s })),

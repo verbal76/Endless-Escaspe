@@ -26,6 +26,7 @@ export default function App() {
   useEffect(() => {
     loadSettings().then((s) => {
       useStore.getState().setMasterVolume(s.masterVolume);
+      useStore.getState().setMusicVolume(s.musicVolume);
       useStore.getState().setWeatherEnabled(s.weatherEnabled);
       useStore.getState().setBossModeUnlocked(s.bossModeUnlocked);
       useStore.getState().setBossModeEnabled(s.bossModeEnabled);

@@ -34,10 +34,10 @@ export function buildTreeGroup(scale: number): THREE.Group {
 // obstacle kind expects. Computed by hand from each model's native
 // bbox vs. the target W x H x L the existing detection / hitbox
 // code was tuned around.
-// 2x the prior scale - the closed dumpster used to read as a small
-// crate; doubling lands it at ~2.4 m wide x ~2.16 m tall, the size
-// of a real industrial dumpster.
-const SCALE_CRATE = new THREE.Vector3(4.0, 4.0, 4.0);
+// Closed dumpster scaled 5.2x (the prior 4x bumped 30% per request).
+// Footprint ~3.12 x 2.4 m, top at ~2.81 m. Fits a real dumpster
+// silhouette next to a 1.85 m player.
+const SCALE_CRATE = new THREE.Vector3(5.2, 5.2, 5.2);
 // barrierA native 0.66 x 0.33 x 0.24 -> 1.6 x 0.6 x 0.6
 const SCALE_LOWWALL = new THREE.Vector3(2.42, 1.82, 2.50);
 // barrierB native 0.66 x 0.33 x 0.24 -> ~2.0 x 1.4 x 1.0
@@ -45,10 +45,8 @@ const SCALE_COVER = new THREE.Vector3(3.03, 4.24, 4.17);
 // block native 0.5 x 0.5 x 0.5 -> 1.0 x 1.0 x 1.0
 const SCALE_BOULDER = new THREE.Vector3(2.0, 2.0, 2.0);
 // dumpsterOpen native 0.6 x 0.55 x 0.48 -> 0.84 x 1.05 x 0.84
-// 2x the prior scale - same logic as the closed dumpster; the open
-// variant now reads as a real industrial dumpster instead of a
-// cluttered hip-height box.
-const SCALE_BARREL = new THREE.Vector3(2.80, 3.82, 3.50);
+// Open dumpster at the same 30%-bigger tier as the closed variant.
+const SCALE_BARREL = new THREE.Vector3(3.64, 4.97, 4.55);
 // Tall-pine OBJ is real 3D geometry (~0.4 m wide x 1.53 m tall
 // native). 2.5x uniform scale lands the visible tree at ~1 m wide
 // x 3.8 m tall - a proper game-scale evergreen the player can
@@ -61,11 +59,11 @@ const SCALE_HEDGEROW = new THREE.Vector3(5.20, 2.20, 1.40);
 // min-spacing rule. Long shapes (car, hedgerow) get larger radii so
 // the procgen leaves room around them.
 export const OBSTACLE_RADIUS: Record<ObstacleKind, number> = {
-  // Crate (dumpsterClosed scaled 4x = 2.4 x 1.84 m footprint). OBB
-  // hitbox dims are rolled by the procgen so the player can walk up
-  // to the actual face; `r` here is the bounding circle used for
+  // Crate (dumpsterClosed scaled 5.2x = 3.12 x 2.39 m footprint).
+  // OBB hitbox dims are rolled by the procgen so the player can walk
+  // up to the actual face; `r` here is the bounding circle used for
   // procgen min-spacing only.
-  crate: 1.52,
+  crate: 1.97,
   lowwall: 0.6,
   cover: 0.9,
   // Block scaled to a 1 m cube. Inscribed (= half-width) is 0.5;
@@ -73,9 +71,9 @@ export const OBSTACLE_RADIUS: Record<ObstacleKind, number> = {
   // larger r left around every cube face. The block is rotationally
   // symmetric enough that a circle approximation is correct here.
   boulder: 0.5,
-  // Open dumpster doubled in size: footprint is ~1.68 x 1.68 m;
-  // r = 0.9 sits just outside the inscribed circle.
-  barrel: 0.9,
+  // Open dumpster scaled 30%-bigger: footprint ~2.18 x 2.18 m;
+  // r = 1.17 sits just outside the inscribed circle.
+  barrel: 1.17,
   car: 2.7,
   // Tall-pine OBJ scaled 2.5x has a ~1 m wide trunk + leaf cluster.
   // r = 0.5 sits roughly at the visible foliage edge so the player
@@ -88,11 +86,11 @@ export const OBSTACLE_RADIUS: Record<ObstacleKind, number> = {
 // to the player's stance threshold to decide whether the obstacle
 // blocks line of sight for that stance.
 export const OBSTACLE_HEIGHT: Record<ObstacleKind, number> = {
-  crate: 2.16,    // dumpsterClosed scaled 4x top
+  crate: 2.81,    // dumpsterClosed scaled 5.2x top
   lowwall: 0.6,   // barrierA scaled top
   cover: 1.40,    // barrierB scaled top
   boulder: 1.0,   // block scaled top
-  barrel: 2.10,   // dumpsterOpen scaled 2x top
+  barrel: 2.73,   // dumpsterOpen scaled 30%-bigger top
   // 2x police cruiser tops at ~2.03 m; 3x fire truck at ~3.98 m.
   // Use the smaller value so the LOS rule reflects the worst-case
   // obstruction (police): both still block standing line of sight

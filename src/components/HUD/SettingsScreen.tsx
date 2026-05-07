@@ -80,6 +80,8 @@ export function SettingsScreen() {
   const requestRestart = useStore((s) => s.requestRestart);
   const masterVolume = useStore((s) => s.masterVolume);
   const setMasterVolume = useStore((s) => s.setMasterVolume);
+  const musicVolume = useStore((s) => s.musicVolume);
+  const setMusicVolume = useStore((s) => s.setMusicVolume);
   const weatherEnabled = useStore((s) => s.weatherEnabled);
   const setWeatherEnabled = useStore((s) => s.setWeatherEnabled);
   const bossModeUnlocked = useStore((s) => s.bossModeUnlocked);
@@ -110,6 +112,7 @@ export function SettingsScreen() {
     const st = useStore.getState();
     saveSettings({
       masterVolume: st.masterVolume,
+      musicVolume: st.musicVolume,
       weatherEnabled: st.weatherEnabled,
       bossModeUnlocked: st.bossModeUnlocked,
       bossModeEnabled: st.bossModeEnabled,
@@ -212,6 +215,10 @@ export function SettingsScreen() {
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>Volume</Text>
                   <VolumeSlider value={masterVolume} onChange={setMasterVolume} />
+                </View>
+                <View style={styles.settingRow}>
+                  <Text style={styles.settingLabel}>Music</Text>
+                  <VolumeSlider value={musicVolume} onChange={setMusicVolume} />
                 </View>
                 <View style={styles.settingRow}>
                   <View style={styles.toggleLabelWrap}>

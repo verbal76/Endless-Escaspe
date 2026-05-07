@@ -23,6 +23,9 @@ function enqueueWrite<T>(key: string, fn: () => Promise<T>): Promise<T> {
 
 export type Settings = {
   masterVolume: number;
+  // Music volume slider in the pause menu. Independent of master so
+  // the player can mute the soundtrack without losing siren / SFX.
+  musicVolume: number;
   weatherEnabled: boolean;
   // True once the player has seen (or skipped) the intro tutorial,
   // so we don't replay it every cold launch. The "How to play"
@@ -41,6 +44,7 @@ export type Settings = {
 
 const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.7,
+  musicVolume: 0.5,
   weatherEnabled: true,
   tutorialSeen: false,
   bossModeUnlocked: false,
@@ -58,6 +62,10 @@ export async function loadSettings(): Promise<Settings> {
           typeof parsed.masterVolume === 'number'
             ? Math.max(0, Math.min(1, parsed.masterVolume))
             : DEFAULT_SETTINGS.masterVolume,
+        musicVolume:
+          typeof parsed.musicVolume === 'number'
+            ? Math.max(0, Math.min(1, parsed.musicVolume))
+            : DEFAULT_SETTINGS.musicVolume,
         weatherEnabled:
           typeof parsed.weatherEnabled === 'boolean'
             ? parsed.weatherEnabled

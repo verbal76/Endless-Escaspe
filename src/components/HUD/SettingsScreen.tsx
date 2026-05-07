@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -171,6 +171,12 @@ export function SettingsScreen() {
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
+        {/* Modal content lives in a separate native view tree from
+            the App's GestureHandlerRootView, so gestures registered
+            here would never fire. Wrap the modal's content in a
+            local GHRoot so the volume + music sliders' Pan gesture
+            reaches the gesture handler. */}
+        <GestureHandlerRootView style={styles.ghRoot}>
         <View style={styles.backdrop}>
           <View style={styles.card}>
             {/* Title spans both columns. */}
@@ -245,6 +251,7 @@ export function SettingsScreen() {
             </View>
           </View>
         </View>
+        </GestureHandlerRootView>
       </Modal>
     </>
   );
@@ -271,6 +278,9 @@ const styles = StyleSheet.create({
     lineHeight: 30,
     textShadowColor: 'rgba(0,0,0,0.7)',
     textShadowRadius: 3,
+  },
+  ghRoot: {
+    flex: 1,
   },
   backdrop: {
     flex: 1,

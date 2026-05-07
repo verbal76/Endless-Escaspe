@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -68,11 +68,17 @@ export function Hearts() {
   const hearts = useStore((s) => s.hearts);
   const stage = useStore((s) => s.stage);
   const runState = useStore((s) => s.runState);
+  // Boss-perk active: +1 heart for the next perkRemainingStages
+  // stages. The HUD renders an extra slot so the bonus heart is
+  // visible in the row, plus a small "BOSS PERK Nx" tag underneath
+  // showing how many stages remain on the buff.
+  const perkRemainingStages = useStore((s) => s.perkRemainingStages);
   const insets = useSafeAreaInsets();
   // Late stages start the player with fewer hearts; only render
   // that many slots so the HUD doesn't lie about how much margin
   // is left.
-  const max = startingHeartsFor(stage);
+  const baseMax = startingHeartsFor(stage);
+  const max = baseMax + (perkRemainingStages > 0 ? 1 : 0);
   // Hidden between runs (idle / cleared / caught) so the start
   // screen doesn't carry a stale heart count over the title art.
   if (runState !== 'playing') return null;
@@ -84,17 +90,35 @@ export function Hearts() {
   const top = Math.max(64, insets.top + 52);
   const left = Math.max(16, insets.left + 12);
   return (
-    <View style={[styles.row, { top, left }]}>
-      {Array.from({ length: max }).map((_, i) => (
-        <HeartSlot key={i} alive={i < hearts} />
-      ))}
+    <View style={[{ top, left }, styles.wrap]}>
+      <View style={styles.row}>
+        {Array.from({ length: max }).map((_, i) => (
+          <HeartSlot key={i} alive={i < hearts} />
+        ))}
+      </View>
+      {perkRemainingStages > 0 && (
+        <Text style={styles.perkTag}>
+          BOSS PERK · {perkRemainingStages}
+        </Text>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  row: {
+  wrap: {
     position: 'absolute',
+  },
+  perkTag: {
+    marginTop: 2,
+    color: '#ffd14a',
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1.5,
+    textShadowColor: 'rgba(0,0,0,0.7)',
+    textShadowRadius: 3,
+  },
+  row: {
     flexDirection: 'row',
     gap: 6,
     // Explicit visible overflow so the rightmost slot's glyph + text

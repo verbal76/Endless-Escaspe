@@ -90,6 +90,13 @@ type Store = {
   // player can mute the soundtrack without losing SFX (or vice
   // versa). Persisted via AsyncStorage.
   musicVolume: number;
+  // Boss-perk reward. Beating a boss arena (surviving the timer
+  // without dying) sets perkRemainingStages to PERK_DURATION_STAGES;
+  // each subsequent stage start decrements it. While > 0 the player
+  // starts each segment with +1 heart over startingHeartsFor(stage).
+  // Resets to 0 on run-end (caught state) so each fresh run earns
+  // its own perks.
+  perkRemainingStages: number;
   // Player head skin tone. Mirrors the active save's skin while a
   // run is underway so the rest of the codebase can keep reading
   // playerSkin without caring about save plumbing.
@@ -151,6 +158,10 @@ type Store = {
   setBossTimeRemaining: (v: number) => void;
   setMasterVolume: (v: number) => void;
   setMusicVolume: (v: number) => void;
+  // Boss-perk lifecycle.
+  grantBossPerk: () => void;
+  decayBossPerk: () => void;
+  clearBossPerk: () => void;
   setPlayerSkin: (s: PlayerSkin) => void;
   setPlayerName: (n: string) => void;
   setSaves: (m: SavesMap) => void;
@@ -188,6 +199,7 @@ export const useStore = create<Store>((set) => ({
   bossTimeRemaining: 0,
   masterVolume: 0.7,
   musicVolume: 0.5,
+  perkRemainingStages: 0,
   playerSkin: 'beige',
   playerName: '',
   saves: {},
@@ -258,6 +270,18 @@ export const useStore = create<Store>((set) => ({
         ? st
         : { musicVolume: clamped };
     }),
+  // Beating a boss tops up the perk counter; subsequent boss wins
+  // refresh / extend it instead of stacking - one heart of buffer is
+  // enough generosity for a steady streak of clears.
+  grantBossPerk: () => set({ perkRemainingStages: 10 }),
+  decayBossPerk: () =>
+    set((st) =>
+      st.perkRemainingStages > 0
+        ? { perkRemainingStages: st.perkRemainingStages - 1 }
+        : st,
+    ),
+  clearBossPerk: () =>
+    set((st) => (st.perkRemainingStages === 0 ? st : { perkRemainingStages: 0 })),
   setPlayerSkin: (s) =>
     set((st) => (st.playerSkin === s ? st : { playerSkin: s })),
   setPlayerName: (n) =>
@@ -348,6 +372,9 @@ export const useStore = create<Store>((set) => ({
   startRun: () =>
     set((st) => ({
       runState: 'playing',
+      // Fresh runs don't inherit a leftover boss perk - the +1
+      // heart buffer is earned per-run inside the gameplay loop.
+      perkRemainingStages: 0,
       hearts: startingHeartsFor(st.stage),
       detection: {},
       stamina: 1,

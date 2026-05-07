@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #73 · tree leaves: teal → forest green';
+export const OTA_VERSION = 'OTA #74 · boss arena tougher; clear it for a +1 heart perk';

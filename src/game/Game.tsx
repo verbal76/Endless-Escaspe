@@ -413,7 +413,13 @@ export function Game() {
 
       // Arena bumps the guard count by 2 so the smaller playfield
       // doesn't feel sparse. Capped further up by createGuardConfigs.
-      const guardCount = guardCountFor(stage) + (isBossArena ? 2 : 0);
+      // Boss arenas amp up entity counts so the survive-the-timer
+      // round actually feels like a boss fight: +3 guards, +1 dog
+      // beyond the stage default, and a minimum 4 cameras feeding
+      // the alarm bar regardless of whether stage tuning would have
+      // unlocked them yet. Detection rates are bumped 30% inside
+      // the arena too (see the `tuning` block in update()).
+      const guardCount = guardCountFor(stage) + (isBossArena ? 3 : 0);
       const guardEntries: GuardEntry[] = createGuardConfigs(guardCount, segLen).map(
         (cfg) => {
           const guard = createGuard(cfg);
@@ -463,7 +469,7 @@ export function Game() {
       // close range, detach into chase when the handler does. One per
       // entry in dogCountFor; we pair them with the first N guards.
       const dogs: Dog[] = [];
-      const dogCount = dogCountFor(stage);
+      const dogCount = dogCountFor(stage) + (isBossArena ? 1 : 0);
       for (let i = 0; i < dogCount && i < guards.length; i++) {
         const handler = guards[i];
         const d = createDog(i + 1, handler.id, handler.x + 1, handler.z);
@@ -471,7 +477,13 @@ export function Game() {
         dogs.push(d);
       }
 
-      const cameras: Camera[] = spawnCameras(root, segLen, cameraCountFor(stage));
+      // Boss arenas force a minimum of 4 cameras even on early-stage
+      // arenas where the stage tuning wouldn't have unlocked any.
+      const baseCameraCount = cameraCountFor(stage);
+      const cameraCount = isBossArena
+        ? Math.max(4, baseCameraCount)
+        : baseCameraCount;
+      const cameras: Camera[] = spawnCameras(root, segLen, cameraCount);
 
       // Boss stage: pump up the lead guard's effective vision so the
       // segment reads as a tougher fight without changing procgen.
@@ -689,6 +701,18 @@ export function Game() {
     // pick its title. 'killed' = projectile hit; 'arrested' = body
     // contact (guard touch / dog / razor wire). The store keeps the
     // most recent cause so the banner reads it on the run-ending hit.
+    // Set hearts to the stage's starting count plus the boss-perk
+    // bonus (+1 if the player cleared a boss within the last 10
+    // stages), then decay the perk counter. Centralised so every
+    // fresh-stage path (boss auto-advance, win, restart) routes
+    // through the same calc.
+    const grantStartingHearts = (stage: number) => {
+      const st = useStore.getState();
+      const bonus = st.perkRemainingStages > 0 ? 1 : 0;
+      st.setHearts(startingHeartsFor(stage) + bonus);
+      st.decayBossPerk();
+    };
+
     const handleCatch = (cause: 'arrested' | 'killed' = 'arrested') => {
       const st = useStore.getState();
       const remaining = st.hearts - 1;
@@ -707,14 +731,19 @@ export function Game() {
         // arena to be a checkpoint that doesn't gate progression.
         // Advance to the next stage with a fresh hearts pool and
         // load the next segment instead of rolling the death banner.
+        // Boss perk is NOT granted on failure - only a clear earns
+        // the +1 heart buffer (handled in handleWin).
         if (scene.isBossArena) {
           const nextStage = st.stage + 1;
           st.setStage(nextStage);
-          st.setHearts(startingHeartsFor(nextStage));
+          grantStartingHearts(nextStage);
           st.setLastStats(null);
           st.resetForSegment(st.segmentSeed + 1);
           return;
         }
+        // Non-boss run-ending death: clear the boss perk so the
+        // next run starts clean.
+        st.clearBossPerk();
         // Final death (non-boss): mirror handleWin's stats build so
         // the death banner can render the same post-run summary the
         // win banner uses.
@@ -808,6 +837,13 @@ export function Game() {
       // map so the post-run banner shows the right number.
       st.recordSegmentStars(justClearedStage, stars);
 
+      // Boss-arena clear: grant the perk. This refreshes the +1-
+      // heart buffer for the next 10 stages. Failing the boss takes
+      // the auto-advance branch in handleCatch and skips this.
+      if (scene.isBossArena) {
+        st.grantBossPerk();
+      }
+
       // Advance to the next stage. After replaying a lower stage
       // this still bumps you forward into linear play, but the save
       // file's own stage is treated as a high-water mark so we
@@ -840,10 +876,10 @@ export function Game() {
 
       st.setRunState('cleared');
       haptics.cleared();
-      // Hearts count for the *next* segment (post-Banner) is the
-      // stage-driven starting count. Game.tsx's startRun and the
-      // restart path use this same helper.
-      st.setHearts(startingHeartsFor(justClearedStage + 1));
+      // Hearts count for the *next* segment (post-Banner) routes
+      // through grantStartingHearts so the boss perk's +1 buffer
+      // applies + decays alongside the stage advance.
+      grantStartingHearts(justClearedStage + 1);
       projectiles.clear();
     };
 
@@ -900,7 +936,10 @@ export function Game() {
       }
       if (st.restartCounter !== lastRestartCounter) {
         lastRestartCounter = st.restartCounter;
-        st.setHearts(startingHeartsFor(st.stage));
+        // Restart re-uses the current scene; heart count rolls
+        // through grantStartingHearts so an active boss perk still
+        // applies + decays on a mid-run restart.
+        grantStartingHearts(st.stage);
         st.setLastStats(null);
         st.setRunState('playing');
         resetSegment();
@@ -1171,9 +1210,14 @@ export function Game() {
 
       // Stage-driven detection tuning passed to DetectionSystem so
       // the rate ramp + decay curve all flow from progression.ts.
+      // Boss arenas: 30% bump on the detection meter rate + a
+      // matching slowdown on decay so the player's "I broke LOS,
+      // I'm safe" window is shorter inside the arena than out in
+      // the open yard.
+      const bossMul = scene.isBossArena ? 1.3 : 1.0;
       const tuning = {
-        rateScale: detectionRateScaleFor(st.stage),
-        decay: detectionDecayFor(st.stage),
+        rateScale: detectionRateScaleFor(st.stage) * bossMul,
+        decay: detectionDecayFor(st.stage) / bossMul,
         noiseRangeWalkSq: noiseRangeWalkSqFor(st.stage),
         noiseRangeCrouchSq: noiseRangeCrouchSqFor(st.stage),
       };

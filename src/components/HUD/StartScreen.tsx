@@ -126,7 +126,7 @@ function FigurePickButton({
   );
 }
 
-type Mode = 'home' | 'pick' | 'name' | 'tutorialPrompt' | 'continue' | 'profile';
+type Mode = 'home' | 'name' | 'tutorialPrompt' | 'continue' | 'profile';
 
 export function StartScreen() {
   const runState = useStore((s) => s.runState);
@@ -233,7 +233,17 @@ export function StartScreen() {
     setNameError(null);
   };
 
-  const beginNewRun = () => setMode('pick');
+  // New runs jump straight to the name-entry step now that we ship
+  // a single Kenney character model - the prior beige/brown skin
+  // picker was meaningless after the procedural figure was retired.
+  // pickedSkin defaults to 'beige' so the save file's existing
+  // skin field stays populated with a valid value.
+  const beginNewRun = () => {
+    setPickedSkin('beige');
+    setNameDraft('');
+    setNameError(null);
+    setMode('name');
+  };
 
   const beginContinue = () => setMode('continue');
 
@@ -255,8 +265,10 @@ export function StartScreen() {
       return;
     }
     if (!pickedSkin) {
-      setNameError(null);
-      setMode('pick');
+      // Pick is a no-op now that skin selection is gone; just default
+      // and bounce back to home so the user re-enters the new-run flow.
+      setPickedSkin('beige');
+      setMode('home');
       return;
     }
     const key = saveKeyFromName(name);
@@ -398,32 +410,11 @@ export function StartScreen() {
     );
   }
 
-  if (mode === 'pick') {
-    return (
-      <View pointerEvents="box-none" style={styles.root}>
-        <TitleRow />
-        <Text style={styles.tagline}>Pick your prisoner</Text>
-        <View style={styles.previewRow}>
-          <FigurePickButton
-            skin="beige"
-            selected={pickedSkin === 'beige'}
-            onTap={() => onPickSkin('beige')}
-          />
-          <FigurePickButton
-            skin="brown"
-            selected={pickedSkin === 'brown'}
-            onTap={() => onPickSkin('brown')}
-          />
-        </View>
-        <Pressable
-          onPress={goBackHome}
-          style={({ pressed }) => [styles.linkBtn, pressed && styles.linkBtnDown]}
-        >
-          <Text style={styles.linkLabel}>BACK</Text>
-        </Pressable>
-      </View>
-    );
-  }
+  // 'pick' mode (skin chooser) was removed when the figure rig
+  // collapsed to a single Kenney model - beginNewRun jumps straight
+  // from 'home' to 'name'. The PlayerSkin type + FigurePickButton
+  // stay around because the continue / save panels still render
+  // tiny prisoner thumbnails next to each save name.
 
   if (mode === 'name') {
     // Custom in-app keyboard - the system soft keyboard takes ~half
@@ -477,7 +468,7 @@ export function StartScreen() {
         {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
         <View style={styles.nameBtnRowCompact}>
           <Pressable
-            onPress={() => setMode('pick')}
+            onPress={goBackHome}
             style={({ pressed }) => [
               styles.bigBtnCompact,
               styles.bigBtnSecondary,

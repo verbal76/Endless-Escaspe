@@ -61,12 +61,12 @@ const PALETTE: Record<string, MaterialDef> = {
   // Dirt visible inside the open dumpster.
   dirt: { color: 0x6e5232, emissiveIntensity: 0.38 },
   // Tall-pine OBJ kit: real 3D geometry (trunk + stacked leaf cones)
-  // with two named MTL materials. Colours come straight from the
-  // kit's MTL Kd values (no texture - solid colour materials).
-  //   woodBarkDark - warm reddish-brown trunk
-  //   leafsDark    - teal/cyan-green leaf cones
+  // with two named MTL materials. Bark colour comes straight from the
+  // kit's MTL Kd; the leaf colour is overridden from the MTL's teal
+  // to a forest green so the tree row reads as evergreen pines
+  // instead of stylised cyan tropicals.
   woodBarkDark: { color: 0xcc7659, emissiveIntensity: 0.40 },
-  leafsDark: { color: 0x2ba6aa, emissiveIntensity: 0.42 },
+  leafsDark: { color: 0x3a7d2e, emissiveIntensity: 0.42 },
 };
 
 // Default material for any unrecognised MTL name (so a future kit

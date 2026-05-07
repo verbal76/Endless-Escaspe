@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #72 · name-screen thumbnail matches Kenney prisoner uniform';
+export const OTA_VERSION = 'OTA #73 · tree leaves: teal → forest green';

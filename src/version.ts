@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #71 · new-run flow skips skin picker (single Kenney model)';
+export const OTA_VERSION = 'OTA #72 · name-screen thumbnail matches Kenney prisoner uniform';

@@ -89,6 +89,7 @@ function PrisonerFigure({
   const wrap = size === 'sm' ? styles.figureWrapSmall : styles.figureWrap;
   const head = size === 'sm' ? styles.headSmall : styles.head;
   const torso = size === 'sm' ? styles.torsoSmall : styles.torso;
+  const stripe = size === 'sm' ? styles.torsoStripeSmall : styles.torsoStripe;
   const arm = size === 'sm' ? styles.armSmall : styles.arm;
   const armL = size === 'sm' ? styles.armLSmall : styles.armL;
   const armR = size === 'sm' ? styles.armRSmall : styles.armR;
@@ -98,7 +99,9 @@ function PrisonerFigure({
   return (
     <View style={wrap}>
       <View style={[head, { backgroundColor: headColor }]} />
-      <View style={torso} />
+      <View style={torso}>
+        <View style={stripe} />
+      </View>
       <View style={[arm, armL]} />
       <View style={[arm, armR]} />
       <View style={[leg, legL]} />
@@ -815,8 +818,9 @@ const styles = StyleSheet.create({
     left: 19,
     width: 32,
     height: 38,
-    backgroundColor: '#a05423',
+    backgroundColor: '#f2c14a',
     borderRadius: 3,
+    overflow: 'hidden',
   },
   torsoSmall: {
     position: 'absolute',
@@ -824,15 +828,35 @@ const styles = StyleSheet.create({
     left: 9,
     width: 18,
     height: 20,
-    backgroundColor: '#a05423',
+    backgroundColor: '#f2c14a',
     borderRadius: 2,
+    overflow: 'hidden',
+  },
+  // Horizontal dark stripe across the torso, matching the Kenney
+  // prisoner D uniform's belt band so the 2D thumbnail reads as
+  // the same character that runs around in-game.
+  torsoStripe: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 22,
+    height: 6,
+    backgroundColor: '#1f1a0e',
+  },
+  torsoStripeSmall: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 11,
+    height: 3,
+    backgroundColor: '#1f1a0e',
   },
   arm: {
     position: 'absolute',
     top: 28,
     width: 10,
     height: 32,
-    backgroundColor: '#a05423',
+    backgroundColor: '#f2c14a',
     borderRadius: 3,
   },
   armSmall: {
@@ -840,7 +864,7 @@ const styles = StyleSheet.create({
     top: 15,
     width: 5,
     height: 17,
-    backgroundColor: '#a05423',
+    backgroundColor: '#f2c14a',
     borderRadius: 1,
   },
   armL: { left: 6 },
@@ -852,7 +876,7 @@ const styles = StyleSheet.create({
     top: 66,
     width: 12,
     height: 36,
-    backgroundColor: '#a05423',
+    backgroundColor: '#f2c14a',
     borderRadius: 3,
   },
   legSmall: {
@@ -860,7 +884,7 @@ const styles = StyleSheet.create({
     top: 35,
     width: 7,
     height: 19,
-    backgroundColor: '#a05423',
+    backgroundColor: '#f2c14a',
     borderRadius: 1,
   },
   legL: { left: 18 },

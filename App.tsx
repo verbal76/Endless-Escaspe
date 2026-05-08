@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Game } from './src/game/Game';
 import { useStore } from './src/state/store';
+import { installDebugLogger, logDebug } from './src/util/debug';
 import { loadSaves, loadSettings } from './src/util/storage';
 import { preloadAllTextures } from './src/util/textures';
 
@@ -24,6 +25,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Install the crash-trail logger before anything else so this
+    // run's error / warn output is captured, and so the prior run's
+    // log is rotated into 'previous' for inclusion in bug reports.
+    installDebugLogger().then(() => {
+      logDebug('log', 'app boot');
+    });
     loadSettings().then((s) => {
       useStore.getState().setMasterVolume(s.masterVolume);
       useStore.getState().setMusicVolume(s.musicVolume);

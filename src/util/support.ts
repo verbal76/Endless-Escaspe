@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { formatEntry, getEntries, getPreviousRun } from './debug';
 import { BUILD_VERSION, OTA_VERSION } from '../version';
 
 // Pre-fill mailto: links for bug reports + feature requests so the
@@ -32,12 +33,25 @@ function buildInfoMultiline(b: BuildInfo): string {
 
 export function composeBugReportUrl(): string {
   const info = readBuildInfo();
+  // Last 30 entries each is enough to fit comfortably under most
+  // mailto: URL length caps (~8 KB on Android / iOS) while still
+  // capturing a useful trail. The previous-run slice is the
+  // crash-to-desktop catch: if the app died last session those
+  // entries are the lead-up.
+  const current = getEntries().slice(-30).map(formatEntry).join('\n');
+  const prev = (getPreviousRun() ?? []).slice(-30).map(formatEntry).join('\n');
   const subject = `Endless Escape bug report — ${info.ota}`;
   const body = [
     'Describe what happened above this line. Anything below is for context — leave it as-is.',
     '',
     '--- diagnostic info (auto-generated) ---',
     buildInfoMultiline(info),
+    '',
+    '--- previous run (pre-crash, last 30 entries) ---',
+    prev || '(no previous-run entries)',
+    '',
+    '--- current run (last 30 entries) ---',
+    current || '(no current-run entries)',
   ].join('\n');
   const params = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   return `mailto:${SUPPORT_EMAIL}?${params}`;

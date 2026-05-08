@@ -107,6 +107,7 @@ import { EventFlash } from '../components/HUD/EventFlash';
 import { Tutorial } from '../components/HUD/Tutorial';
 import { GameModal } from '../components/HUD/GameModal';
 import { BossTimer } from '../components/HUD/BossTimer';
+import { logDebug } from '../util/debug';
 import { disposeSubtree } from '../util/dispose';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
@@ -560,6 +561,7 @@ export function Game() {
     // Caller must run resetSegment() afterwards to re-zero player +
     // accumulator state against the freshly built guards / dogs.
     const rebuildScene = (stage: number, seed: number) => {
+      logDebug('log', 'rebuildScene', { stage, seed });
       tearDownScene(scene);
       scene = buildScene(stage, seed);
       applyStageLighting(r.renderer, r.scene, stage);
@@ -716,6 +718,7 @@ export function Game() {
     const handleCatch = (cause: 'arrested' | 'killed' = 'arrested') => {
       const st = useStore.getState();
       const remaining = st.hearts - 1;
+      logDebug('log', 'handleCatch', { cause, stage: st.stage, remaining, isBossArena: scene.isBossArena });
       st.setHearts(remaining);
       st.setLastDeathCause(cause);
       // Trigger the shield+skull catch flash. CatchFlash subscribes
@@ -825,6 +828,7 @@ export function Game() {
     const handleWin = () => {
       const st = useStore.getState();
       const justClearedStage = st.stage;
+      logDebug('log', 'handleWin', { stage: justClearedStage, isBossArena: scene.isBossArena, runTime });
       const stats: Omit<RunStats, 'stars'> = {
         timesSeen: timesSeenAcc,
         timeDetected: timeDetectedAcc,

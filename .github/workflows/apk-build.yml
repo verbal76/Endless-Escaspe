@@ -1,0 +1,140 @@
+name: APK Build (GitHub-hosted)
+
+# Replaces the prior EAS-cloud build with a GitHub-hosted Gradle
+# build so the project uses GitHub Actions' free runner minutes
+# instead of EAS build credits. The result is a debug-signed APK
+# uploaded to a GitHub Release that testers can download +
+# sideload directly. Expo's managed workflow means we run
+# `expo prebuild` fresh on each CI run to generate the android/
+# project; nothing native is checked into the repo.
+#
+# OTA updates still flow through EAS via eas-update.yml - that
+# workflow stays unchanged and uses EAS's free Updates tier.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/endless-escape-game-android-gRlFH
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'app.json'
+      - 'eas.json'
+      - 'babel.config.js'
+      - 'metro.config.js'
+      - 'android/**'
+      - 'ios/**'
+      - 'assets/icon.png'
+      - 'assets/adaptive-icon.png'
+      - 'assets/splash-icon.png'
+      - '.github/workflows/apk-build.yml'
+
+permissions:
+  # softprops/action-gh-release needs write access to publish the
+  # release + upload the APK as an asset.
+  contents: write
+
+concurrency:
+  group: apk-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Set up Java (Temurin 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Generate android/ project (expo prebuild)
+        run: npx expo prebuild --platform android --clean
+        env:
+          EXPO_NO_TELEMETRY: '1'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-
+
+      # assembleDebug produces a debug-signed APK that's sideloadable
+      # without any keystore setup. It's the simplest "I just want a
+      # tester APK" path - no GitHub Secrets needed for signing keys.
+      # Switch to assembleRelease once you set up upload-key signing
+      # (and add the keystore + key alias as repo secrets).
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+
+      - name: Locate APK
+        id: apk
+        run: |
+          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" -print -quit)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK found under android/app/build/outputs/apk/debug"
+            exit 1
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "name=endless-escape-build-${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Read OTA version label
+        id: ver
+        run: |
+          OTA=$(grep -oE "OTA #[0-9]+[^']*" src/version.ts | head -1 || echo "unknown")
+          echo "ota=$OTA" >> "$GITHUB_OUTPUT"
+
+      - name: Rename APK for upload
+        run: cp "${{ steps.apk.outputs.path }}" "${{ steps.apk.outputs.name }}"
+
+      - name: Upload APK as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.name }}
+          if-no-files-found: error
+
+      # Auto-publish a GitHub Release on every push so testers always
+      # have a stable URL for the latest build. Manual (workflow_-
+      # dispatch) runs skip this and just leave the APK as a workflow
+      # artifact you can download from the run page.
+      - name: Publish GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: 'APK build #${{ github.run_number }}'
+          body: |
+            Auto-built from commit `${{ github.sha }}`.
+
+            **${{ steps.ver.outputs.ota }}**
+
+            Sideload-only debug-signed APK. Install via:
+            1. Download the APK below.
+            2. On your Android device, allow "install from unknown sources" for your browser / file manager.
+            3. Open the downloaded APK to install.
+          files: ${{ steps.apk.outputs.name }}
+          token: ${{ secrets.GITHUB_TOKEN }}

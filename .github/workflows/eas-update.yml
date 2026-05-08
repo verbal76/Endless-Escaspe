@@ -3,12 +3,14 @@ name: EAS Update (OTA)
 on:
   workflow_dispatch:
   # JS-only pushes ship as OTA. Native/build/config changes are handled
-  # by eas-build.yml instead (which embeds the new JS in the new APK).
+  # by apk-build.yml instead (which embeds the new JS in the new APK).
   push:
-    # main holds only the workflow files (no source). Pushes there must
-    # not trigger this workflow; the dev branch is where real code lives.
+    # Two active branches: the original gRlFH branch and the
+    # Github-APK-Transition-Escap branch the user spun up to validate
+    # the GitHub-hosted Gradle build. Both run the same OTA pipeline.
     branches:
       - claude/endless-escape-game-android-gRlFH
+      - Github-APK-Transition-Escap
     paths-ignore:
       - 'package.json'
       - 'package-lock.json'

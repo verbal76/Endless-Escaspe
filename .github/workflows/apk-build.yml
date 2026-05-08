@@ -16,6 +16,7 @@ on:
   push:
     branches:
       - claude/endless-escape-game-android-gRlFH
+      - Github-APK-Transition-Escap
     paths:
       - 'package.json'
       - 'package-lock.json'

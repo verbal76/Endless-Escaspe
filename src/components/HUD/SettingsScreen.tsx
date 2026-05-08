@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Linking,
   Modal,
   Pressable,
   ScrollView,
@@ -16,6 +17,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
+import { composeBugReportUrl, composeFeatureRequestUrl } from '../../util/support';
 import { BUILD_VERSION, OTA_VERSION } from '../../version';
 
 const SLIDER_TRACK_W = 220;
@@ -149,6 +151,15 @@ export function SettingsScreen() {
     persistSettings();
   };
 
+  const onReportBug = () => {
+    // openURL fails silently if no email client is installed; we just
+    // ignore the rejection rather than blocking the panel.
+    Linking.openURL(composeBugReportUrl()).catch(() => {});
+  };
+  const onFeatureRequest = () => {
+    Linking.openURL(composeFeatureRequestUrl()).catch(() => {});
+  };
+
   return (
     <>
       <Pressable
@@ -238,6 +249,28 @@ export function SettingsScreen() {
                     </Text>
                   </View>
                   <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />
+                </View>
+
+                <Text style={styles.sectionHeading}>Feedback</Text>
+                <View style={styles.feedbackRow}>
+                  <Pressable
+                    onPress={onReportBug}
+                    style={({ pressed }) => [
+                      styles.feedbackBtn,
+                      pressed && styles.btnPressed,
+                    ]}
+                  >
+                    <Text style={styles.feedbackLabel}>REPORT A BUG</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={onFeatureRequest}
+                    style={({ pressed }) => [
+                      styles.feedbackBtn,
+                      pressed && styles.btnPressed,
+                    ]}
+                  >
+                    <Text style={styles.feedbackLabel}>FEATURE REQUEST</Text>
+                  </Pressable>
                 </View>
 
                 <Text style={styles.sectionHeading}>About</Text>
@@ -434,6 +467,31 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.5,
+  },
+  // Feedback row: two narrow buttons side-by-side opening the
+  // pre-filled mailto: links from util/support. Sit above About so
+  // a returning player can tap them without scrolling past anything.
+  feedbackRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  feedbackBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(120, 200, 255, 0.55)',
+    backgroundColor: 'rgba(120, 200, 255, 0.18)',
+    alignItems: 'center',
+  },
+  feedbackLabel: {
+    color: '#dff4ff',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 1.2,
   },
   // About: stack label above value vertically so long OTA strings
   // wrap without overlapping the label.

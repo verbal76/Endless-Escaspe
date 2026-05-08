@@ -11,4 +11,4 @@
 // should be visible in About after a force-quit + reopen, no install.
 
 export const BUILD_VERSION = 'build #2 · kitchen-sink';
-export const OTA_VERSION = 'OTA #75 · sliders unstuck (gesture handler root inside Modal)';
+export const OTA_VERSION = 'OTA #76 · pause menu: report a bug + feature request buttons';

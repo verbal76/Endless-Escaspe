@@ -2,11 +2,17 @@ name: APK Build (GitHub-hosted)
 
 # Replaces the prior EAS-cloud build with a GitHub-hosted Gradle
 # build so the project uses GitHub Actions' free runner minutes
-# instead of EAS build credits. The result is a debug-signed APK
-# uploaded to a GitHub Release that testers can download +
-# sideload directly. Expo's managed workflow means we run
-# `expo prebuild` fresh on each CI run to generate the android/
-# project; nothing native is checked into the repo.
+# instead of EAS build credits. The result is a release-variant
+# APK (signed with the Expo-template debug keystore for sideload-
+# friendliness) uploaded to a GitHub Release. Expo's managed
+# workflow means we run `expo prebuild` fresh on each CI run to
+# generate the android/ project; nothing native is checked in.
+#
+# Why assembleRelease (not assembleDebug): release builds bake the
+# JS bundle into the APK and disable Metro/dev-server lookup, so
+# the APK runs fully standalone. assembleDebug would still try to
+# fetch JS from `npx expo start` at runtime and show a red error
+# screen when no Metro is reachable.
 #
 # OTA updates still flow through EAS via eas-update.yml - that
 # workflow stays unchanged and uses EAS's free Updates tier.
@@ -82,21 +88,22 @@ jobs:
           restore-keys: |
             gradle-
 
-      # assembleDebug produces a debug-signed APK that's sideloadable
-      # without any keystore setup. It's the simplest "I just want a
-      # tester APK" path - no GitHub Secrets needed for signing keys.
-      # Switch to assembleRelease once you set up upload-key signing
-      # (and add the keystore + key alias as repo secrets).
-      - name: Build debug APK
+      # assembleRelease bundles the JS into the APK and signs with
+      # the Expo-template's debug keystore (release.signingConfig
+      # defaults to signingConfigs.debug in the prebuild output),
+      # so no GitHub Secrets / upload-key setup is needed. Result
+      # is sideload-installable on any Android device and runs
+      # without a Metro server.
+      - name: Build release APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
 
       - name: Locate APK
         id: apk
         run: |
-          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" -print -quit)
+          APK=$(find android/app/build/outputs/apk/release -name "*.apk" -print -quit)
           if [ -z "$APK" ]; then
-            echo "::error::No APK found under android/app/build/outputs/apk/debug"
+            echo "::error::No APK found under android/app/build/outputs/apk/release"
             exit 1
           fi
           echo "path=$APK" >> "$GITHUB_OUTPUT"
@@ -133,7 +140,7 @@ jobs:
 
             **${{ steps.ver.outputs.ota }}**
 
-            Sideload-only debug-signed APK. Install via:
+            Standalone sideload APK (release variant, JS bundled). Install via:
             1. Download the APK below.
             2. On your Android device, allow "install from unknown sources" for your browser / file manager.
             3. Open the downloaded APK to install.

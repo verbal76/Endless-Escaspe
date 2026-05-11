@@ -288,7 +288,70 @@ Drop this in at .github/workflows/eas-update.yml. Substitute the branch placehol
 The --branch flag refers to the EAS-side branch (where the bundle lands in EAS's update channels), not the git branch. "preview" is a sensible default; change it if the project uses a different EAS update channel.
 
 
-6. eas.json — for the legacy EAS-cloud build path
+6. prune-artifacts.yml — keep storage under quota
+-------------------------------------------------
+
+GitHub Actions enforces a fixed storage quota for artifacts (the files workflows upload via actions/upload-artifact — e.g. the APKs from apk-build.yml). Once you hit the cap, new uploads start failing with a storage-quota error. This workflow keeps every game repo continuously pruned so that never happens.
+
+It runs three ways:
+- daily cron at 06:00 UTC — catches anything missed
+- manual via workflow_dispatch — for an immediate sweep when you're already over quota
+- automatically after every APK Build completes — so the prune happens the moment new artifacts are created and the repo stays continuously under cap
+
+The script uses actions/github-script@v7, which runs JavaScript against the GitHub REST API using the workflow's built-in GITHUB_TOKEN. No PAT or extra secret required. permissions.actions:write grants the delete capability — without it the delete call returns 403.
+
+Logic: list every artifact in the repo (paginated, 100 per page), sort by created_at descending, slice off the first KEEP, delete the rest. KEEP = 3 is the only behavioral knob; change it if you want to retain more.
+
+Drop in at .github/workflows/prune-artifacts.yml. The one per-project change is the workflows: name on the workflow_run trigger — set it to whatever the build workflow's `name:` line says in the target repo (e.g. 'APK Build (GitHub-hosted)', 'EAS Build (Android APK)', 'CI', 'Build APK'). If a repo has no build workflow worth chaining off, delete the entire `workflow_run:` block — cron + manual triggers are enough on their own.
+
+    name: Prune Artifacts
+
+    # Keep only the 3 most recent artifacts repo-wide so we stay under the
+    # storage quota. Runs daily, manually, and after every APK build.
+
+    on:
+      workflow_dispatch:
+      schedule:
+        - cron: '0 6 * * *'
+      workflow_run:
+        workflows: ['<exact-name-of-the-build-workflow>']
+        types: [completed]
+
+    permissions:
+      actions: write
+
+    jobs:
+      prune:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Delete all but the 3 newest artifacts
+            uses: actions/github-script@v7
+            with:
+              script: |
+                const KEEP = 3;
+                const { owner, repo } = context.repo;
+                const all = await github.paginate(
+                  github.rest.actions.listArtifactsForRepo,
+                  { owner, repo, per_page: 100 }
+                );
+                const sorted = all.sort(
+                  (a, b) => new Date(b.created_at) - new Date(a.created_at)
+                );
+                const toDelete = sorted.slice(KEEP);
+                core.info(`Found ${sorted.length} artifacts; keeping ${Math.min(KEEP, sorted.length)}, deleting ${toDelete.length}.`);
+                for (const a of toDelete) {
+                  core.info(`Deleting ${a.name} (id=${a.id}, created=${a.created_at})`);
+                  await github.rest.actions.deleteArtifact({
+                    owner, repo, artifact_id: a.id,
+                  });
+                }
+
+One-time activation after first push: GitHub doesn't auto-run on commit — schedule and workflow_run only fire on future events. To purge an already-overfull repo immediately, go to Actions tab -> "Prune Artifacts" -> Run workflow. From then on it self-maintains.
+
+This workflow only touches Actions upload-artifact blobs. It does NOT touch GitHub Releases (release assets are unlimited free storage) or workflow-run history itself.
+
+
+7. eas.json — for the legacy EAS-cloud build path
 -------------------------------------------------
 
 The GitHub-hosted Gradle pipeline above does NOT use eas.json. eas.json only matters if the project still has a legacy EAS-cloud build path (e.g. an eas-build.yml workflow that calls `eas build --platform android`). Keep this file in the repo only if you need that fallback.
@@ -331,7 +394,7 @@ Reference shape:
 Important about the "development" profile here: it has developmentClient: true. An APK built from that profile shows the "Development Build / npx expo start" screen instead of the game and requires a Metro server on the user's computer to load JS. If a user shows you that screen, the APK they installed was built from this profile (or from the workflow_dispatch path of an old eas-build.yml with "development" picked in the dropdown). It is NOT what the GitHub-hosted Gradle pipeline produces. The fix is to install an APK built from "preview" or to use the GitHub-hosted Gradle pipeline above instead.
 
 
-7. Build variant: assembleDebug vs assembleRelease
+8. Build variant: assembleDebug vs assembleRelease
 --------------------------------------------------
 
 assembleDebug = developer build. Faster CI. Larger APK. Debug hooks left in. Debug-signed (no keystore secrets needed). Default of the template above.
@@ -344,7 +407,7 @@ For private sideload tester builds, both work and the choice is largely aestheti
 - APK locate path: `android/app/build/outputs/apk/release` (was `apk/debug`)
 
 
-8. Common pitfalls and lessons
+9. Common pitfalls and lessons
 ------------------------------
 
 These are mistakes I (this Claude) have made on this pipeline pattern. Do not repeat them.
@@ -364,8 +427,8 @@ f. Do not invent fixes for problems that may not exist. Ask the user what they a
 g. The workflow concurrency group `apk-build-${{ github.ref }}` with cancel-in-progress: true means any new push to the same branch cancels the in-flight run. This is usually what you want, but be aware: if you push twice in quick succession (e.g. a workflow change followed by a content change), the first run is killed and only the second runs.
 
 
-9. Operating-style notes
-------------------------
+10. Operating-style notes
+-------------------------
 
 These are user-preference observations from prior sessions on this pipeline.
 
@@ -377,7 +440,7 @@ These are user-preference observations from prior sessions on this pipeline.
 - When the user asks for a "document", create a file. When they say "no code blocks" or "no fenced blocks", use indentation instead of triple-backtick fences (markdown indents 4-space blocks as preformatted text).
 
 
-10. Cross-project recipe: pngjs "unrecognised content at end of stream"
+11. Cross-project recipe: pngjs "unrecognised content at end of stream"
 -----------------------------------------------------------------------
 
 Not specific to this pipeline; useful across any RN / Expo project that processes PNG assets via pngjs.

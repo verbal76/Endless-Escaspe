@@ -350,6 +350,8 @@ One-time activation after first push: GitHub doesn't auto-run on commit — sche
 
 This workflow only touches Actions upload-artifact blobs. It does NOT touch GitHub Releases (release assets are unlimited free storage) or workflow-run history itself.
 
+IMPORTANT — must live on the default branch. GitHub's Actions UI, cron schedules, and workflow_run chains only read workflow definitions from the repo's default branch. If you put prune-artifacts.yml only on a feature branch (e.g. the de-facto-main branch), the workflow URL 404s, the "Run workflow" button never appears, and the cron / chain triggers silently never fire. In this pipeline pattern the default branch ("main") is the workflow-only branch — that's exactly what it's for. Always push every workflow file to main as well as wherever else it needs to live. mcp__github__create_or_update_file accepts any branch name, so this is just a second tool call.
+
 
 7. eas.json — for the legacy EAS-cloud build path
 -------------------------------------------------

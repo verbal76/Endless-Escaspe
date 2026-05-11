@@ -1,59 +1,54 @@
-Handoff briefing for the next Claude instance working on Endless-Escaspe
-========================================================================
+Dev pipeline playbook for Expo / React Native game projects
+===========================================================
 
-This document is a complete knowledge transfer. Read it cover to cover before doing any work on this repo. Everything below was figured out in a prior session and is current as of 2026-05-09.
+This is a generic, reusable handoff document. Drop it into any Expo / RN game repo that follows this pipeline pattern. It teaches another Claude instance everything it needs to know to be productive on day one.
 
-
-1. Repository overview
-----------------------
-
-Owner / repo: verbal76/Endless-Escaspe (note the capital E and the typo "Escaspe" — the GitHub URL is case-insensitive but the repo name itself preserves that spelling).
-
-It is an Expo / React Native + Three.js stealth game. The native android/ folder is NOT checked in; it is regenerated on each CI run via `npx expo prebuild --platform android --clean`. All real source lives under src/ and assets/ at the repo root.
-
-Important platform context: the Anthropic-hosted MCP server I have access to is restricted to this repo only. Calls to other repositories will be denied. My local git push is authenticated only for one specific working branch (the harness-assigned one for the session); any push to a different branch returns HTTP 403. The workaround is to use the GitHub MCP create_or_update_file / push_files tools, which are authenticated through a different path and can write to any branch.
+When you start a new repo with this pattern, replace the placeholders in angle brackets (e.g. <de-facto-main-branch>, <repo-owner>/<repo-name>, <legacy-dev-branch>) with the real names for that repo. The placeholders flag every spot where a value is project-specific.
 
 
-2. Branch strategy and the de-facto main
-----------------------------------------
+1. What this pipeline does
+--------------------------
 
-The user's de-facto main is the branch named: Github-APK-Transition-Escap
+The pipeline builds an Android APK on GitHub-hosted runners (free Actions minutes — no EAS build credits burned) and ships JS-only changes as over-the-air updates through EAS Updates (free tier).
 
-Important: that is NOT the GitHub default branch. The default branch is "main", but main only contains the workflow YAML files — no source. The user explicitly told me "this is my defacto main, make sure this branch is fully up to date. when I ask for OTAs, moving forward this will be the branch to apply them to. And this is the build I am running."
+Two workflows divide the work:
 
-Other branches you may see:
+- apk-build.yml runs on any push that requires a native rebuild (deps, native config, build config, platform code, app icons). It runs ./gradlew assembleDebug, locates the APK, and publishes a GitHub Release tagged build-N with the APK attached. Testers grab the APK from the release page and sideload.
 
-- main — workflow-only branch. The user does not develop here. Do not push code here.
-- claude/endless-escape-game-android-gRlFH — the original dev branch where the bulk of the source history lives. Github-APK-Transition-Escap was forked from this branch. The workflows still trigger on this branch too for backward compatibility.
-- claude/boss-pickups-scene-rebuild-0YBha — a STALE feature branch from April 28. Contains older, duplicate versions of features that already landed on gRlFH. The user knows about it and chose to leave it (asked to delete, then said "let's just leave it"). Do not merge from it. Do not delete it without permission.
+- eas-update.yml runs on any push that is JS-only. It uses paths-ignore to filter out everything that requires a native rebuild; whatever is left is JS / assets that the running app can pick up via OTA. The bundle ships to EAS branch "preview" (or whichever branch you target).
 
-How features got into Github-APK-Transition-Escap: by being committed to gRlFH first, then Github-APK-Transition-Escap was forked off gRlFH at commit 1052b26 on 2026-05-08. So everything reachable from 1052b26 is in this branch's history.
+These are mutually exclusive by design — every push triggers exactly one of them based on what changed. The Expo-managed workflow means the android/ folder is NOT checked into the repo; apk-build.yml regenerates it on each run via npx expo prebuild --platform android --clean.
 
 
-3. Feature inventory — what is already present
-----------------------------------------------
+2. Branch strategy pattern
+--------------------------
 
-The user explicitly asked to confirm these features are in the de-facto main. They are. Source-of-truth commits, all reachable from Github-APK-Transition-Escap:
+Three roles to be aware of:
 
-- Boss arenas every 10 stages — commit 31dbc65, May 7. Boss arena triggers automatically on stage 10, 20, 30 and so on. "BOSS ROUND" popup appears via GameModal the moment a boss scene is built. Force-pause until tap. Failure auto-advances to the next stage with full hearts. The deprecated dev-unlock code entry and bossModeEnabled toggle were removed from the pause menu in this commit but the storage flags stay resident as no-ops so existing saves do not crash on hydration.
+- The GitHub default branch — typically called "main". In this pattern, "main" often holds only the workflow YAML files (no source). It is NOT where the user develops.
 
-- Hardness multipliers — commit 96d75f1, April 27. The single source of truth is src/util/progression.ts. Every stage-driven system reads from there: vision range, light vision bonus, floodlight bump rates, detection rate scale, decay, walk/crouch noise ranges, segment length, starting hearts (3 / 2 / 1 across stages 1-9 / 10-19 / 20+), guard count (2 baseline +1 every 6 stages capped at 5), light tower rows (3 baseline +1 every 6 stages capped at 5), scan speed multiplier (ramps to 1.3x by stage 15), tracking (enabled at stage 8+), searchlight one-shot (2s sustained track triggers a one-time +0.4 detection bump on every guard), AI tier (tier 3 squad coordination at 12+, tier 4 leading shots at 18+), dogs (1 from stage 8, 2 from stage 16), razor wire (true at stage 14+), forced stormy weather (skips clear-roll at stage 15+), slow-mo close calls (active stages <12), stamina (gated at stage 5+, drains 0.30/s while running, regen 0.15/s), cameras + alarm (cameras visible at 10+, full alarm scales every guard's vision 1.25x).
+- A "de-facto main" branch — this is where the user actually develops day-to-day. The workflow files trigger on this branch. The user will tell you which branch this is when they hand you the repo. If they do not, ask. Do not assume "main" is the development branch.
 
-- Pickups (crowbar + smoke bomb) — commit 64f904e, April 28, plus tuning commits 79969e5 and 18ee498. Spawn from procgen, walk over to grab, HUD bag with two use buttons. Crowbar stuns the nearest guard within 3m for 4s. Smoke bomb drops a 3.5m vision-blocking cloud at the player's feet for 5s. The boss-pickups branch has its own older parallel commit 481e307 for the same feature; do not merge that in — it is the dead version.
+- Legacy / feature branches — old development branches the user has migrated away from but kept around for safety, plus stale feature branches. Treat these as read-only unless the user explicitly asks you to operate on them.
 
-- Day/night cycle, music tracks, dumpster scaling, Kenney pine trees, OBB hitboxes, polish layers (haptics, flashes, sparkles, sound blips, animated HUD), tutorial cutscene, character save files, per-character star boards, scene rebuild on stage advance — all present, all reachable from the current branch HEAD.
+How to discover which branch is the de-facto main when starting fresh on a repo:
+- Check the user's most recent commit author and date across branches via mcp__github__list_commits.
+- Look at the workflow YAML's `on.push.branches` list — those are the active build/OTA branches.
+- If multiple branches qualify, ask the user.
+
+Push restrictions to know: my local git push is authenticated only for the harness-assigned branch for the session. Any push to a different branch returns HTTP 403. The workaround is to use the GitHub MCP create_or_update_file or push_files tools, which are authenticated through a different path and can write to any branch in the allowed repo.
 
 
-4. The babel.config.js trigger-marker convention
-------------------------------------------------
+3. Build trigger conventions
+----------------------------
 
-There is an unusual file convention worth knowing: babel.config.js contains a comment header that is bumped purely to fire builds. The current content (synced from gRlFH on 2026-05-09 via commit eb34160) is:
+The babel.config.js trigger-marker convention. Because babel.config.js is in apk-build.yml's path filter, bumping any line in that file fires a fresh APK build with no other change. Use this when the user asks for a build "just to test something" without modifying real code. The convention is to add a one-line comment under any existing trigger-marker comments:
 
     // Build-trigger marker. Bumping this comment fires a fresh APK
     // build via the apk-build.yml workflow without changing real
     // behaviour - babel.config.js is in the path-trigger list and a
     // touch here is the cheapest way to ask for a build on demand.
-    //   build #1 (2025-05-08) - GitHub-hosted Gradle smoke test
+    //   build #1 (YYYY-MM-DD) - <short description of why>
     module.exports = function (api) {
       api.cache(true);
       return {
@@ -62,32 +57,19 @@ There is an unusual file convention worth knowing: babel.config.js contains a co
       };
     };
 
-How to use it: append a new comment line under the existing "build #1" line (e.g. "//   build #2 (2026-05-09) - whatever you want to label it"). That single-character change is enough to make the workflow's path filter on babel.config.js match, which fires a fresh APK build. Do not modify the function body for this purpose.
+Add a new "//   build #N (date) - reason" line under the existing list when forcing a build. Do not modify the function body for this purpose.
+
+Touching app.json or eas.json or any android/ file also fires a native rebuild but those are heavier surface-area changes; reach for babel.config.js when you want a pure trigger.
 
 
-5. The APK build pipeline
--------------------------
+4. apk-build.yml — full file template
+-------------------------------------
 
-File: .github/workflows/apk-build.yml
-
-Pipeline summary: this is a self-hosted Gradle build on GitHub's free Actions minutes. It replaced the prior EAS-cloud build to avoid burning EAS build credits. Each push that touches a path-filter file runs through: checkout, setup-node 22, setup-java temurin 17, setup-android, npm ci, expo prebuild, gradle cache restore, ./gradlew assembleDebug, locate APK, rename APK, upload as workflow artifact, publish a GitHub Release tagged build-N with the APK attached.
-
-Trigger branches: claude/endless-escape-game-android-gRlFH and Github-APK-Transition-Escap. Workflow_dispatch is also enabled.
-
-Path filter: package.json, package-lock.json, app.json, eas.json, babel.config.js, metro.config.js, android/**, ios/**, assets/icon.png, assets/adaptive-icon.png, assets/splash-icon.png, .github/workflows/apk-build.yml.
-
-Permissions: contents: write (needed by softprops/action-gh-release).
-
-Concurrency: group apk-build-${{ github.ref }} with cancel-in-progress: true. So a fresh push to the same branch cancels the in-flight build.
-
-Why assembleDebug, not assembleRelease: the user explicitly chose developer builds. assembleDebug needs no keystore setup (debug-signed APKs install fine for sideloading), is faster on CI, and on this Expo setup actually does load standalone (verified via build-2 and build-4 on the user's phone showing the title screen and pause menu without a Metro server). Do not switch to assembleRelease without explicit user instruction — see the cautionary tale in section 7.
-
-Full file contents (keep this in mind when editing — overwrite via mcp__github__create_or_update_file with the prior blob SHA passed in):
+Drop this in at .github/workflows/apk-build.yml. Substitute the branch placeholders.
 
     name: APK Build (GitHub-hosted)
 
-    # Replaces the prior EAS-cloud build with a GitHub-hosted Gradle
-    # build so the project uses GitHub Actions' free runner minutes
+    # GitHub-hosted Gradle build. Uses Actions' free runner minutes
     # instead of EAS build credits. The result is a debug-signed APK
     # uploaded to a GitHub Release that testers can download +
     # sideload directly. Expo's managed workflow means we run
@@ -95,14 +77,17 @@ Full file contents (keep this in mind when editing — overwrite via mcp__github
     # project; nothing native is checked into the repo.
     #
     # OTA updates still flow through EAS via eas-update.yml - that
-    # workflow stays unchanged and uses EAS's free Updates tier.
+    # workflow handles JS-only changes via EAS's free Updates tier.
 
     on:
       workflow_dispatch:
+      # Auto-trigger when something changed that requires a native rebuild:
+      # deps, native config, build config, platform code, or app icons.
+      # JS-only changes do NOT match these paths and ship via eas-update.yml.
       push:
         branches:
-          - claude/endless-escape-game-android-gRlFH
-          - Github-APK-Transition-Escap
+          - <de-facto-main-branch>
+          - <legacy-dev-branch>      # remove this line if there's no legacy branch
         paths:
           - 'package.json'
           - 'package-lock.json'
@@ -171,8 +156,8 @@ Full file contents (keep this in mind when editing — overwrite via mcp__github
           # assembleDebug produces a debug-signed APK that's sideloadable
           # without any keystore setup. It's the simplest "I just want a
           # tester APK" path - no GitHub Secrets needed for signing keys.
-          # Switch to assembleRelease once you set up upload-key signing
-          # (and add the keystore + key alias as repo secrets).
+          # Switch to assembleRelease only with explicit user instruction
+          # (see the build-variants section in the playbook).
           - name: Build debug APK
             working-directory: android
             run: ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
@@ -186,8 +171,12 @@ Full file contents (keep this in mind when editing — overwrite via mcp__github
                 exit 1
               fi
               echo "path=$APK" >> "$GITHUB_OUTPUT"
-              echo "name=endless-escape-build-${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
+              echo "name=<short-app-slug>-build-${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
 
+          # Optional: pull a version label out of a project file so the
+          # release body shows it. Remove this step (and the body line that
+          # references steps.ver.outputs.ota) if your project has no such
+          # label. Adjust the grep to match your project's convention.
           - name: Read OTA version label
             id: ver
             run: |
@@ -227,33 +216,21 @@ Full file contents (keep this in mind when editing — overwrite via mcp__github
               token: ${{ secrets.GITHUB_TOKEN }}
 
 
-6. The OTA update pipeline
---------------------------
+5. eas-update.yml — full file template
+--------------------------------------
 
-File: .github/workflows/eas-update.yml
-
-OTAs still ship through EAS Updates (free tier). The pipeline only runs on JS-only changes — anything that requires a native rebuild is excluded by the paths-ignore filter and goes through the APK build instead.
-
-Trigger branches: claude/endless-escape-game-android-gRlFH and Github-APK-Transition-Escap. Workflow_dispatch is enabled.
-
-Paths-ignore: package.json, package-lock.json, app.json, eas.json, babel.config.js, metro.config.js, android/**, ios/**, assets/icon.png, assets/adaptive-icon.png, assets/splash-icon.png, .github/workflows/**, README.md, .gitignore. Everything else is JS-only.
-
-How to ship an OTA: the user will say "ship an OTA for X". Make the JS change, commit it, push to Github-APK-Transition-Escap (via mcp__github__create_or_update_file or push_files), and the workflow auto-publishes the bundle to EAS branch "preview". The phone picks it up on next launch.
-
-Full file contents:
+Drop this in at .github/workflows/eas-update.yml. Substitute the branch placeholders. The required secret is "EAS" (an EAS auth token with publish-update permission); set it in the repo's Actions secrets.
 
     name: EAS Update (OTA)
 
     on:
       workflow_dispatch:
       # JS-only pushes ship as OTA. Native/build/config changes are handled
-      # by eas-build.yml instead (which embeds the new JS in the new APK).
+      # by apk-build.yml instead (which embeds the new JS in the new APK).
       push:
-        # main holds only the workflow files (no source). Pushes there must
-        # not trigger this workflow; the dev branch is where real code lives.
         branches:
-          - claude/endless-escape-game-android-gRlFH
-          - Github-APK-Transition-Escap
+          - <de-facto-main-branch>
+          - <legacy-dev-branch>      # remove this line if there's no legacy branch
         paths-ignore:
           - 'package.json'
           - 'package-lock.json'
@@ -269,6 +246,7 @@ Full file contents:
           - '.github/workflows/**'
           - 'README.md'
           - '.gitignore'
+          - 'HANDOFF.md'             # so updates to this doc don't ship as OTAs
 
     concurrency:
       group: eas-update-${{ github.ref }}
@@ -307,13 +285,15 @@ Full file contents:
                 --message "$MSG" \
                 --non-interactive
 
-The required secret is "EAS" (the EAS auth token). It is already set in repo secrets.
+The --branch flag refers to the EAS-side branch (where the bundle lands in EAS's update channels), not the git branch. "preview" is a sensible default; change it if the project uses a different EAS update channel.
 
 
-7. eas.json (relevant for the rare native rebuild)
---------------------------------------------------
+6. eas.json — for the legacy EAS-cloud build path
+-------------------------------------------------
 
-This file is a path-filter trigger for apk-build.yml so any change to it forces a native rebuild. The contents are:
+The GitHub-hosted Gradle pipeline above does NOT use eas.json. eas.json only matters if the project still has a legacy EAS-cloud build path (e.g. an eas-build.yml workflow that calls `eas build --platform android`). Keep this file in the repo only if you need that fallback.
+
+Reference shape:
 
     {
       "cli": {
@@ -348,67 +328,80 @@ This file is a path-filter trigger for apk-build.yml so any change to it forces 
       }
     }
 
-The "development" profile has developmentClient: true. An APK built from that profile shows the "Development Build / npx expo start" screen instead of the game and requires a Metro server on your computer to load JS. This is the issue that started the whole conversation. The "preview" and "production" profiles are standalone. The GitHub-hosted Gradle pipeline does not use eas.json profiles at all — it runs gradle assembleDebug directly — so this file matters only for the legacy EAS-cloud path which has been deprecated.
+Important about the "development" profile here: it has developmentClient: true. An APK built from that profile shows the "Development Build / npx expo start" screen instead of the game and requires a Metro server on the user's computer to load JS. If a user shows you that screen, the APK they installed was built from this profile (or from the workflow_dispatch path of an old eas-build.yml with "development" picked in the dropdown). It is NOT what the GitHub-hosted Gradle pipeline produces. The fix is to install an APK built from "preview" or to use the GitHub-hosted Gradle pipeline above instead.
 
 
-8. Build variants explained (if the user ever asks)
----------------------------------------------------
+7. Build variant: assembleDebug vs assembleRelease
+--------------------------------------------------
 
-assembleDebug = developer build. Faster CI, larger APK, debug hooks present, debug-signed (no keystore setup). Builds 2 and 4 used this and worked standalone on the user's phone.
+assembleDebug = developer build. Faster CI. Larger APK. Debug hooks left in. Debug-signed (no keystore secrets needed). Default of the template above.
 
-assembleRelease = production-style build. Minified, JS bundled, smaller APK, release-mode (no dev hooks). Build 5 used this and also worked. Slightly slower CI. Requires a release signingConfig — Expo's prebuild template defaults release.signingConfig to signingConfigs.debug, so out of the box no keystore secrets are needed; the APK is signed with the auto-included debug.keystore in android/app/.
+assembleRelease = production-style build. Minified. JS bundled. Smaller APK. Release-mode (no dev hooks). Slightly slower CI. Requires a release signingConfig — Expo's prebuild template defaults release.signingConfig to signingConfigs.debug, so out of the box no keystore secrets are needed; the APK is signed with the auto-included debug.keystore in android/app/.
 
-The user chose assembleDebug. Both variants work; the choice is essentially aesthetic for their use case (private sideload, no store publishing).
+For private sideload tester builds, both work and the choice is largely aesthetic. For a first project, default to assembleDebug — it has the smallest blast radius if anything goes wrong with signing or proguard. Switch to assembleRelease only when the user asks. The two changes you make to switch are:
 
-
-9. Cautionary tale: the assembleRelease detour (do not repeat)
---------------------------------------------------------------
-
-In this prior session I (the Claude that wrote this document) misread the situation. The user's first screenshot showed the "Development Build / npx expo start" screen. I assumed that came from the GitHub-hosted assembleDebug pipeline and "fixed" it by switching to assembleRelease. The push went through (commit cdf9a35) and produced build #5, which actually worked.
-
-But before that build finished, my polling loop (a bash curl loop against the public GitHub API) got rate-limited and timed out at 15 minutes without seeing the new release. I assumed the build had failed and reverted to assembleDebug (commit adb94e0). Then the user sent screenshots showing the game running fine on build-2 (the original assembleDebug), and later showed me build-5 had also succeeded. The whole detour was unnecessary.
-
-Lessons for the next instance:
-
-- The "Development Build / npx expo start" screen comes from the EAS development-profile APK (eas.json's "development" profile with developmentClient: true), NOT from the GitHub-hosted assembleDebug build. Do not conflate the two. If the user shows that screen, ask which APK they installed; if it is from a GitHub Release tagged build-N, that is the Gradle pipeline and the screen is not from a dev-client build.
-
-- The unauthenticated GitHub API has a 60-requests-per-hour limit per IP. Polling loops via curl will hit that cap fast. Use the authenticated MCP tools (mcp__github__list_releases, mcp__github__get_commit, etc.) for status checks instead.
-
-- The available github MCP toolset does NOT include workflow-run inspection (no list_workflow_runs, no get_workflow_run, no check-runs endpoint). You cannot see the status of a CI build from inside the session. If you need to know whether a run succeeded, ask the user to check the Actions page and paste the result, or wait for a new release to appear via list_releases.
-
-- Local git push is restricted to the harness-assigned branch (HTTP 403 for any other). Use mcp__github__create_or_update_file or mcp__github__push_files to write to other branches.
-
-- Do not invent fixes for problems that may not exist. Ask the user what they are seeing before making structural pipeline changes.
+- Step name and command: `./gradlew assembleRelease ...`
+- APK locate path: `android/app/build/outputs/apk/release` (was `apk/debug`)
 
 
-10. Status as of this handoff
------------------------------
+8. Common pitfalls and lessons
+------------------------------
 
-Last commit on Github-APK-Transition-Escap: eb34160 ("Sync babel.config.js trigger-marker comment from gRlFH"). That push was made via mcp__github__create_or_update_file and fires a fresh apk-build.yml run. The expected result is a build-N release at https://github.com/verbal76/Endless-Escaspe/releases/latest a few minutes after the push.
+These are mistakes I (this Claude) have made on this pipeline pattern. Do not repeat them.
 
-The user's phone is running build-5 (the assembleRelease build from commit cdf9a35). Future builds will go back to assembleDebug variant per the user's choice. Both work standalone for them.
+a. The "Development Build / npx expo start" screen on a user's phone does NOT mean the GitHub-hosted Gradle pipeline is broken. It means the APK they installed was built from an EAS profile with developmentClient: true. Before "fixing" anything, ask the user which APK they installed and where they got it. If it is from a GitHub Release tagged build-N, that is the Gradle pipeline output and a different diagnosis is needed.
 
-Open question that the user did not pick on: whether to delete the stale claude/boss-pickups-scene-rebuild-0YBha branch. They said "let's just leave it." Do not delete it.
+b. The unauthenticated GitHub API has a 60-requests-per-hour rate limit per IP. Polling loops via curl will hit that cap fast — and once limited, all responses come back empty, which silently breaks any "wait for new release" loop. Use the authenticated MCP tools (mcp__github__list_releases, mcp__github__get_commit, etc.) for status checks. Never poll a public API in a tight loop from inside a session.
+
+c. The available github MCP toolset, as of this writing, does NOT include any workflow-run inspection (no list_workflow_runs, no get_workflow_run, no check-runs endpoint). You cannot directly see the status of a CI build from inside the session. If you need to know whether a run succeeded or failed, ask the user to check the Actions page and paste the result, or wait for a new release to appear via list_releases. Do not assume "no release published in N minutes" means the build failed — Gradle release builds can take 10+ minutes on a cold runner with no cache.
+
+d. Local git push is restricted to the harness-assigned branch (HTTP 403 for any other). Use mcp__github__create_or_update_file or mcp__github__push_files to write to other branches. When using create_or_update_file on an existing file, you must pass the prior blob SHA. Get it via `git rev-parse <branch>:<path>` if the branch is fetched locally, or via mcp__github__get_file_contents which returns the SHA in the response.
+
+e. Pushing a new file to the de-facto main branch may inadvertently trigger eas-update.yml because the file is not in paths-ignore. If you want to add a documentation file (like this playbook) to the main branch without firing an OTA, push it in the SAME commit that adds it to eas-update.yml's paths-ignore list. mcp__github__push_files supports multi-file commits in one call.
+
+f. Do not invent fixes for problems that may not exist. Ask the user what they are seeing — screenshot, error message, exact symptom — before making structural pipeline changes. The cheapest debugging step is usually a one-line clarifying question, not a workflow rewrite.
+
+g. The workflow concurrency group `apk-build-${{ github.ref }}` with cancel-in-progress: true means any new push to the same branch cancels the in-flight run. This is usually what you want, but be aware: if you push twice in quick succession (e.g. a workflow change followed by a content change), the first run is killed and only the second runs.
 
 
-11. Cross-project recipe: pngjs "unrecognised content at end of stream"
+9. Operating-style notes
+------------------------
+
+These are user-preference observations from prior sessions on this pipeline.
+
+- Short answers. Re-read your draft and cut anything that is not load-bearing.
+- Plain English. The user pushes back on jargon. When asked a question, lead with the practical bottom line, then offer detail.
+- Be honest about uncertainty. If you cannot see CI status from inside the session, say so. Do not guess at failure modes when you can ask the user to paste the actual error.
+- Confirm before destructive or visible-to-others actions. Do not amend commits, force-push, or rewrite history without explicit instruction.
+- Use the AskUserQuestion tool sparingly. Multi-question prompts annoy the user when they can be answered with a one-line explanation in your reply. If you do use it, every question must have a `question` field — empty string or omission causes a tool error.
+- When the user asks for a "document", create a file. When they say "no code blocks" or "no fenced blocks", use indentation instead of triple-backtick fences (markdown indents 4-space blocks as preformatted text).
+
+
+10. Cross-project recipe: pngjs "unrecognised content at end of stream"
 -----------------------------------------------------------------------
 
-The user separately asked about an unrelated project (Zombie-squisher) hitting this error in scripts/make-icon.mjs:
+Not specific to this pipeline; useful across any RN / Expo project that processes PNG assets via pngjs.
+
+Symptom in CI logs:
 
     Error: unrecognised content at end of stream
         at SyncReader.process (.../pngjs/lib/sync-reader.js:43:11)
         at module.exports (.../pngjs/lib/parser-sync.js:68:10)
         at exports.read (.../pngjs/lib/png-sync.js:7:10)
-        at file:///.../scripts/make-icon.mjs:28:24
+        at file:///.../scripts/<some-script>.mjs:NN:24
 
-Diagnosis: pngjs's sync parser is strict and throws this error when the PNG file has any bytes after the IEND chunk. Many tools append trailing data: Photoshop ICC profiles, Apple thumbnail boxes, EXIF chunks, AI-image-generator metadata. The PNG is structurally fine; pngjs is just refusing the trailer.
+Diagnosis: pngjs's sync parser is strict and throws this error when the PNG file has any bytes after the IEND chunk. Many tools append trailing data: Photoshop ICC profiles, Apple thumbnail boxes, EXIF chunks, AI-image-generator metadata. The PNG image data is structurally fine; pngjs is just refusing the trailer.
 
-Three fixes, in increasing order of how invasive they are:
+Three fixes, in increasing order of how invasive they are.
 
-Fix 1 — clean the source PNG (no code change). Run any normalizing tool over it: pngcrush -ow path/to/source.png, or optipng path/to/source.png, or open in GIMP and "Export As PNG" with default settings. Any of these strips trailing bytes.
+Fix 1 — clean the source PNG (no code change). Run any normalizing tool over the offending file:
 
-Fix 2 — strip trailing bytes inline before pngjs reads. Patch scripts/make-icon.mjs around line 28:
+    pngcrush -ow path/to/source.png
+    optipng path/to/source.png
+
+Or open in GIMP and "Export As PNG" with default settings. Any of these strips the trailing bytes.
+
+Fix 2 — strip trailing bytes inline before pngjs reads. Patch the script that calls PNG.sync.read() to truncate at IEND first:
 
     const buf = fs.readFileSync(srcPath);
     const iend = Buffer.from([0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82]); // "IEND" + its CRC
@@ -418,21 +411,11 @@ Fix 2 — strip trailing bytes inline before pngjs reads. Patch scripts/make-ico
 
 This makes the script tolerant of any future asset with the same issue.
 
-Fix 3 — replace pngjs with sharp (best long-term). sharp is more lenient, much faster, and is already a transitive dep of most Expo / RN projects. The rewrite of make-icon.mjs becomes roughly:
+Fix 3 — replace pngjs with sharp. sharp is more lenient, much faster, and is already a transitive dep of most Expo / RN projects. The rewrite is roughly:
 
     import sharp from 'sharp';
     await sharp(srcPath).resize(1024, 1024).png().toFile(outPath);
 
-I'd start with Fix 1. If the script consumes user-supplied or AI-generated PNGs as input, also do Fix 2 so it survives the next quirky file. Reach for Fix 3 only if you're touching the script for other reasons anyway.
+Start with Fix 1. If the script consumes user-supplied or AI-generated PNGs as input, also do Fix 2 so it survives the next quirky file. Reach for Fix 3 only if you're touching the script for other reasons anyway.
 
-
-12. Tone and operating style the user prefers
----------------------------------------------
-
-- Short answers. Re-read your draft and cut anything that is not load-bearing.
-- Plain English. The user pushes back on jargon ("what's the difference", "explain this question"). When asked a question, lead with the practical bottom line, then offer detail.
-- Be honest about uncertainty. If you cannot see CI status from inside the session, say so. Do not guess at failure modes when you can ask the user to paste the actual error.
-- Confirm before destructive or visible-to-others actions. The user asked me to delete a branch and I tried; I could not, and I told them how to do it themselves. Do not amend commits, force-push, or rewrite history without explicit instruction.
-- Use the AskUserQuestion tool sparingly. Multi-question prompts annoy the user when they can be answered with a one-line explanation in your reply.
-
-End of handoff.
+End of playbook.

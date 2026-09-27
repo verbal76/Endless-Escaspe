@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -19,6 +20,7 @@ import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
 import { composeBugReportUrl, composeFeatureRequestUrl } from '../../util/support';
 import { BuildInfo } from './BuildInfo';
+import { CARD_BORDER, CARD_PADDING, PANEL_MARGIN, pausePanelHeights } from '../../ui/pauseLayout';
 import { color as ui, type as T, fonts } from '../../ui/theme';
 
 const SLIDER_TRACK_W = 220;
@@ -101,6 +103,8 @@ function Toggle({
 export function SettingsScreen() {
   const [open, setOpen] = useState(false);
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const heights = pausePanelHeights(windowHeight, insets.top, insets.bottom);
   const setPaused = useStore((s) => s.setPaused);
   const setRunState = useStore((s) => s.setRunState);
   const requestRestart = useStore((s) => s.requestRestart);
@@ -189,17 +193,32 @@ export function SettingsScreen() {
             local GHRoot so the volume + music sliders' Pan gesture
             reaches the gesture handler. */}
         <GestureHandlerRootView style={styles.ghRoot}>
-        <View style={styles.backdrop}>
-          <View style={styles.card}>
+        <View
+          style={[
+            styles.backdrop,
+            {
+              paddingTop: Math.max(insets.top, PANEL_MARGIN) + PANEL_MARGIN,
+              paddingBottom: Math.max(insets.bottom, PANEL_MARGIN) + PANEL_MARGIN,
+              paddingLeft: Math.max(insets.left, PANEL_MARGIN) + PANEL_MARGIN,
+              paddingRight: Math.max(insets.right, PANEL_MARGIN) + PANEL_MARGIN,
+            },
+          ]}
+        >
+          <View style={[styles.card, { maxHeight: heights.card }]}>
             {/* Title spans both columns. */}
             <Text style={styles.title}>GAME PAUSED</Text>
 
             {/* Two-column landscape layout: pause actions on the left,
-                Settings + About on the right. Lays the whole panel
-                out within the available height so the user doesn't
-                have to scroll on a typical landscape phone. */}
-            <View style={styles.columns}>
-              <View style={styles.colLeft}>
+                Settings / Feedback / Build info on the right. Both
+                columns are capped to the height left under the title
+                and scroll within it (the left one only on very short
+                screens), so every row stays reachable. */}
+            <View style={[styles.columns, { maxHeight: heights.columns }]}>
+              <ScrollView
+                style={[styles.colLeft, { maxHeight: heights.columns }]}
+                contentContainerStyle={styles.colLeftContent}
+                showsVerticalScrollIndicator={false}
+              >
                 <Pressable
                   style={({ pressed }) => [styles.bigBtn, styles.btnResume, pressed && styles.btnPressed]}
                   onPress={onResume}
@@ -224,12 +243,14 @@ export function SettingsScreen() {
                 >
                   <Text style={styles.bigLabel}>MAIN MENU</Text>
                 </Pressable>
-              </View>
+              </ScrollView>
 
               <ScrollView
-                style={styles.colRight}
+                testID="pause-info-scroll"
+                style={[styles.colRight, { maxHeight: heights.columns }]}
                 contentContainerStyle={styles.colRightContent}
-                showsVerticalScrollIndicator={false}
+                showsVerticalScrollIndicator
+                persistentScrollbar
               >
                 <Text style={styles.sectionHeading}>Settings</Text>
                 <View style={styles.settingRow}>
@@ -316,20 +337,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 28,
   },
   card: {
-    // Wider (and shorter) than before so the two-column layout fits
-    // a landscape phone without overflow. maxHeight cap leaves a
-    // small breathing band at the top + bottom.
-    width: '94%',
+    // Two-column layout for landscape phones. Height is capped at
+    // render time from the window + safe-area insets
+    // (pausePanelHeights).
+    width: '100%',
     maxWidth: 720,
-    maxHeight: '94%',
     backgroundColor: '#1a1d24',
     borderRadius: 18,
-    borderWidth: 1,
+    borderWidth: CARD_BORDER,
     borderColor: 'rgba(255, 209, 74, 0.40)',
-    padding: 18,
+    padding: CARD_PADDING,
   },
   columns: {
     flexDirection: 'row',
@@ -339,6 +358,9 @@ const styles = StyleSheet.create({
   colLeft: {
     flex: 1,
     minWidth: 200,
+  },
+  colLeftContent: {
+    paddingBottom: 4,
   },
   colRight: {
     flex: 1.1,
@@ -354,7 +376,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontFamily: fonts.display,
     letterSpacing: 2,
-    marginBottom: 12,
+    lineHeight: 26,
+    marginBottom: 8,
     textAlign: 'center',
   },
   bigBtn: {

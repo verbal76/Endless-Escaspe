@@ -23,6 +23,13 @@ sleep 120
 adb exec-out screencap -p > "$OUT/launch2.png"
 adb logcat -d > "$OUT/logcat-launch2.txt"
 
+echo "--- device ---"
+adb shell getprop ro.product.cpu.abilist
+adb shell getprop ro.dalvik.vm.native.bridge
+for f in "$OUT/logcat-launch1.txt" "$OUT/logcat-launch2.txt"; do
+  echo "--- crash trace in $f ---"
+  grep -A 30 "FATAL EXCEPTION" "$f" | cut -c1-300 | head -40 || true
+done
 echo "--- app log lines (launch 1) ---"
 grep -E "\[release\]|\[textures\]|\[render-audit\]|FATAL EXCEPTION|ReactNativeJS.*(Error|Warn)" "$OUT/logcat-launch1.txt" | cut -c1-2500 || true
 echo "--- app log lines (launch 2) ---"

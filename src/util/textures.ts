@@ -1,5 +1,17 @@
 import * as THREE from 'three';
 import { Asset } from 'expo-asset';
+import { requireOptionalNativeModule } from 'expo-modules-core';
+import { Platform } from 'react-native';
+// @ts-expect-error - plain JS module without type declarations
+import { getAssetByID } from '@react-native/assets-registry/registry';
+import { logDebug } from './debug';
+import {
+  resolveTextureSource,
+  type AssetLike,
+  type PackagerMeta,
+  type TextureSourceDeps,
+  type TextureSourceResult,
+} from './textureSource';
 
 // Async texture loader for the expo-gl + bare three.js stack. React
 // Native has no DOM Image, so three's TextureLoader.load() can't be
@@ -17,50 +29,87 @@ import { Asset } from 'expo-asset';
 type Cache = Record<string, THREE.Texture | null>;
 const CACHE: Cache = {};
 
+export type TextureStatus = {
+  total: number;
+  loaded: number;
+  // key -> how it loaded (route) or why it didn't (all errors).
+  details: Record<string, string>;
+};
+const STATUS: TextureStatus = { total: 0, loaded: 0, details: {} };
+
+// Snapshot for Settings > Build / Update Info and bug reports.
+export function getTextureStatus(): TextureStatus {
+  return { total: STATUS.total, loaded: STATUS.loaded, details: { ...STATUS.details } };
+}
+
+const ExpoAssetNative = requireOptionalNativeModule<{
+  downloadAsync(uri: string, hash: string | null, type: string): Promise<string>;
+}>('ExpoAsset');
+
+const DEPS: TextureSourceDeps = {
+  platform: Platform.OS,
+  fromModule: (id) => Asset.fromModule(id) as unknown as AssetLike,
+  nativeDownload: ExpoAssetNative ? (uri, hash, type) => ExpoAssetNative.downloadAsync(uri, hash, type) : null,
+  getMeta: (id) => getAssetByID(id) as PackagerMeta | undefined,
+};
+
 async function loadAssetTexture(
   key: string,
   module: number,
 ): Promise<THREE.Texture | null> {
   if (CACHE[key]) return CACHE[key];
+  STATUS.total += 1;
+  let result: TextureSourceResult;
   try {
-    const asset = Asset.fromModule(module);
-    await asset.downloadAsync();
-    const tex = new THREE.Texture();
-    // Asset shape that expo-gl's texImage2D wrapper expects: when
-    // `downloadAsync` is present on the image object, the wrapper
-    // pulls localUri/uri off it and forwards to the native upload.
-    tex.image = {
-      width: asset.width ?? 1,
-      height: asset.height ?? 1,
-      uri: asset.uri,
-      localUri: asset.localUri ?? undefined,
-      downloadAsync: async () => {
-        // already downloaded; no-op so the wrapper's truthiness
-        // check still passes.
-      },
-    } as unknown as HTMLImageElement;
-    // Leave flipY at its three.js default (true). expo-gl's native
-    // texImage2D path uploads the PNG already oriented for GL's
-    // bottom-up V, so our earlier flipY=false produced a double-no-
-    // flip and Kenney OBJ UVs landed on the wrong row of the palette
-    // (police body sampling brown, lights sampling green, etc.). With
-    // the default, V=0 sits at the bottom of the source PNG and the
-    // OBJ UVs index the cells the kit author intended.
-    tex.needsUpdate = true;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    // Nearest-neighbour minification keeps the palette colours crisp
-    // (linear blends sample neighbouring cells, producing muddy
-    // intermediates on small palette atlases like colormap.png).
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    tex.generateMipmaps = false;
-    CACHE[key] = tex;
-    return tex;
-  } catch {
+    result = await resolveTextureSource(module, DEPS);
+  } catch (e) {
+    result = { ok: false, errors: [e instanceof Error ? e.message : String(e)] };
+  }
+  if (!result.ok) {
+    STATUS.details[key] = `FAILED: ${result.errors.join('; ')}`;
+    logDebug('warn', `[textures] ${key} ${STATUS.details[key]}`);
     CACHE[key] = null;
     return null;
   }
+  const src = result.source;
+  STATUS.loaded += 1;
+  STATUS.details[key] = src.route;
+  if (result.errors.length > 0) {
+    logDebug('log', `[textures] ${key} via ${src.route} after: ${result.errors.join('; ')}`);
+  }
+  const tex = new THREE.Texture();
+  // Asset shape that expo-gl's texImage2D wrapper expects: when
+  // `downloadAsync` is present on the image object, the wrapper
+  // pulls localUri off it (it must be a file:// path on native) and
+  // forwards to the native upload.
+  tex.image = {
+    width: src.width,
+    height: src.height,
+    uri: src.uri,
+    localUri: src.localUri,
+    downloadAsync: async () => {
+      // already resolved; no-op so the wrapper's truthiness check
+      // still passes.
+    },
+  } as unknown as HTMLImageElement;
+  // Leave flipY at its three.js default (true). expo-gl's native
+  // texImage2D path uploads the PNG already oriented for GL's
+  // bottom-up V, so our earlier flipY=false produced a double-no-
+  // flip and Kenney OBJ UVs landed on the wrong row of the palette
+  // (police body sampling brown, lights sampling green, etc.). With
+  // the default, V=0 sits at the bottom of the source PNG and the
+  // OBJ UVs index the cells the kit author intended.
+  tex.needsUpdate = true;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  // Nearest-neighbour minification keeps the palette colours crisp
+  // (linear blends sample neighbouring cells, producing muddy
+  // intermediates on small palette atlases like colormap.png).
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  CACHE[key] = tex;
+  return tex;
 }
 
 // Pre-load every texture the game might need before the GLView

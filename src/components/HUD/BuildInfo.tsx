@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatDetailRows } from '../../util/releaseInfo';
 import { checkForNewUpdate, getReleaseInfo, reloadIntoUpdate } from '../../util/releaseRuntime';
+import { getTextureStatus } from '../../util/textures';
+import { formatTextureRow } from '../../util/textureSource';
 import { color as ui, type as T } from '../../ui/theme';
 
 // Build / Update Info: everything needed to tell exactly which code
@@ -9,7 +11,7 @@ import { color as ui, type as T } from '../../ui/theme';
 // show it in full.
 export function BuildInfo() {
   const info = getReleaseInfo();
-  const rows = formatDetailRows(info);
+  const rows = [...formatDetailRows(info), formatTextureRow(getTextureStatus())];
   const [expanded, setExpanded] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [ready, setReady] = useState(false);

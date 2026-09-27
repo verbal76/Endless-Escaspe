@@ -15,6 +15,8 @@ const STUBS = {
   'expo-haptics': 'empty.mjs',
   'expo-audio': 'expo-audio.mjs',
   '@react-native-async-storage/async-storage': 'async-storage.mjs',
+  '@react-native/assets-registry/registry': 'assets-registry.mjs',
+  'expo-modules-core': 'expo-modules-core.mjs',
 };
 
 export async function resolve(specifier, context, next) {

@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import { formatEntry, getEntries, getPreviousRun } from './debug';
 import { getReleaseInfo } from './releaseRuntime';
 import { formatDetailRows, formatMenuLine } from './releaseInfo';
+import { getTextureStatus } from './textures';
+import { formatTextureRow } from './textureSource';
 
 // Pre-fill mailto: links for bug reports + feature requests so the
 // user's email client opens with the diagnostic info already pasted.
@@ -15,7 +17,7 @@ export const SUPPORT_EMAIL = 'hotatticgames@gmail.com';
 
 function buildInfoMultiline(): string {
   const info = getReleaseInfo();
-  const rows = formatDetailRows(info).map((r) => `${r.label}: ${r.full ?? r.value}`);
+  const rows = [...formatDetailRows(info), formatTextureRow(getTextureStatus())].map((r) => `${r.label}: ${r.full ?? r.value}`);
   return [formatMenuLine(info), ...rows, `OS: ${Platform.OS} ${Platform.Version}`].join('\n');
 }
 

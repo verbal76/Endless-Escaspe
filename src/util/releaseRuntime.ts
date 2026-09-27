@@ -22,6 +22,8 @@ export function getReleaseInfo(): ReleaseInfo {
       channel: Updates.channel,
       createdAt: Updates.createdAt,
       manifest: Updates.manifest,
+      isEmergencyLaunch: Updates.isEmergencyLaunch,
+      emergencyReason: Updates.emergencyLaunchReason,
     });
   } catch {
     info = resolveReleaseInfo({

@@ -26,6 +26,10 @@ export type ReleaseSources = {
   createdAt: Date | null;
   // The running manifest (embedded or downloaded), any shape.
   manifest: unknown;
+  // expo-updates fell back to the embedded bundle because a
+  // downloaded update failed to launch.
+  isEmergencyLaunch?: boolean;
+  emergencyReason?: string | null;
 };
 
 export type ReleaseInfo = {
@@ -43,6 +47,10 @@ export type ReleaseInfo = {
   // When the running bundle was created (embedded: build time;
   // OTA: publish time), as reported by expo-updates.
   createdAt: Date | null;
+  // Emergency launch (a downloaded update crashed and the embedded
+  // bundle was started instead) and the reason, if reported.
+  emergency: boolean;
+  emergencyReason: string | null;
 };
 
 export const UNAVAILABLE = 'Unavailable';
@@ -120,6 +128,8 @@ export function resolveReleaseInfo(src: ReleaseSources): ReleaseInfo {
     otaSequence: source === 'ota' ? parseSequence(release?.otaSequence) : null,
     gitSha: parseSha(release?.gitSha),
     createdAt: src.createdAt && !isNaN(src.createdAt.getTime()) ? src.createdAt : null,
+    emergency: source !== 'disabled' && !!src.isEmergencyLaunch,
+    emergencyReason: source !== 'disabled' && src.isEmergencyLaunch ? nonEmptyString(src.emergencyReason) : null,
   };
 }
 
@@ -176,5 +186,10 @@ export function formatDetailRows(info: ReleaseInfo): InfoRow[] {
     { label: 'Update ID', value: shortId(info.updateId, 13) ?? UNAVAILABLE, full: info.updateId ?? undefined },
     { label: 'Source commit', value: shortId(info.gitSha, 10) ?? UNAVAILABLE, full: info.gitSha ?? undefined },
     { label: 'Published', value: info.createdAt ? info.createdAt.toISOString().replace('T', ' ').slice(0, 16) + ' UTC' : UNAVAILABLE },
+    {
+      label: 'Launch',
+      value: info.source === 'disabled' ? 'Not applicable' : info.emergency ? 'EMERGENCY (fell back to embedded)' : 'Normal',
+      full: info.emergency && info.emergencyReason ? info.emergencyReason : undefined,
+    },
   ];
 }

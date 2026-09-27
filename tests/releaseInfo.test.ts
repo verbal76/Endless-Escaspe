@@ -65,6 +65,18 @@ test('updates disabled (dev build / web): no update id or sequence is claimed', 
   assert.match(formatMenuLine(info), /Updates off$/);
 });
 
+test('emergency launches are reported (and never claimed when updates are off)', () => {
+  const normal = formatDetailRows(resolveReleaseInfo(base)).find((r) => r.label === 'Launch')!;
+  assert.equal(normal.value, 'Normal');
+  const em = resolveReleaseInfo({ ...base, isEmbeddedLaunch: true, isEmergencyLaunch: true, emergencyReason: 'update crashed on launch' });
+  assert.equal(em.emergency, true);
+  const row = formatDetailRows(em).find((r) => r.label === 'Launch')!;
+  assert.match(row.value, /EMERGENCY/);
+  assert.equal(row.full, 'update crashed on launch');
+  const off = resolveReleaseInfo({ ...base, updatesEnabled: false, isEmergencyLaunch: true });
+  assert.equal(off.emergency, false);
+});
+
 test('enabled but no update id is never reported as an OTA', () => {
   const info = resolveReleaseInfo({ ...base, updateId: null });
   assert.equal(info.source, 'disabled');

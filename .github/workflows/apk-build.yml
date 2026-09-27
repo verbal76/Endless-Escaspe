@@ -72,6 +72,12 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default list includes the long-retired `tools`
+          # package, which current sdkmanager rejects (fails the job
+          # before any build step). platform-tools is all we need; Gradle
+          # fetches platforms / build-tools itself.
+          packages: 'platform-tools'
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund

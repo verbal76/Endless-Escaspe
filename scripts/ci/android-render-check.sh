@@ -1,0 +1,30 @@
+#!/bin/bash
+# Runs inside the Android emulator job: installs the release APK, lets
+# it fetch the latest OTA (first launch downloads, second launch runs
+# it) and collects logcat + screenshots for check-render-audit.mjs.
+set -uo pipefail
+PKG=com.verbal76.endlessescaspe
+OUT=render-check
+mkdir -p "$OUT"
+adb install -r -g app.apk
+launch() { adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null; }
+
+adb logcat -c
+launch
+sleep 90
+adb exec-out screencap -p > "$OUT/launch1.png"
+adb logcat -d > "$OUT/logcat-launch1.txt"
+adb shell am force-stop "$PKG"
+sleep 3
+
+adb logcat -c
+launch
+sleep 120
+adb exec-out screencap -p > "$OUT/launch2.png"
+adb logcat -d > "$OUT/logcat-launch2.txt"
+
+echo "--- app log lines (launch 1) ---"
+grep -E "\[release\]|\[textures\]|\[render-audit\]|FATAL EXCEPTION|ReactNativeJS.*(Error|Warn)" "$OUT/logcat-launch1.txt" | cut -c1-2500 || true
+echo "--- app log lines (launch 2) ---"
+grep -E "\[release\]|\[textures\]|\[render-audit\]|FATAL EXCEPTION|ReactNativeJS.*(Error|Warn)" "$OUT/logcat-launch2.txt" | cut -c1-2500 || true
+node scripts/ci/check-render-audit.mjs "$OUT/logcat-launch2.txt"

@@ -1,0 +1,95 @@
+name: Android render check
+
+# Runs the real release APK on an Android emulator and fails unless the
+# game actually draws its textures: the in-app render audit
+# (src/util/renderAudit.ts) must report the player, guards, vehicles,
+# props and ground drawn with their textures, and texels read back
+# from the GPU must match the source PNGs. Browser checks can't catch
+# Android-only asset / GL paths; this can.
+#
+# The APK is the newest build-N release; the app fetches the latest OTA
+# on first launch and runs it on the second, so the job first waits
+# until the update server serves the OTA built from the newest commit
+# that changed app code.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - claude/game-review-suggestions-cjxiqh
+    paths:
+      - 'src/**'
+      - 'App.tsx'
+      - 'index.ts'
+      - 'assets/**'
+      - 'scripts/ci/**'
+      - '.github/workflows/android-render-check.yml'
+
+concurrency:
+  group: android-render-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  render-check:
+    name: Release APK renders textures (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Pick the commit whose OTA to test
+        run: |
+          sha=$(git log -1 --format=%H -- src App.tsx index.ts assets)
+          echo "EXPECT_SHA=$sha" >> "$GITHUB_ENV"
+          echo "Testing the OTA built from $sha"
+
+      - name: Download the newest release APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release list --limit 100 --json tagName --jq '.[].tagName' | grep -E '^build-[0-9]+$' | sort -t- -k2 -n | tail -1)
+          echo "APK release: $tag"
+          gh release download "$tag" --pattern '*.apk' --output app.apk
+          ls -l app.apk
+
+      - name: Wait until that OTA is being served
+        run: node scripts/ci/wait-for-ota.mjs
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # Android 11 x86_64 Google APIs images translate the APK's ARM
+      # native libraries, so the exact release APK runs unmodified.
+      - name: Run the APK and check the render audit
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          disk-size: 6G
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: bash scripts/ci/android-render-check.sh
+
+      - name: Upload logcat and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-render-check
+          path: render-check/
+          if-no-files-found: ignore

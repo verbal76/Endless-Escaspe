@@ -11,6 +11,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { cameraCountFor } from '../../scenes/Camera';
+import { type as T } from '../../ui/theme';
 
 // Top-of-screen yard-alarm bar fed by the segment's security
 // cameras. Filling the bar summons an extra patrol; staying out of
@@ -82,7 +83,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: 'rgba(255, 200, 200, 0.85)',
-    fontSize: 10,
+    fontSize: T.caption,
     fontWeight: '900',
     letterSpacing: 2,
     marginBottom: 3,

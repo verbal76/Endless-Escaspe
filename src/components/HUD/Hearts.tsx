@@ -10,10 +10,11 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { startingHeartsFor } from '../../util/progression';
+import { color as ui, type as T } from '../../ui/theme';
 
 const FILLED_GLYPH = '♥';
 const EMPTY_GLYPH = '♡';
-const FILLED_COLOR = '#ff5577';
+const FILLED_COLOR = ui.danger;
 const EMPTY_COLOR = 'rgba(255,255,255,0.3)';
 
 // Single heart slot. Animates between filled and empty: when its
@@ -111,8 +112,8 @@ const styles = StyleSheet.create({
   },
   perkTag: {
     marginTop: 2,
-    color: '#ffd14a',
-    fontSize: 10,
+    color: ui.gold,
+    fontSize: T.caption,
     fontWeight: '900',
     letterSpacing: 1.5,
     textShadowColor: 'rgba(0,0,0,0.7)',

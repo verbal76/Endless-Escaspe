@@ -7,6 +7,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
+import { color as ui, type as T, fonts } from '../../ui/theme';
 
 // Branded confirm / alert modal matching the dark UI of the rest of
 // the game. Replaces every Alert.alert call so OS-style popup
@@ -118,21 +119,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1d24',
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 210, 90, 0.55)',
+    borderColor: 'rgba(255, 209, 74, 0.55)',
     paddingHorizontal: 22,
     paddingVertical: 22,
   },
   title: {
-    color: '#ffd14a',
-    fontSize: 20,
-    fontWeight: '900',
+    color: ui.gold,
+    fontSize: T.title,
+    fontFamily: fonts.display,
     letterSpacing: 1.5,
     marginBottom: 10,
     textAlign: 'center',
   },
   body: {
     color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 14,
+    fontSize: T.body,
     lineHeight: 20,
     textAlign: 'center',
     marginBottom: 18,
@@ -154,7 +155,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnPrimary: {
-    backgroundColor: 'rgba(255, 210, 90, 0.92)',
+    backgroundColor: 'rgba(255, 209, 74, 0.92)',
     borderColor: 'rgba(255, 230, 140, 1)',
   },
   btnDanger: {
@@ -171,10 +172,10 @@ const styles = StyleSheet.create({
   btnLabel: {
     fontWeight: '900',
     letterSpacing: 1.5,
-    fontSize: 13,
+    fontSize: T.small,
   },
   btnLabelPrimary: {
-    color: '#1b1206',
+    color: ui.onGold,
   },
   btnLabelDanger: {
     color: '#fff',

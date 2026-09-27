@@ -115,6 +115,15 @@ import { EventFlash } from '../components/HUD/EventFlash';
 import { Tutorial } from '../components/HUD/Tutorial';
 import { GameModal } from '../components/HUD/GameModal';
 import { Toast } from '../components/HUD/Toast';
+import { EdgeVignette } from '../components/HUD/EdgeVignette';
+import {
+  clearDustField,
+  createBurstPool,
+  createDustField,
+  spawnBurst,
+  updateBursts,
+  updateDustField,
+} from '../scenes/Juice';
 import {
   createAimLaser,
   createNoiseRing,
@@ -165,16 +174,12 @@ import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
 import { applyStageLighting, getStageLighting, type StageLighting } from '../scenes/Lighting';
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
 import { createMusic, type MusicPlayer } from '../scenes/Music';
-import {
-  createPickupSounds,
-  playPickupGrab,
-  playCrowbarBonk,
-  playPickupUse,
-  type PickupSounds,
-} from '../scenes/PickupSounds';
+import { MusicIntensity } from '../util/musicIntensity';
+import { TIPS, contextTip, stageStartTip, type TipId } from '../util/stageTips';
+import { createSfx, playSfx, type Sfx } from '../scenes/Sfx';
 import { writeSaves, type Save } from '../util/storage';
 import { haptics } from '../util/haptics';
-import { scoreStars } from '../util/scoring';
+import { scoreStars, timeTargetsFor } from '../util/scoring';
 import { RunTracker } from '../util/runStats';
 import { BossClock } from '../util/bossClock';
 import { resetNavState } from '../systems/Navigator';
@@ -251,6 +256,11 @@ export function Game() {
     r.worldRoot.add(noiseRing.mesh);
     const crowbarMarker = createTargetMarker();
     r.worldRoot.add(crowbarMarker.mesh);
+    // Pooled game-feel effects.
+    const dust = createDustField();
+    r.worldRoot.add(dust.root);
+    const bursts = createBurstPool(4);
+    r.worldRoot.add(bursts.root);
     // Written by update(), read by render().
     let noiseRadiusNow = 0;
     let noiseLoudness = 0;
@@ -261,12 +271,14 @@ export function Game() {
     const nextDetection = new Map<number, number>();
 
     const siren: SirenHandle = createSiren();
-    const pickupSounds: PickupSounds = createPickupSounds();
+    const sfx: Sfx = createSfx();
     // Background music. Initial volume picked from the store so a
     // returning player gets the slider-saved level instead of the
     // default. The store-subscription below keeps the live track
     // synced with the slider while the panel is open.
     const music: MusicPlayer = createMusic(useStore.getState().musicVolume);
+    // Danger -> music mix (calm / alert / chase with hysteresis).
+    const musicIntensity = new MusicIntensity();
     // Live-update the music volume whenever the slider moves. The
     // returned unsubscribe is intentionally not called - the music
     // is alive for the whole GLView lifetime, which matches the app's
@@ -310,6 +322,8 @@ export function Game() {
       range: number;
       // Summoned by a full camera alarm (removed on restart).
       reinforcement: boolean;
+      // Was this guard winding up a shot last frame (aim-click cue)?
+      aiming: boolean;
     };
 
     type Scene = {
@@ -378,6 +392,7 @@ export function Game() {
         laser,
         range: baseVisionRange,
         reinforcement,
+        aiming: false,
       };
     };
 
@@ -730,7 +745,56 @@ export function Game() {
       return true;
     };
 
+    // ---- In-game tutorial prompts ------------------------------------
+    // One tip on screen at a time, spaced out; each tip is marked seen
+    // on the active character save so it never repeats.
+    const tipQueue: TipId[] = [];
+    let tipCooldown = 0;
+    let stageTipDelay = -1;
+    const sessionSeen = new Set<string>();
+    const seenTips = (): readonly string[] => {
+      const st = useStore.getState();
+      const save = st.activeSaveName ? st.saves[st.activeSaveName] : null;
+      return save ? [...save.tipsSeen, ...sessionSeen] : [...sessionSeen];
+    };
+    const queueTip = (id: TipId | null) => {
+      if (!id || tipQueue.includes(id) || seenTips().includes(id)) return;
+      tipQueue.push(id);
+    };
+    const markTipSeen = (id: TipId) => {
+      sessionSeen.add(id);
+      const st = useStore.getState();
+      const key = st.activeSaveName;
+      const save = key ? st.saves[key] : null;
+      if (!key || !save || save.tipsSeen.includes(id)) return;
+      const updated: Save = { ...save, tipsSeen: [...save.tipsSeen, id] };
+      st.upsertSave(updated);
+      writeSaves({ ...useStore.getState().saves, [key]: updated });
+    };
+    const tickTips = (dt: number) => {
+      if (stageTipDelay >= 0) {
+        stageTipDelay -= dt;
+        if (stageTipDelay < 0) {
+          queueTip(stageStartTip(useStore.getState().stage, seenTips()));
+          if (scene.cameras.length > 0) queueTip(contextTip('cameras', seenTips()));
+        }
+      }
+      tipCooldown = Math.max(0, tipCooldown - dt);
+      if (tipCooldown > 0 || tipQueue.length === 0) return;
+      const id = tipQueue.shift() as TipId;
+      if (seenTips().includes(id)) return;
+      useStore.getState().showToast(TIPS[id], 'tip');
+      markTipSeen(id);
+      tipCooldown = 4;
+    };
+
     const resetSegment = () => {
+      tipQueue.length = 0;
+      stageTipDelay = 1.2;
+      clearDustField(dust);
+      useStore.getState().setDangerLevel(0);
+      pendingCatch = null;
+      hitStopRemaining = 0;
       tracker.reset();
       bossClock.arm(scene.isBossArena ? scene.bossSurviveSeconds : 0);
       useStore.getState().setBossTimeRemaining(bossClock.displaySeconds());
@@ -826,13 +890,25 @@ export function Game() {
       st.decayBossPerk();
     };
 
+    // Hit-stop: on a catch the world freezes for HIT_STOP_S (camera
+    // shake, red screen edge and the catch flash still play), THEN the
+    // respawn / run-end resolves. Makes every hit land instead of the
+    // player silently teleporting to spawn.
+    const HIT_STOP_S = 0.14;
+    let hitStopRemaining = 0;
+    let pendingCatch: (() => void) | null = null;
+
     const handleCatch = (cause: 'arrested' | 'killed' = 'arrested') => {
+      // Already frozen on a catch this frame / hit-stop: ignore extra
+      // hits so one moment can't cost two hearts.
+      if (pendingCatch) return;
       const st = useStore.getState();
       const remaining = st.hearts - 1;
       logDebug('log', 'handleCatch', { cause, stage: st.stage, remaining, isBossArena: scene.isBossArena });
       st.setHearts(remaining);
       st.setLastDeathCause(cause);
       tracker.onCatch();
+      playSfx(sfx, cause === 'killed' ? 'hurt' : 'caught', st.masterVolume);
       // Trigger the shield+skull catch flash. CatchFlash subscribes
       // to catchCounter; bumping it here means every hit (soft or
       // run-ending) plays the same brief notification before the
@@ -840,6 +916,13 @@ export function Game() {
       st.bumpCatchCounter();
       projectiles.clear();
       shakeRemaining = SHAKE_DURATION;
+      const resolveRemaining = remaining;
+      pendingCatch = () => resolveCatch(resolveRemaining);
+      hitStopRemaining = HIT_STOP_S;
+    };
+
+    const resolveCatch = (remaining: number) => {
+      const st = useStore.getState();
       if (remaining <= 0) {
         haptics.caught();
         // Boss-round failure isn't a run-ender: the user wants the
@@ -937,7 +1020,10 @@ export function Game() {
       const justClearedStage = st.stage;
       logDebug('log', 'handleWin', { stage: justClearedStage, isBossArena: scene.isBossArena, runTime: tracker.runTime });
       const stats: Omit<RunStats, 'stars'> = tracker.snapshot();
-      const stars = scoreStars(stats);
+      const stars = scoreStars(
+        stats,
+        timeTargetsFor(scene.segLen, scene.isBossArena ? scene.bossSurviveSeconds : null),
+      );
       st.setLastStats({ ...stats, stars });
       // Mirror the new high (if any) into the in-memory bestStars
       // map so the post-run banner shows the right number.
@@ -1072,6 +1158,9 @@ export function Game() {
         projectiles.clear();
         noiseRadiusNow = 0;
         crowbarTarget = null;
+        st.setDangerLevel(0);
+        const calmMix = musicIntensity.update(0, false, dt);
+        music.setMix(calmMix.calmGain, calmMix.tensionGain, calmMix.rate);
         for (const e of scene.guardEntries) e.guard.aimTimer = 0;
         // Silence the siren on pause / non-playing states so the
         // speaker doesn't keep wailing while the player is in menus.
@@ -1108,7 +1197,21 @@ export function Game() {
         return;
       }
 
+      // Hit-stop after a catch: hold the world still, then resolve the
+      // respawn / run end.
+      if (pendingCatch) {
+        hitStopRemaining -= dt;
+        if (shakeRemaining > 0) shakeRemaining = Math.max(0, shakeRemaining - dt);
+        if (hitStopRemaining <= 0) {
+          const resolve = pendingCatch;
+          pendingCatch = null;
+          resolve();
+        }
+        return;
+      }
+
       tracker.tickTime(dt);
+      tickTips(dt);
       animTime += dt;
       if (shakeRemaining > 0) {
         shakeRemaining = Math.max(0, shakeRemaining - dt);
@@ -1173,8 +1276,10 @@ export function Game() {
             p.mesh = null;
           }
           st.addPickup(p.kind);
+          queueTip(contextTip(p.kind, seenTips()));
+          spawnBurst(bursts, p.x, p.z);
           haptics.pickupGrab();
-          playPickupGrab(pickupSounds, st.masterVolume);
+          playSfx(sfx, 'pickup_grab', st.masterVolume);
         }
       }
 
@@ -1212,8 +1317,8 @@ export function Game() {
           // Always play the swing whoosh; layer the bonk thump on top
           // when contact actually lands. The two cue different things
           // for the player: whoosh = "you swung", bonk = "you connected".
-          playPickupUse(pickupSounds, st.masterVolume);
-          if (hit) playCrowbarBonk(pickupSounds, st.masterVolume);
+          playSfx(sfx, 'crowbar_swing', st.masterVolume);
+          if (hit) playSfx(sfx, 'crowbar_hit', st.masterVolume);
         }
       }
       if (input.useSmokeBomb) {
@@ -1223,7 +1328,7 @@ export function Game() {
           r.worldRoot.add(cloud.group);
           smokeClouds.push(cloud);
           haptics.pickupUse();
-          playPickupUse(pickupSounds, st.masterVolume);
+          playSfx(sfx, 'smoke_pop', st.masterVolume);
         }
       }
 
@@ -1475,7 +1580,18 @@ export function Game() {
             aimZ = tz + player.vz * lead;
           }
           projectiles.spawn(fx, fz, aimX, aimZ);
+          // Louder the closer the shooter.
+          const shotDist = Math.hypot(gFiring.x - player.x, gFiring.z - player.z);
+          playSfx(sfx, 'gunshot', st.masterVolume, Math.max(0.35, 1 - shotDist / 30));
         }, scene.procgen.nav, guardSenses.get(g.id));
+        // Audible half of the shot telegraph: a click as the laser
+        // sight comes up.
+        const aimingNow = g.aimTimer > 0;
+        if (aimingNow && !entry.aiming) {
+          playSfx(sfx, 'aim_click', st.masterVolume);
+          queueTip(contextTip('aimed', seenTips()));
+        }
+        entry.aiming = aimingNow;
       }
 
       // Tucked in safely: crouched by cover with no guard looking.
@@ -1559,6 +1675,15 @@ export function Game() {
 
       // Stats accumulators.
       tracker.tickDetection(maxDetection, effDt);
+      st.setDangerLevel(maxDetection);
+
+      // Music reacts to danger: the tension layer rises with the
+      // highest meter and takes over during a chase.
+      let anyChase = false;
+      for (const g of scene.guards) if (g.state === 'chase') anyChase = true;
+      for (const d of scene.dogs) if (d.state === 'chase') anyChase = true;
+      const mix = musicIntensity.update(maxDetection, anyChase, dt);
+      music.setMix(mix.calmGain, mix.tensionGain, mix.rate);
 
       // Live siren volume tracks the highest detection across guards,
       // multiplied by the master volume slider in the pause panel.
@@ -1714,6 +1839,22 @@ export function Game() {
         if (v > maxDetection) maxDetection = v;
       }
       updateRadialMeter(radialMeter, maxDetection);
+      updateDustField(
+        dust,
+        renderDt,
+        useStore.getState().runState === 'playing' &&
+          player.isRunning &&
+          !player.isCrouched &&
+          scene.weatherKind !== 'snow' &&
+          Math.hypot(player.vx, player.vz) > 4,
+        player.x,
+        player.z,
+        player.vx,
+        player.vz,
+        r.camera,
+        scene.weatherKind === 'rain' ? 0x8a8174 : 0xcbbfa6,
+      );
+      updateBursts(bursts, renderDt);
       updateNoiseRing(noiseRing, player.x, player.z, noiseRadiusNow, noiseLoudness, animTime, renderDt);
       updateTargetMarker(crowbarMarker, crowbarTarget, animTime);
 
@@ -1753,6 +1894,7 @@ export function Game() {
     <View style={styles.root}>
       <GLView style={StyleSheet.absoluteFill} onContextCreate={onContextCreate} />
       <AlarmOverlay />
+      <EdgeVignette />
       <Joystick />
       <RunButton />
       <ActionButtons />

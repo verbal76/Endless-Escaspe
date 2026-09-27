@@ -19,6 +19,7 @@ import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
 import { composeBugReportUrl, composeFeatureRequestUrl } from '../../util/support';
 import { BuildInfo } from './BuildInfo';
+import { color as ui, type as T, fonts } from '../../ui/theme';
 
 const SLIDER_TRACK_W = 220;
 const SLIDER_KNOB_R = 13;
@@ -302,7 +303,7 @@ const styles = StyleSheet.create({
   },
   gearGlyph: {
     color: 'rgba(255, 255, 255, 0.92)',
-    fontSize: 26,
+    fontSize: T.heading,
     lineHeight: 30,
     textShadowColor: 'rgba(0,0,0,0.7)',
     textShadowRadius: 3,
@@ -327,7 +328,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1d24',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255, 210, 90, 0.40)',
+    borderColor: 'rgba(255, 209, 74, 0.40)',
     padding: 18,
   },
   columns: {
@@ -349,9 +350,9 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   title: {
-    color: '#ffd14a',
+    color: ui.gold,
     fontSize: 22,
-    fontWeight: '900',
+    fontFamily: fonts.display,
     letterSpacing: 2,
     marginBottom: 12,
     textAlign: 'center',
@@ -379,21 +380,21 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(200, 170, 255, 0.65)',
   },
   btnMain: {
-    backgroundColor: 'rgba(255, 210, 90, 0.20)',
-    borderColor: 'rgba(255, 210, 90, 0.55)',
+    backgroundColor: 'rgba(255, 209, 74, 0.20)',
+    borderColor: 'rgba(255, 209, 74, 0.55)',
   },
   btnPressed: {
     opacity: 0.7,
   },
   bigLabel: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: T.label,
     fontWeight: '800',
     letterSpacing: 1.5,
   },
   sectionHeading: {
-    color: 'rgba(255, 255, 255, 0.55)',
-    fontSize: 11,
+    color: ui.textMuted,
+    fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 1.5,
     marginTop: 8,
@@ -407,12 +408,12 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: T.small,
     fontWeight: '700',
   },
   subLabel: {
-    color: 'rgba(255, 255, 255, 0.50)',
-    fontSize: 11,
+    color: ui.textMuted,
+    fontSize: T.caption,
     marginTop: 2,
   },
   toggleLabelWrap: {
@@ -443,7 +444,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   codeDigitText: {
-    color: '#ffd14a',
+    color: ui.gold,
     fontSize: 18,
     fontWeight: '900',
     letterSpacing: 1,
@@ -454,12 +455,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 210, 90, 0.55)',
-    backgroundColor: 'rgba(255, 210, 90, 0.20)',
+    borderColor: 'rgba(255, 209, 74, 0.55)',
+    backgroundColor: 'rgba(255, 209, 74, 0.20)',
   },
   codeUnlockLabel: {
-    color: '#ffd14a',
-    fontSize: 11,
+    color: ui.gold,
+    fontSize: T.caption,
     fontWeight: '900',
     letterSpacing: 1.5,
   },
@@ -484,7 +485,7 @@ const styles = StyleSheet.create({
   },
   feedbackLabel: {
     color: '#dff4ff',
-    fontSize: 11,
+    fontSize: T.caption,
     fontWeight: '900',
     letterSpacing: 1.2,
   },

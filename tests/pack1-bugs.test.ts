@@ -163,3 +163,23 @@ test('bug 7: restarting a boss round re-arms the full countdown; ticks are real-
   off.arm(0);
   assert.equal(off.tick(1), false);
 });
+
+test('star time targets scale with the segment actually played', async () => {
+  const { timeTargetsFor, scoreStars } = await import('../src/util/scoring');
+  const { CHUNK_LEN } = await import('../src/util/geometry');
+  const short = timeTargetsFor(5 * CHUNK_LEN);
+  const long = timeTargetsFor(9 * CHUNK_LEN);
+  assert.ok(short.three >= 55 && short.three <= 65, `stage-1 3-star ${short.three}`);
+  assert.ok(long.three > short.three * 1.7, 'longer segments allow proportionally more time');
+  // A careful crouch-walk (2.275 m/s) with 50% detours through the
+  // longest segment still earns time credit, where the old fixed
+  // 120 s limit gave it nothing.
+  const stealthyTime = ((9 * CHUNK_LEN) / 2.275) * 1.5;
+  assert.ok(stealthyTime > 120);
+  assert.ok(stealthyTime <= long.two);
+  const perfect = { timesSeen: 0, timeDetected: 0, livesUsed: 0 };
+  assert.equal(scoreStars({ ...perfect, runDurationS: long.three - 1 }, long), 3);
+  // Boss arenas: surviving the timer is full marks on time.
+  const boss = timeTargetsFor(48, 60);
+  assert.equal(scoreStars({ ...perfect, runDurationS: 60 }, boss), 3);
+});

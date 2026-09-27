@@ -8,6 +8,7 @@ import { useStore } from './src/state/store';
 import { installDebugLogger, logDebug } from './src/util/debug';
 import { loadSaves, loadSettings } from './src/util/storage';
 import { preloadAllTextures } from './src/util/textures';
+import { loadDisplayFont } from './src/ui/fonts';
 
 export default function App() {
   // Gate the Game (and its onContextCreate, where figures + vehicles
@@ -39,7 +40,9 @@ export default function App() {
       useStore.getState().setBossModeEnabled(s.bossModeEnabled);
     });
     loadSaves().then((m) => useStore.getState().setSaves(m));
-    preloadAllTextures().then(() => setTexturesReady(true));
+    // Textures and the display font load in parallel; the font never
+    // blocks boot for long (it resolves false on failure).
+    Promise.all([preloadAllTextures(), loadDisplayFont()]).then(() => setTexturesReady(true));
   }, []);
 
   return (

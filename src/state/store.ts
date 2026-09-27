@@ -140,6 +140,9 @@ type Store = {
   // inside swing range; the crowbar slot glows to match the in-world
   // target ring.
   crowbarInRange: boolean;
+  // Highest guard detection (0..1), coalesced for the HUD edge tint.
+  dangerLevel: number;
+  setDangerLevel: (v: number) => void;
   // Short in-game notice (camera alarm dispatch, tutorial prompts).
   // `id` changes on every post so repeated text still re-animates.
   toast: { id: number; text: string; tone: 'info' | 'warn' | 'tip' } | null;
@@ -224,6 +227,12 @@ export const useStore = create<Store>((set) => ({
   bestStars: {},
   inventory: { ...EMPTY_INVENTORY },
   crowbarInRange: false,
+  dangerLevel: 0,
+  setDangerLevel: (v) =>
+    set((st) => {
+      const q = Math.round(Math.max(0, Math.min(1, v)) * 25) / 25;
+      return st.dangerLevel === q ? st : { dangerLevel: q };
+    }),
   toast: null,
   setCrowbarInRange: (b) =>
     set((st) => (st.crowbarInRange === b ? st : { crowbarInRange: b })),

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { color as ui, type as T } from '../../ui/theme';
 
 // Compact in-app keyboard for name entry. Replaces the system soft
 // keyboard, which on landscape Android phones takes ~half the
@@ -144,7 +145,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.22)',
   },
   keyPrimary: {
-    backgroundColor: 'rgba(255, 210, 90, 0.92)',
+    backgroundColor: 'rgba(255, 209, 74, 0.92)',
     borderColor: 'rgba(255, 230, 140, 1)',
   },
   keyPressed: {
@@ -162,16 +163,16 @@ const styles = StyleSheet.create({
   },
   keyLabelControl: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 12,
+    fontSize: T.caption,
     letterSpacing: 1,
   },
   keyLabelPrimary: {
-    color: '#1b1206',
+    color: ui.onGold,
     fontWeight: '900',
     letterSpacing: 1.2,
-    fontSize: 12,
+    fontSize: T.caption,
   },
   keyLabelDisabled: {
-    color: 'rgba(255,255,255,0.5)',
+    color: ui.textMuted,
   },
 });

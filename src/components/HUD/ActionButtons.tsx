@@ -11,6 +11,7 @@ import Animated, {
 import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
 import type { Stance } from '../../types/world';
+import { type as T } from '../../ui/theme';
 
 // Stance picker only. RUN is its own component (RunButton) sitting
 // near the joystick on the left side of the screen.
@@ -125,13 +126,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   btnActive: {
-    backgroundColor: 'rgba(255,210,90,0.35)',
-    borderColor: 'rgba(255,210,90,0.65)',
+    backgroundColor: 'rgba(255, 209, 74, 0.35)',
+    borderColor: 'rgba(255, 209, 74, 0.65)',
   },
   label: {
     color: 'rgba(255,255,255,0.92)',
     fontWeight: '700',
     letterSpacing: 0.5,
-    fontSize: 13,
+    fontSize: T.small,
   },
 });

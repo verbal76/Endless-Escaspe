@@ -11,6 +11,7 @@ import Animated, {
 import { useStore } from '../../state/store';
 import { input } from '../../systems/InputSystem';
 import type { PickupKind } from '../../types/world';
+import { color as ui, type as T } from '../../ui/theme';
 
 // Stack of pickup-use buttons sitting above the stance column on the
 // right edge of the screen. Each button shows its remaining count
@@ -182,27 +183,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   inRange: {
-    borderColor: '#ffd14a',
+    borderColor: ui.gold,
     borderWidth: 2,
   },
   count: {
     color: 'rgba(255,255,255,0.95)',
-    fontSize: 11,
+    fontSize: T.caption,
     fontWeight: '800',
     marginTop: 1,
   },
   countEmpty: {
-    color: 'rgba(255,255,255,0.55)',
+    color: ui.textMuted,
   },
   label: {
     color: 'rgba(255,255,255,0.80)',
-    fontSize: 9,
+    fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 0.3,
     marginTop: 1,
   },
   labelEmpty: {
-    color: 'rgba(255,255,255,0.45)',
+    color: ui.textMuted,
   },
 });
 

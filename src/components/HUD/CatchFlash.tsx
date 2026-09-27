@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
+import { color as ui, type as T, fonts } from '../../ui/theme';
 
 // Catch notification: a red badge that pops centred on the screen
 // every time the player takes a hit (soft or run-ending). Triggered
@@ -134,9 +135,9 @@ const styles = StyleSheet.create({
   },
   label: {
     marginTop: 22,
-    color: '#ff5050',
-    fontSize: 26,
-    fontWeight: '900',
+    color: ui.danger,
+    fontSize: T.heading,
+    fontFamily: fonts.display,
     letterSpacing: 4,
     textShadowColor: 'rgba(0,0,0,0.65)',
     textShadowRadius: 4,

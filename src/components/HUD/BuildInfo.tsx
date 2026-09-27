@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { formatDetailRows } from '../../util/releaseInfo';
 import { checkForNewUpdate, getReleaseInfo, reloadIntoUpdate } from '../../util/releaseRuntime';
+import { color as ui, type as T } from '../../ui/theme';
 
 // Build / Update Info: everything needed to tell exactly which code
 // is running. Tap a row with a shortened value (update ID, commit) to
@@ -67,14 +68,14 @@ const styles = StyleSheet.create({
   block: { paddingTop: 4 },
   row: { paddingVertical: 3 },
   label: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 12,
+    color: ui.textMuted,
+    fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 1,
   },
   value: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: T.small,
     fontFamily: 'monospace',
     marginTop: 1,
     flexWrap: 'wrap',
@@ -90,6 +91,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(140,220,255,0.7)',
   },
   btnPressed: { opacity: 0.7 },
-  btnLabel: { color: '#dff4ff', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  status: { color: 'rgba(255,255,255,0.85)', fontSize: 12, marginTop: 6 },
+  btnLabel: { color: '#dff4ff', fontSize: T.caption, fontWeight: '900', letterSpacing: 1 },
+  status: { color: 'rgba(255,255,255,0.85)', fontSize: T.caption, marginTop: 6 },
 });

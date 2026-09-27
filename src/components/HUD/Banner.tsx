@@ -10,6 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
+import { color as ui, type as T, fonts } from '../../ui/theme';
 
 const STAR_FILLED = '★';
 const STAR_EMPTY = '☆';
@@ -206,39 +207,39 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   cardCleared: {
-    borderColor: 'rgba(255, 210, 90, 0.55)',
+    borderColor: 'rgba(255, 209, 74, 0.55)',
   },
   cardCaught: {
     borderColor: 'rgba(255, 80, 80, 0.65)',
   },
   title: {
     fontSize: 28,
-    fontWeight: '900',
+    fontFamily: fonts.display,
     letterSpacing: 2,
     marginBottom: 14,
     textAlign: 'center',
   },
   titleCleared: {
-    color: '#ffd14a',
+    color: ui.gold,
   },
   titleCaught: {
-    color: '#ff6868',
+    color: ui.danger,
   },
   stars: {
-    color: '#ffd14a',
-    fontSize: 40,
+    color: ui.gold,
+    fontSize: T.display,
     letterSpacing: 6,
     marginBottom: 4,
   },
   skulls: {
-    color: '#ff6868',
-    fontSize: 40,
+    color: ui.danger,
+    fontSize: T.display,
     letterSpacing: 6,
     marginBottom: 14,
   },
   bestLine: {
-    color: 'rgba(255, 255, 255, 0.55)',
-    fontSize: 13,
+    color: ui.textMuted,
+    fontSize: T.small,
     fontWeight: '700',
     letterSpacing: 1.5,
     marginBottom: 14,
@@ -253,12 +254,12 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   statLabel: {
-    color: 'rgba(255, 255, 255, 0.65)',
-    fontSize: 13,
+    color: ui.textMuted,
+    fontSize: T.small,
   },
   statValue: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: T.small,
     fontWeight: '700',
     fontFamily: 'monospace',
   },
@@ -266,16 +267,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 14,
     borderRadius: 32,
-    backgroundColor: 'rgba(255, 210, 90, 0.85)',
+    backgroundColor: 'rgba(255, 209, 74, 0.85)',
   },
   btnDown: {
-    backgroundColor: 'rgba(255, 180, 40, 0.95)',
+    backgroundColor: 'rgba(255, 209, 74, 0.95)',
   },
   btnLabel: {
     color: '#1b1b1b',
     fontWeight: '800',
     letterSpacing: 1,
-    fontSize: 16,
+    fontSize: T.label,
   },
   // Death panel button: red theme to match the cardCaught border so
   // the call-to-action reads as a "leave" rather than an "advance".

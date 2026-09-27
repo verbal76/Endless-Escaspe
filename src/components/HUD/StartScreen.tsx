@@ -15,6 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useStore, type PlayerSkin } from '../../state/store';
 import {
+  newSave,
   saveKeyFromName,
   writeSaves,
   type Save,
@@ -23,8 +24,9 @@ import {
 import { NameKeyboard } from './NameKeyboard';
 import { getReleaseInfo } from '../../util/releaseRuntime';
 import { formatMenuLine } from '../../util/releaseInfo';
+import { color as ui, type as T, fonts } from '../../ui/theme';
 
-const TITLE = 'ENDLESS ESCASPE';
+const TITLE = 'ENDLESS ESCAPE';
 
 // Per-letter bouncing/pulsating title. Each letter gets its own
 // looping translateY + scale animation with a phase offset based
@@ -290,13 +292,7 @@ export function StartScreen() {
       });
       return;
     }
-    const save: Save = {
-      name,
-      skin: pickedSkin,
-      stage: 1,
-      bestStars: {},
-      updatedAt: Date.now(),
-    };
+    const save: Save = newSave(name, pickedSkin);
     upsertSave(save);
     setActiveSave(key);
     setPlayerSkin(pickedSkin);
@@ -714,9 +710,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   titleLetter: {
-    color: '#ffd14a',
-    fontSize: 62,
-    fontWeight: '900',
+    color: ui.gold,
+    fontSize: T.hero,
+    fontFamily: fonts.display,
     letterSpacing: 1.8,
     marginHorizontal: 2,
     textShadowColor: '#1a1206',
@@ -731,7 +727,7 @@ const styles = StyleSheet.create({
     bottom: 8,
     alignSelf: 'center',
     color: 'rgba(255,255,255,0.72)',
-    fontSize: 12,
+    fontSize: T.caption,
     fontWeight: '600',
     letterSpacing: 0.4,
     textShadowColor: 'rgba(0,0,0,0.85)',
@@ -740,14 +736,14 @@ const styles = StyleSheet.create({
   },
   tagline: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 14,
+    fontSize: T.body,
     fontWeight: '700',
     letterSpacing: 1.5,
     marginBottom: 14,
   },
   promptBody: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 12,
+    color: ui.textMuted,
+    fontSize: T.caption,
     textAlign: 'center',
     paddingHorizontal: 32,
     marginBottom: 16,
@@ -769,7 +765,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bigBtnPrimary: {
-    backgroundColor: 'rgba(255, 210, 90, 0.92)',
+    backgroundColor: 'rgba(255, 209, 74, 0.92)',
     borderColor: 'rgba(255, 230, 140, 1)',
   },
   bigBtnSecondary: {
@@ -780,10 +776,10 @@ const styles = StyleSheet.create({
     opacity: 0.75,
   },
   bigBtnLabel: {
-    color: '#1b1206',
-    fontWeight: '900',
+    color: ui.onGold,
+    fontFamily: fonts.display,
     letterSpacing: 1.6,
-    fontSize: 16,
+    fontSize: T.label,
   },
 
   // Figure picker
@@ -803,7 +799,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   figureFrameSelected: {
-    borderColor: 'rgba(255, 210, 90, 0.95)',
+    borderColor: 'rgba(255, 209, 74, 0.95)',
     backgroundColor: 'rgba(50, 38, 20, 0.85)',
   },
   figureWrap: {
@@ -838,7 +834,7 @@ const styles = StyleSheet.create({
     left: 19,
     width: 32,
     height: 38,
-    backgroundColor: '#f2c14a',
+    backgroundColor: ui.gold,
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -848,7 +844,7 @@ const styles = StyleSheet.create({
     left: 9,
     width: 18,
     height: 20,
-    backgroundColor: '#f2c14a',
+    backgroundColor: ui.gold,
     borderRadius: 2,
     overflow: 'hidden',
   },
@@ -861,7 +857,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 22,
     height: 6,
-    backgroundColor: '#1f1a0e',
+    backgroundColor: ui.onGold,
   },
   torsoStripeSmall: {
     position: 'absolute',
@@ -869,14 +865,14 @@ const styles = StyleSheet.create({
     right: 0,
     top: 11,
     height: 3,
-    backgroundColor: '#1f1a0e',
+    backgroundColor: ui.onGold,
   },
   arm: {
     position: 'absolute',
     top: 28,
     width: 10,
     height: 32,
-    backgroundColor: '#f2c14a',
+    backgroundColor: ui.gold,
     borderRadius: 3,
   },
   armSmall: {
@@ -884,7 +880,7 @@ const styles = StyleSheet.create({
     top: 15,
     width: 5,
     height: 17,
-    backgroundColor: '#f2c14a',
+    backgroundColor: ui.gold,
     borderRadius: 1,
   },
   armL: { left: 6 },
@@ -896,7 +892,7 @@ const styles = StyleSheet.create({
     top: 66,
     width: 12,
     height: 36,
-    backgroundColor: '#f2c14a',
+    backgroundColor: ui.gold,
     borderRadius: 3,
   },
   legSmall: {
@@ -904,7 +900,7 @@ const styles = StyleSheet.create({
     top: 35,
     width: 7,
     height: 19,
-    backgroundColor: '#f2c14a',
+    backgroundColor: ui.gold,
     borderRadius: 1,
   },
   legL: { left: 18 },
@@ -918,7 +914,7 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: 'rgba(255, 210, 90, 0.95)',
+    borderColor: 'rgba(255, 209, 74, 0.95)',
     backgroundColor: 'rgba(50, 38, 20, 0.85)',
   },
   // Compact (~20% smaller) versions used on the name-entry screen
@@ -943,7 +939,7 @@ const styles = StyleSheet.create({
     minHeight: 22,
   },
   nameValuePlaceholder: {
-    color: 'rgba(255,255,255,0.35)',
+    color: ui.textMuted,
     fontWeight: '600',
   },
   nameKeyboardWrap: {
@@ -952,8 +948,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   taglineCompact: {
-    color: 'rgba(255,255,255,0.65)',
-    fontSize: 10,
+    color: ui.textMuted,
+    fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 1.5,
     marginBottom: 2,
@@ -963,7 +959,7 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: 8,
     borderWidth: 2,
-    borderColor: 'rgba(255, 210, 90, 0.95)',
+    borderColor: 'rgba(255, 209, 74, 0.95)',
     backgroundColor: 'rgba(50, 38, 20, 0.85)',
     transform: [{ scale: 0.8 }],
   },
@@ -976,7 +972,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.20)',
     backgroundColor: 'rgba(20, 24, 32, 0.85)',
     color: '#fff',
-    fontSize: 16,
+    fontSize: T.label,
     fontWeight: '600',
     letterSpacing: 1.0,
     textAlign: 'center',
@@ -990,14 +986,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.20)',
     backgroundColor: 'rgba(20, 24, 32, 0.85)',
     color: '#fff',
-    fontSize: 13,
+    fontSize: T.small,
     fontWeight: '600',
     letterSpacing: 1.0,
     textAlign: 'center',
   },
   errorText: {
     color: '#ff8a8a',
-    fontSize: 12,
+    fontSize: T.caption,
     fontWeight: '700',
     marginTop: 8,
   },
@@ -1020,10 +1016,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bigBtnLabelCompact: {
-    color: '#1b1206',
+    color: ui.onGold,
     fontWeight: '900',
     letterSpacing: 1.4,
-    fontSize: 13,
+    fontSize: T.small,
   },
 
   // Continue list
@@ -1054,20 +1050,20 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   saveRowMainDown: {
-    backgroundColor: 'rgba(255, 210, 90, 0.10)',
+    backgroundColor: 'rgba(255, 209, 74, 0.10)',
   },
   saveRowText: {
     flex: 1,
   },
   saveName: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: T.label,
     fontWeight: '800',
     letterSpacing: 0.8,
   },
   saveStage: {
-    color: 'rgba(255, 210, 90, 0.85)',
-    fontSize: 12,
+    color: 'rgba(255, 209, 74, 0.85)',
+    fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 1.0,
     marginTop: 2,
@@ -1101,7 +1097,7 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: 'rgba(255, 210, 90, 0.95)',
+    borderColor: 'rgba(255, 209, 74, 0.95)',
     backgroundColor: 'rgba(50, 38, 20, 0.85)',
   },
   profileHeaderText: {
@@ -1114,8 +1110,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1.0,
   },
   profileSubtitle: {
-    color: 'rgba(255, 210, 90, 0.85)',
-    fontSize: 12,
+    color: 'rgba(255, 209, 74, 0.85)',
+    fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 1.0,
     marginTop: 2,
@@ -1145,7 +1141,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   boardCellCleared: {
-    borderColor: 'rgba(255, 210, 90, 0.55)',
+    borderColor: 'rgba(255, 209, 74, 0.55)',
     backgroundColor: 'rgba(50, 38, 20, 0.65)',
   },
   boardCellNext: {
@@ -1157,13 +1153,13 @@ const styles = StyleSheet.create({
   },
   boardStageNum: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: T.label,
     fontWeight: '900',
     letterSpacing: 0.6,
   },
   boardStars: {
-    color: '#ffd14a',
-    fontSize: 14,
+    color: ui.gold,
+    fontSize: T.body,
     letterSpacing: 2,
     marginTop: 2,
   },
@@ -1183,8 +1179,8 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   linkLabel: {
-    color: 'rgba(255, 255, 255, 0.65)',
-    fontSize: 13,
+    color: ui.textMuted,
+    fontSize: T.small,
     fontWeight: '700',
     letterSpacing: 1.5,
   },

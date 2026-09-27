@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
+import { type as T } from '../../ui/theme';
 
 // RUN is a speed-toggle that doubles whatever stance speed is active.
 // Lives in the right-hand action cluster (left of the CROUCH / WALK
@@ -96,7 +97,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.92)',
     fontWeight: '800',
     letterSpacing: 0.5,
-    fontSize: 14,
+    fontSize: T.body,
   },
   labelActive: {
     color: '#dff4ff',

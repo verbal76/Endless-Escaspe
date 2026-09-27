@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
+import { type as T } from '../../ui/theme';
 
 const HOLD_MS = 2600;
 
@@ -78,7 +79,7 @@ const styles = StyleSheet.create({
   },
   text: {
     color: '#ffffff',
-    fontSize: 14,
+    fontSize: T.body,
     fontWeight: '700',
     textAlign: 'center',
     letterSpacing: 0.3,

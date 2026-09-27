@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
+import { color as ui, type as T, fonts } from '../../ui/theme';
 
 // Survive-the-timer countdown for boss-arena segments. Centred
 // near the top of the screen (just below the AlarmBar's natural
@@ -40,24 +41,24 @@ const styles = StyleSheet.create({
   },
   label: {
     color: 'rgba(255, 220, 90, 0.85)',
-    fontSize: 11,
+    fontSize: T.caption,
     fontWeight: '900',
     letterSpacing: 2,
     textShadowColor: 'rgba(0, 0, 0, 0.7)',
     textShadowRadius: 3,
   },
   labelUrgent: {
-    color: '#ff5050',
+    color: ui.danger,
   },
   value: {
-    color: '#ffd14a',
-    fontSize: 26,
-    fontWeight: '900',
+    color: ui.gold,
+    fontSize: T.heading,
+    fontFamily: fonts.display,
     letterSpacing: 1.5,
     textShadowColor: 'rgba(0, 0, 0, 0.8)',
     textShadowRadius: 4,
   },
   valueUrgent: {
-    color: '#ff5050',
+    color: ui.danger,
   },
 });

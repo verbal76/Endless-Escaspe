@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Storage keys keep the original (misspelled) slug on purpose:
+// renaming them would orphan every existing save.
 const KEY_SETTINGS = 'endless-escaspe:settings:v1';
 const KEY_SAVES = 'endless-escaspe:saves:v1';
 const KEY_SAVES_BACKUP = 'endless-escaspe:saves:v1.bak';
@@ -129,15 +131,35 @@ export type Save = {
   // character yet.
   bestStars: Record<number, number>;
   updatedAt: number;
+  // In-game tutorial prompts this character has already seen (ids
+  // from util/stageTips). Absent in saves written before prompts
+  // existed; parseSaves defaults it to [] so old saves load as
+  // "nothing seen yet" without losing any other data.
+  tipsSeen: string[];
 };
 
 export type SavesMap = Record<string, Save>;
+
+// A brand-new character save with every field at its default.
+export function newSave(name: string, skin: PlayerSkin): Save {
+  return { name, skin, stage: 1, bestStars: {}, updatedAt: Date.now(), tipsSeen: [] };
+}
 
 export function saveKeyFromName(name: string): string {
   return name.trim().toLowerCase();
 }
 
-function parseSaves(raw: string | null): SavesMap | null {
+function cleanStringList(v: unknown, max: number = 64): string[] {
+  if (!Array.isArray(v)) return [];
+  const out: string[] = [];
+  for (const x of v) {
+    if (typeof x === 'string' && x.length > 0 && x.length <= 40 && !out.includes(x)) out.push(x);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+export function parseSaves(raw: string | null): SavesMap | null {
   if (!raw) return null;
   let parsed: unknown;
   try {
@@ -173,6 +195,7 @@ function parseSaves(raw: string | null): SavesMap | null {
         bestStars: cleanedStars,
         updatedAt:
           typeof v.updatedAt === 'number' ? v.updatedAt : Date.now(),
+        tipsSeen: cleanStringList((v as { tipsSeen?: unknown }).tipsSeen),
       };
     }
   }

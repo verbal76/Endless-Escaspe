@@ -1,147 +1,155 @@
 import { createAudioPlayer } from 'expo-audio';
 import type { AudioPlayer } from 'expo-audio';
 
-// Background music player. Pre-loads three soundtrack tracks at app
-// start, plays them in a continuous shuffle (advance to a different
-// random track on completion so the same song doesn't repeat
-// twice). Volume is gated by a single setVolume() call so the
-// SettingsScreen slider can update the live track in real time.
+// Background music with a danger layer.
 //
-// expo-audio's AudioPlayer accepts a require'd asset directly; the
-// Metro bundler resolves it as a static asset URI. No expo-asset
-// gymnastics needed.
+// - Calm playlist: the two lighter tracks, shuffled back to back.
+// - Tension layer: "Polysneak Pursuit" looping underneath at zero
+//   volume, faded in as danger rises (see util/musicIntensity.ts).
+//
+// Both run continuously while the app is active so a crossfade is
+// instant; the mix only changes volumes (and the tension layer's
+// rate). Writes to the native players are coalesced so per-frame mix
+// updates don't spam the bridge.
 
-const TRACKS = [
-  require('../../assets/music/polysneakPursuit.mp3'),
+const CALM_TRACKS = [
   require('../../assets/music/pocketEscapeRemix.mp3'),
   require('../../assets/music/voxelSneakParade.mp3'),
 ];
+const TENSION_TRACK = require('../../assets/music/polysneakPursuit.mp3');
 
 export type MusicPlayer = {
   setVolume: (v: number) => void;
+  setMix: (calmGain: number, tensionGain: number, rate: number) => void;
   pause: () => void;
   resume: () => void;
   dispose: () => void;
 };
 
-function makePlayer(asset: number): AudioPlayer | null {
+function makePlayer(asset: number, loop: boolean): AudioPlayer | null {
   try {
     const p = createAudioPlayer(asset, { updateInterval: 500 });
-    if (p) {
-      p.loop = false;
-      p.volume = 0;
-      return p;
-    }
+    p.loop = loop;
+    p.volume = 0;
+    return p;
   } catch {
-    // ignore
+    // Audio unavailable (e.g. no output device) - run silently.
+    return null;
   }
-  return null;
 }
 
 export function createMusic(initialVolume: number): MusicPlayer {
-  const players: Array<AudioPlayer | null> = TRACKS.map(makePlayer);
-  let currentIndex = -1;
+  const calm: Array<AudioPlayer | null> = CALM_TRACKS.map((t) => makePlayer(t, false));
+  const tension = makePlayer(TENSION_TRACK, true);
+  let current = -1;
   let volume = Math.max(0, Math.min(1, initialVolume));
+  let calmGain = 1;
+  let tensionGain = 0;
+  let rate = 1;
   let paused = false;
+  // Last values written to the native players.
+  let wroteCalm = -1;
+  let wroteTension = -1;
+  let wroteRate = -1;
 
-  function pickNextIndex(): number {
-    // Advance to a different random track each time so the same song
-    // doesn't replay back-to-back. Falls through to a sequential pick
-    // if we somehow only have one playable track.
-    const playable = players
-      .map((p, i) => ({ p, i }))
-      .filter((e) => e.p !== null);
-    if (playable.length === 0) return -1;
-    if (playable.length === 1) return playable[0].i;
-    let pickIdx: number;
-    do {
-      pickIdx = playable[Math.floor(Math.random() * playable.length)].i;
-    } while (pickIdx === currentIndex);
-    return pickIdx;
-  }
-
-  function startNext() {
-    const next = pickNextIndex();
-    if (next < 0) return;
-    currentIndex = next;
-    const p = players[next];
-    if (!p) return;
+  const apply = (force = false) => {
+    const cv = paused ? 0 : volume * calmGain;
+    const tv = paused ? 0 : volume * tensionGain;
+    const p = current >= 0 ? calm[current] : null;
     try {
-      p.volume = paused ? 0 : volume;
-      p.seekTo(0);
-      p.play();
+      if (p && (force || Math.abs(cv - wroteCalm) > 0.01)) {
+        p.volume = cv;
+        wroteCalm = cv;
+      }
+      if (tension && (force || Math.abs(tv - wroteTension) > 0.01)) {
+        tension.volume = tv;
+        wroteTension = tv;
+      }
+      if (tension && (force || Math.abs(rate - wroteRate) > 0.005)) {
+        tension.setPlaybackRate(rate);
+        wroteRate = rate;
+      }
+    } catch {
+      // player released mid-update
+    }
+  };
+
+  const startNextCalm = () => {
+    const playable = calm.map((p, i) => ({ p, i })).filter((e) => e.p !== null);
+    if (playable.length === 0) return;
+    let next = playable[0].i;
+    if (playable.length > 1) {
+      do {
+        next = playable[Math.floor(Math.random() * playable.length)].i;
+      } while (next === current);
+    }
+    current = next;
+    const p = calm[next];
+    try {
+      p?.seekTo(0);
+      p?.play();
     } catch {
       // ignore
     }
-  }
+    apply(true);
+  };
 
-  // Subscribe to each player's playbackStatusUpdate so when one
-  // finishes we kick off the next track. expo-audio fires status
-  // updates every `updateInterval` ms; `didJustFinish` flips true
-  // exactly once at completion.
-  for (let i = 0; i < players.length; i++) {
-    const p = players[i];
-    if (!p) continue;
+  calm.forEach((p, i) => {
     try {
-      p.addListener('playbackStatusUpdate', (status) => {
-        if (i !== currentIndex) return;
-        if (status.didJustFinish) startNext();
+      p?.addListener('playbackStatusUpdate', (status) => {
+        if (i === current && status.didJustFinish) startNextCalm();
       });
     } catch {
       // ignore
     }
-  }
+  });
 
-  // Kick off the first track on creation. Volume guard means the
-  // first play() call still happens at zero volume if the slider
-  // is at zero, but the playback loop is alive - bumping the slider
-  // mid-game makes music audible without restarting.
-  startNext();
+  startNextCalm();
+  try {
+    tension?.play();
+  } catch {
+    // ignore
+  }
+  apply(true);
 
   return {
     setVolume: (v) => {
       volume = Math.max(0, Math.min(1, v));
-      const p = currentIndex >= 0 ? players[currentIndex] : null;
-      if (!p) return;
-      try {
-        p.volume = paused ? 0 : volume;
-      } catch {
-        // ignore
-      }
+      apply();
+    },
+    setMix: (c, t, r) => {
+      calmGain = c;
+      tensionGain = t;
+      rate = r;
+      apply();
     },
     pause: () => {
       paused = true;
-      const p = currentIndex >= 0 ? players[currentIndex] : null;
-      if (!p) return;
+      apply(true);
       try {
-        p.volume = 0;
-        p.pause();
+        (current >= 0 ? calm[current] : null)?.pause();
+        tension?.pause();
       } catch {
         // ignore
       }
     },
     resume: () => {
       paused = false;
-      const p = currentIndex >= 0 ? players[currentIndex] : null;
-      if (!p) {
-        startNext();
-        return;
-      }
       try {
-        p.volume = volume;
-        p.play();
+        (current >= 0 ? calm[current] : null)?.play();
+        tension?.play();
       } catch {
         // ignore
       }
+      apply(true);
     },
     dispose: () => {
-      for (const p of players) {
-        if (!p) continue;
+      for (const p of [...calm, tension]) {
         try {
-          p.pause();
-          p.remove();
+          p?.pause();
+          p?.remove();
         } catch {
-          // best-effort
+          // ignore
         }
       }
     },

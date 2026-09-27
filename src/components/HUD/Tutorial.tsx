@@ -11,6 +11,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
+import { color as ui, type as T, fonts } from '../../ui/theme';
 
 // Top-down 2D intro cutscene. Auto-plays four beats illustrating
 // the core stealth loop: walk past guards, get spotted, hide behind
@@ -85,24 +86,35 @@ const LANDSCAPE_LAYOUT: StageLayout = {
 const BEAT_MS = 3500;
 const OUTRO_MS = 1300;
 
-const TOTAL_BEATS = 4;
+// Beats 0-3 animate the little stage; 4-5 are read-only cards, so
+// they stay up longer.
+const BEAT_DURATIONS = [BEAT_MS, BEAT_MS + 500, BEAT_MS + 500, BEAT_MS + 1000, 5200, 5200];
+const TOTAL_BEATS = BEAT_DURATIONS.length;
 
 const POPUPS: { title: string; body: string }[] = [
   {
-    title: 'Walk past guards',
-    body: 'Each guard has a yellow vision cone. Stay out of it and you stay invisible.',
+    title: 'Stay out of the light',
+    body: 'Guards see in a cone in front of them. Outside it they can\'t see you, but they can still hear you.',
   },
   {
-    title: 'Detection ring',
-    body: 'Step into a cone and the ring around you fills. Yellow → orange → red means you\'re seen.',
+    title: 'Watch the ring',
+    body: 'In a cone, the ring at your feet fills: yellow, orange, red. At red guards chase and aim. A red laser means a shot is coming, so break line of sight!',
   },
   {
-    title: 'Use cover',
-    body: 'Hide behind cover blocks to break line of sight. The meter drains while you\'re hidden.',
+    title: 'Cover works one way',
+    body: 'Tall props only hide you when they are between you and the guard. Get the prop between you and them and the meter drains.',
   },
   {
-    title: 'Avoid getting caught',
-    body: 'Let the ring fill all the way and the alarm goes off. One catch and the segment restarts.',
+    title: 'Hearts',
+    body: 'A guard\'s touch, a dog, a bullet or razor wire costs a heart and sends you back to the start. Lose them all and the run ends.',
+  },
+  {
+    title: 'Noise',
+    body: 'Walking and running make noise; the ring around you shows how far it carries. CROUCH to move almost silently. From stage 5, RUN uses stamina.',
+  },
+  {
+    title: 'Tools and the exit',
+    body: 'Crowbars knock out a guard or scare off a dog. Smoke blocks sight and makes dogs lose your scent. Reach the green line to escape.',
   },
 ];
 
@@ -170,7 +182,7 @@ export function Tutorial() {
       const t = setTimeout(dismissAndPersist, OUTRO_MS);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => setBeat(beat + 1), BEAT_MS);
+    const t = setTimeout(() => setBeat(beat + 1), BEAT_DURATIONS[beat] ?? BEAT_MS);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [beat, showTutorial]);
@@ -229,6 +241,13 @@ export function Tutorial() {
           withTiming(0, { duration: 700, easing: Easing.in(Easing.quad) }),
         ),
       );
+    } else {
+      // Text-only cards: settle the stage back to a calm pose.
+      detection.value = withTiming(0, { duration: 600 });
+      guardAngle.value = withTiming(180, { duration: 600 });
+      popScale.value = withTiming(0, { duration: 200 });
+      playerX.value = withTiming(L.PLAYER_START.x, { duration: 900 });
+      playerY.value = withTiming(L.PLAYER_START.y, { duration: 900 });
     }
   }, [
     beat,
@@ -476,7 +495,7 @@ const styles = StyleSheet.create({
   },
   skipLabel: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 12,
+    fontSize: T.caption,
     fontWeight: '800',
     letterSpacing: 1.5,
   },
@@ -507,7 +526,7 @@ const styles = StyleSheet.create({
     top: 24,
     alignSelf: 'center',
     color: 'rgba(80, 230, 130, 0.85)',
-    fontSize: 9,
+    fontSize: T.caption,
     fontWeight: '800',
     letterSpacing: 2.5,
   },
@@ -521,7 +540,7 @@ const styles = StyleSheet.create({
   coverLabel: {
     position: 'absolute',
     color: 'rgba(180, 190, 210, 0.7)',
-    fontSize: 8,
+    fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 1.5,
   },
@@ -550,7 +569,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   guardPopText: {
-    color: '#ff3838',
+    color: ui.danger,
     fontSize: 22,
     fontWeight: '900',
     textShadowColor: 'rgba(0,0,0,0.7)',
@@ -569,27 +588,27 @@ const styles = StyleSheet.create({
   },
   catchFlash: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ff3838',
+    backgroundColor: ui.danger,
   },
   popupCard: {
     backgroundColor: 'rgba(20, 24, 32, 0.92)',
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 210, 90, 0.45)',
+    borderColor: 'rgba(255, 209, 74, 0.45)',
     paddingHorizontal: 18,
     paddingVertical: 14,
     alignItems: 'center',
   },
   popupTitle: {
-    color: '#ffd14a',
-    fontSize: 14,
-    fontWeight: '900',
+    color: ui.gold,
+    fontSize: T.body,
+    fontFamily: fonts.display,
     letterSpacing: 2,
     marginBottom: 6,
   },
   popupBody: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 13,
+    fontSize: T.small,
     lineHeight: 18,
     textAlign: 'center',
   },
@@ -605,6 +624,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.25)',
   },
   beatDotActive: {
-    backgroundColor: '#ffd14a',
+    backgroundColor: ui.gold,
   },
 });

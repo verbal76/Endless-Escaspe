@@ -12,6 +12,30 @@ export type TimeTargets = { three: number; two: number };
 
 export const DEFAULT_TIME_TARGETS: TimeTargets = { three: STAT_TIME_3, two: STAT_TIME_2 };
 
+// Star time targets derived from the segment that was actually
+// played. A stealthy clear is benchmarked against walking the segment
+// straight through: 3 stars within 1.7x that time (room to wait out
+// patrols and detour to cover), 2 stars within 2.8x. Stage 1's 120 m
+// segment gives ~58 s / ~96 s, close to the old fixed 60 / 120 s; the
+// 216 m late-game segments get ~105 s / ~173 s instead of the fixed
+// limits that were only reachable by sprinting. Boss arenas are a
+// fixed survive-the-timer round, so finishing (time = the timer) is
+// always full marks on this metric.
+export const TIME_REF_SPEED = 3.5; // m/s, walking
+export const TIME_FACTOR_3 = 1.7;
+export const TIME_FACTOR_2 = 2.8;
+
+export function timeTargetsFor(
+  segmentLengthM: number,
+  bossSurviveSeconds: number | null = null,
+): TimeTargets {
+  if (bossSurviveSeconds !== null && bossSurviveSeconds > 0) {
+    return { three: bossSurviveSeconds + 1, two: bossSurviveSeconds + 1 };
+  }
+  const walk = Math.max(1, segmentLengthM) / TIME_REF_SPEED;
+  return { three: Math.round(walk * TIME_FACTOR_3), two: Math.round(walk * TIME_FACTOR_2) };
+}
+
 export function scoreStars(
   s: Omit<RunStats, 'stars'>,
   time: TimeTargets = DEFAULT_TIME_TARGETS,

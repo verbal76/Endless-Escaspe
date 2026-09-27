@@ -27,6 +27,7 @@ on:
       - 'assets/splash-icon.png'
       - 'assets/adaptive-icon-background.png'
       - '.github/workflows/**'
+      - 'scripts/**'
       - 'README.md'
       - '.gitignore'
 
@@ -89,6 +90,9 @@ jobs:
             --non-interactive \
             --json > update.json
           cat update.json
+
+      - name: Verify the update is served to installed APKs
+        run: node scripts/verify-ota.mjs
 
       - name: Record published update
         run: |

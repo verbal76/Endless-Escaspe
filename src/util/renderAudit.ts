@@ -71,12 +71,15 @@ function roleOf(obj: THREE.Object3D): AuditGroup | null {
 type RendererLike = {
   getContext(): WebGLRenderingContext | WebGL2RenderingContext;
   properties: { get(o: object): { __webglTexture?: WebGLTexture } };
-  resetState(): void;
 };
 
 export type TexelReader = (tex: WebGLTexture, points: Array<[number, number]>) => Uint8Array[] | 'incomplete';
 
-// Reads texels of a GPU texture through a temporary framebuffer.
+// Reads texels of a GPU texture through a temporary framebuffer. It runs
+// after a frame has been drawn to the screen, when three.js has the
+// default framebuffer bound, and rebinds it (null) afterwards, so three's
+// cached GL state stays true. (Do not call renderer.resetState() here:
+// it reads gl.canvas, which expo-gl's context does not have.)
 export function glTexelReader(gl: WebGLRenderingContext | WebGL2RenderingContext): TexelReader {
   return (tex, points) => {
     const fbo = gl.createFramebuffer();
@@ -190,9 +193,6 @@ export function runRenderAudit(renderer: RendererLike, scene: THREE.Object3D): R
     audit = auditScene(scene, isUploaded, glTexelReader(gl));
   } catch (e) {
     audit = { groups: emptyGroups(), gpu: [], problems: [`audit failed: ${e instanceof Error ? e.message : String(e)}`] };
-  } finally {
-    // The audit bound its own framebuffer; make three.js re-sync.
-    renderer.resetState();
   }
   LAST = audit;
   console.log(`[render-audit] ${JSON.stringify(audit)}`);

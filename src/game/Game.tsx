@@ -139,7 +139,7 @@ import {
 import { AIM_TIME_S } from '../systems/GuardAI';
 import { BossTimer } from '../components/HUD/BossTimer';
 import { logDebug } from '../util/debug';
-import { runRenderAudit } from '../util/renderAudit';
+import { runRenderAudit, type RenderAudit } from '../util/renderAudit';
 
 const RENDER_AUDIT_DELAY_FRAMES = 3;
 const RENDER_AUDIT_RETRY_FRAMES = 60;
@@ -2145,7 +2145,14 @@ export function Game() {
       // Problems are re-checked a few times a second apart before they
       // stand (images can still be decoding on the web build).
       if (renderAuditIn > 0 && --renderAuditIn === 0) {
-        const audit = runRenderAudit(r.renderer, r.scene);
+        let audit: RenderAudit;
+        try {
+          audit = runRenderAudit(r.renderer, r.scene);
+        } catch (e) {
+          // A diagnostic must never take the game down.
+          logDebug('error', '[render-audit] crashed', e);
+          audit = { groups: {} as RenderAudit['groups'], gpu: [], problems: [] };
+        }
         if (audit.problems.length > 0 && renderAuditRetries < RENDER_AUDIT_RETRIES) {
           renderAuditRetries++;
           renderAuditIn = RENDER_AUDIT_RETRY_FRAMES;

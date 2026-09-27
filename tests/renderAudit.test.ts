@@ -109,3 +109,25 @@ test('scene audit: blank GPU texture is a problem', () => {
 test('rows before any audit say so honestly', () => {
   assert.match(formatAuditRows(null)[0].value, /Not checked yet/);
 });
+
+test('runRenderAudit works on an expo-gl style context (no gl.canvas, no resetState)', async () => {
+  const { runRenderAudit } = await import('../src/util/renderAudit');
+  const calls: string[] = [];
+  const gl = {
+    FRAMEBUFFER: 1, COLOR_ATTACHMENT0: 2, TEXTURE_2D: 3, FRAMEBUFFER_COMPLETE: 4, RGBA: 5, UNSIGNED_BYTE: 6,
+    createFramebuffer: () => ({}),
+    bindFramebuffer: (_t: number, fb: unknown) => calls.push(fb === null ? 'bind-null' : 'bind-fbo'),
+    framebufferTexture2D: () => {},
+    checkFramebufferStatus: () => 4,
+    readPixels: () => {},
+    deleteFramebuffer: () => calls.push('delete'),
+  };
+  const { root } = scene({ playerTextured: true });
+  const renderer = {
+    getContext: () => gl as unknown as WebGL2RenderingContext,
+    properties: { get: () => ({ __webglTexture: {} as WebGLTexture }) },
+  };
+  const a = runRenderAudit(renderer, root);
+  assert.ok(a.gpu.length > 0);
+  assert.equal(calls[calls.length - 2], 'bind-null', 'default framebuffer restored');
+});

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Endless Escaspe",
     "slug": "runner",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -28,7 +28,13 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/702308e3-1350-4db7-b41c-b6d73f3d4e69"
+      "url": "https://u.expo.dev/702308e3-1350-4db7-b41c-b6d73f3d4e69",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "requestHeaders": {
+        "expo-channel-name": "preview"
+      }
     },
     "extra": {
       "eas": {

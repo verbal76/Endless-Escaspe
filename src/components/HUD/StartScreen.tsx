@@ -21,6 +21,8 @@ import {
   type SavesMap,
 } from '../../util/storage';
 import { NameKeyboard } from './NameKeyboard';
+import { getReleaseInfo } from '../../util/releaseRuntime';
+import { formatMenuLine } from '../../util/releaseInfo';
 
 const TITLE = 'ENDLESS ESCASPE';
 
@@ -409,6 +411,12 @@ export function StartScreen() {
         >
           <Text style={styles.linkLabel}>HOW TO PLAY</Text>
         </Pressable>
+        {/* Permanent release identifier: what is actually running
+            (APK version + build, and the OTA sequence when a
+            downloaded update is live). Full details: Settings. */}
+        <Text pointerEvents="none" style={styles.releaseLine} numberOfLines={1}>
+          {formatMenuLine(getReleaseInfo())}
+        </Text>
       </View>
     );
   }
@@ -717,6 +725,18 @@ const styles = StyleSheet.create({
   },
   titleSpace: {
     width: 16,
+  },
+  releaseLine: {
+    position: 'absolute',
+    bottom: 8,
+    alignSelf: 'center',
+    color: 'rgba(255,255,255,0.72)',
+    fontSize: 12,
+    fontWeight: '600',
+    letterSpacing: 0.4,
+    textShadowColor: 'rgba(0,0,0,0.85)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   tagline: {
     color: 'rgba(255,255,255,0.85)',

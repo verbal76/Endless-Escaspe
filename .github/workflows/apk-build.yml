@@ -17,10 +17,12 @@ on:
     branches:
       - claude/endless-escape-game-android-gRlFH
       - Github-APK-Transition-Escap
+      - claude/game-review-suggestions-cjxiqh
     paths:
       - 'package.json'
       - 'package-lock.json'
       - 'app.json'
+      - 'app.config.js'
       - 'eas.json'
       - 'babel.config.js'
       - 'metro.config.js'
@@ -29,6 +31,7 @@ on:
       - 'assets/icon.png'
       - 'assets/adaptive-icon.png'
       - 'assets/splash-icon.png'
+      - 'assets/adaptive-icon-background.png'
       - '.github/workflows/apk-build.yml'
 
 permissions:
@@ -45,6 +48,12 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # Release metadata baked into the APK (see app.config.js): the
+    # versionCode is this workflow's run number (= the build-N release
+    # tag) and the embedded manifest records the source commit.
+    env:
+      EE_BUILD_NUMBER: ${{ github.run_number }}
+      EE_GIT_SHA: ${{ github.sha }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -67,10 +76,26 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # Validation gates: never ship a build that fails typecheck or
+      # the test suite.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
       - name: Generate android/ project (expo prebuild)
         run: npx expo prebuild --platform android --clean
         env:
           EXPO_NO_TELEMETRY: '1'
+
+      # Record the update configuration the APK is built with, so each
+      # build log proves which update stream the installed app follows.
+      - name: Show embedded update configuration
+        run: |
+          grep -oE 'expo\.modules\.updates\.[A-Z_]+"[^/]*android:value="[^"]*"' android/app/src/main/AndroidManifest.xml || true
+          grep -rhoE '"(runtimeVersion|updateUrl|requestHeaders|releaseChannel)"[^,}]*' android/app/src/main/res/values/strings.xml || true
+          grep -E 'expo_runtime_version|versionCode|versionName' -r android/app/build.gradle android/app/src/main/res/values/strings.xml || true
 
       - name: Cache Gradle
         uses: actions/cache@v4
@@ -82,31 +107,32 @@ jobs:
           restore-keys: |
             gradle-
 
-      # assembleDebug produces a debug-signed APK that's sideloadable
-      # without any keystore setup. It's the simplest "I just want a
-      # tester APK" path - no GitHub Secrets needed for signing keys.
-      # Switch to assembleRelease once you set up upload-key signing
-      # (and add the keystore + key alias as repo secrets).
-      - name: Build debug APK
+      # Release variant: the JS bundle is embedded and expo-updates is
+      # active, so the installed APK checks the `preview` channel on
+      # launch and applies OTA updates. (Debug builds disable
+      # expo-updates and never receive OTAs.) Expo's prebuild template
+      # signs release builds with the bundled debug keystore, so this
+      # stays sideloadable with no signing secrets.
+      - name: Build release APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
+        run: ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g"
 
       - name: Locate APK
         id: apk
         run: |
-          APK=$(find android/app/build/outputs/apk/debug -name "*.apk" -print -quit)
+          APK=$(find android/app/build/outputs/apk/release -name "*.apk" -print -quit)
           if [ -z "$APK" ]; then
-            echo "::error::No APK found under android/app/build/outputs/apk/debug"
+            echo "::error::No APK found under android/app/build/outputs/apk/release"
             exit 1
           fi
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "name=endless-escape-build-${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
 
-      - name: Read OTA version label
+      - name: Read app version
         id: ver
         run: |
-          OTA=$(grep -oE "OTA #[0-9]+[^']*" src/version.ts | head -1 || echo "unknown")
-          echo "ota=$OTA" >> "$GITHUB_OUTPUT"
+          VER=$(node -p "require('./app.json').expo.version")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Rename APK for upload
         run: cp "${{ steps.apk.outputs.path }}" "${{ steps.apk.outputs.name }}"
@@ -123,7 +149,6 @@ jobs:
       # dispatch) runs skip this and just leave the APK as a workflow
       # artifact you can download from the run page.
       - name: Publish GitHub Release
-        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
@@ -131,9 +156,9 @@ jobs:
           body: |
             Auto-built from commit `${{ github.sha }}`.
 
-            **${{ steps.ver.outputs.ota }}**
+            **Version ${{ steps.ver.outputs.version }} • Build ${{ github.run_number }}** (runtime ${{ steps.ver.outputs.version }}, update channel `preview`)
 
-            Sideload-only debug-signed APK. Install via:
+            Release-variant APK (debug-keystore signed) with OTA updates enabled. Install via:
             1. Download the APK below.
             2. On your Android device, allow "install from unknown sources" for your browser / file manager.
             3. Open the downloaded APK to install.

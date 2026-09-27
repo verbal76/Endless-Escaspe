@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
 import { composeBugReportUrl, composeFeatureRequestUrl } from '../../util/support';
-import { BUILD_VERSION, OTA_VERSION } from '../../version';
+import { BuildInfo } from './BuildInfo';
 
 const SLIDER_TRACK_W = 220;
 const SLIDER_KNOB_R = 13;
@@ -273,13 +273,8 @@ export function SettingsScreen() {
                   </Pressable>
                 </View>
 
-                <Text style={styles.sectionHeading}>About</Text>
-                <View style={styles.aboutBlock}>
-                  <Text style={styles.rowLabel}>Build</Text>
-                  <Text style={styles.rowValue}>{BUILD_VERSION}</Text>
-                  <Text style={[styles.rowLabel, styles.rowLabelTop]}>OTA</Text>
-                  <Text style={styles.rowValue}>{OTA_VERSION}</Text>
-                </View>
+                <Text style={styles.sectionHeading}>Build / Update Info</Text>
+                <BuildInfo />
               </ScrollView>
             </View>
           </View>
@@ -492,27 +487,6 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '900',
     letterSpacing: 1.2,
-  },
-  // About: stack label above value vertically so long OTA strings
-  // wrap without overlapping the label.
-  aboutBlock: {
-    paddingTop: 4,
-  },
-  rowLabel: {
-    color: 'rgba(255, 255, 255, 0.55)',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-  },
-  rowLabelTop: {
-    marginTop: 8,
-  },
-  rowValue: {
-    color: '#fff',
-    fontSize: 12,
-    fontFamily: 'monospace',
-    marginTop: 2,
-    flexWrap: 'wrap',
   },
   // Slider
   sliderHit: {

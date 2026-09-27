@@ -11,10 +11,12 @@ on:
     branches:
       - claude/endless-escape-game-android-gRlFH
       - Github-APK-Transition-Escap
+      - claude/game-review-suggestions-cjxiqh
     paths-ignore:
       - 'package.json'
       - 'package-lock.json'
       - 'app.json'
+      - 'app.config.js'
       - 'eas.json'
       - 'babel.config.js'
       - 'metro.config.js'
@@ -23,6 +25,7 @@ on:
       - 'assets/icon.png'
       - 'assets/adaptive-icon.png'
       - 'assets/splash-icon.png'
+      - 'assets/adaptive-icon-background.png'
       - '.github/workflows/**'
       - 'README.md'
       - '.gitignore'
@@ -35,6 +38,12 @@ jobs:
   publish:
     name: Publish OTA bundle
     runs-on: ubuntu-latest
+    # Metadata stamped into the published update's manifest (see
+    # app.config.js): the human-readable OTA sequence is this
+    # workflow's run number; the source commit is the pushed SHA.
+    env:
+      EE_OTA_SEQUENCE: ${{ github.run_number }}
+      EE_GIT_SHA: ${{ github.sha }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
@@ -48,18 +57,47 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # Validation gates: an update that fails typecheck or tests is
+      # never published.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
       - name: Set up EAS
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EAS }}
 
+      # Publish to the `preview` CHANNEL (the header baked into every
+      # APK by app.json updates.requestHeaders), so the destination is
+      # by construction the stream installed APKs query. The update's
+      # runtime version comes from app.json (policy: appVersion) and
+      # must equal the installed APK's runtime to be eligible.
       - name: Publish update
+        id: publish
         env:
           EXPO_TOKEN: ${{ secrets.EAS }}
         run: |
-          MSG=$(git log -1 --pretty=%s | head -c 200)
+          MSG="OTA $(printf '%03d' "$EE_OTA_SEQUENCE") · $(git log -1 --pretty=%s | head -c 180)"
           eas update \
-            --branch preview \
+            --channel preview \
+            --platform android \
             --message "$MSG" \
-            --non-interactive
+            --non-interactive \
+            --json > update.json
+          cat update.json
+
+      - name: Record published update
+        run: |
+          node -e '
+            const u = JSON.parse(require("fs").readFileSync("update.json", "utf8"));
+            const list = Array.isArray(u) ? u : [u];
+            const lines = ["## OTA " + String(process.env.EE_OTA_SEQUENCE).padStart(3, "0"), "",
+              "| platform | update id | group | runtime | branch | commit |", "|---|---|---|---|---|---|"];
+            for (const x of list) lines.push(`| ${x.platform} | ${x.id} | ${x.group} | ${x.runtimeVersion} | ${x.branch ?? ""} | ${x.gitCommitHash ?? process.env.EE_GIT_SHA} |`);
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            console.log(lines.join("\n"));
+          '

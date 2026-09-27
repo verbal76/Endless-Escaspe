@@ -88,6 +88,8 @@ export type Chunk = {
   // detection LOS, pickups), so the player can't walk into a
   // horizon chunk and they never affect difficulty.
   isHorizon?: boolean;
+  // Instanced contact shadows for this chunk's props.
+  shadow?: Object3D | null;
 };
 
 // Player movement mode. RUN is a separate, orthogonal speed multiplier

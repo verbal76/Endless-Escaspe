@@ -149,6 +149,9 @@ type Store = {
   setRunState: (s: RunState) => void;
   setHearts: (n: number) => void;
   setDetection: (id: number, v: number) => void;
+  // Write every guard's meter in one store update (one notification
+  // per frame instead of one per guard).
+  setDetections: (values: ReadonlyMap<number, number>) => void;
   setStamina: (v: number) => void;
   setAlarmLevel: (v: number) => void;
   setStance: (s: Stance) => void;
@@ -234,6 +237,20 @@ export const useStore = create<Store>((set) => ({
       const cur = st.detection[id];
       if (cur === v) return st;
       return { detection: { ...st.detection, [id]: v } };
+    }),
+  setDetections: (values) =>
+    set((st) => {
+      let changed = false;
+      for (const [id, v] of values) {
+        if (st.detection[id] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return st;
+      const next: Record<number, number> = { ...st.detection };
+      for (const [id, v] of values) next[id] = v;
+      return { detection: next };
     }),
   setStamina: (v) =>
     set((st) => {

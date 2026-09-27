@@ -124,6 +124,17 @@ export const NON_COVER_KINDS: ObstacleKind[] = [
   'car',
 ];
 
+// Visual Y rotation for an obstacle with a pre-rolled OBB. The OBB
+// maths (collision, nav grid, LOS) maps local->world with a standard
+// 2D rotation by +rotY in (x, z); three.js' rotation.y = t maps
+// (x, z) -> (x cos t + z sin t, -x sin t + z cos t), which is a
+// rotation by -t in that frame. Using +rotY here (as before) mirrored
+// every non-90-degree prop against its hitbox - dumpsters, which roll
+// a fully random angle, visibly didn't match what you bumped into.
+export function meshYaw(o: Obstacle, fallback: () => number): number {
+  return o.rotY !== undefined ? -o.rotY : fallback();
+}
+
 export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
   switch (o.kind) {
     case 'crate': {
@@ -133,7 +144,7 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
       // synced with the visual rotation.
       const g = createKitProp('dumpsterClosed', SCALE_CRATE);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = o.rotY ?? Math.random() * Math.PI * 2;
+      g.rotation.y = meshYaw(o, () => Math.random() * Math.PI * 2);
       return g;
     }
     case 'lowwall': {
@@ -142,7 +153,7 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
       // the procgen so the OBB hitbox + visual mesh stay synced.
       const g = createKitProp('barrierA', SCALE_LOWWALL);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = o.rotY ?? (Math.random() < 0.5 ? 0 : Math.PI / 2);
+      g.rotation.y = meshYaw(o, () => (Math.random() < 0.5 ? 0 : Math.PI / 2));
       return g;
     }
     case 'cover': {
@@ -150,7 +161,7 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
       // and reads as a "warning sign" landmark.
       const g = createKitProp('barrierB', SCALE_COVER);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = o.rotY ?? (Math.random() < 0.5 ? 0 : Math.PI / 2);
+      g.rotation.y = meshYaw(o, () => (Math.random() < 0.5 ? 0 : Math.PI / 2));
       return g;
     }
     case 'barrel': {
@@ -178,7 +189,7 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
       // hitbox + visual mesh stay synced.
       const g = createKitProp('block', SCALE_HEDGEROW);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = o.rotY ?? (Math.random() < 0.5 ? 0 : Math.PI / 2);
+      g.rotation.y = meshYaw(o, () => (Math.random() < 0.5 ? 0 : Math.PI / 2));
       return g;
     }
     case 'car': {
@@ -188,7 +199,7 @@ export function buildObstacleMesh(o: Obstacle): THREE.Object3D {
         o.subKind ?? (Math.random() < 0.8 ? 'police' : 'firetruck');
       const g = createVehicle(kind);
       g.position.set(o.x, 0, o.z);
-      g.rotation.y = o.rotY ?? (Math.floor(Math.random() * 4) * Math.PI) / 2;
+      g.rotation.y = meshYaw(o, () => (Math.floor(Math.random() * 4) * Math.PI) / 2);
       return g;
     }
     case 'tree': {

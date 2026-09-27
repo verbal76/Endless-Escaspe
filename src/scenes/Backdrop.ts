@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
-import { buildTreeGroup } from './Obstacles';
+import { createKitPropInstances } from './KitProps';
+import type { StageLighting } from './Lighting';
 
 // Layered backdrop: snow-capped mountains far back, a tree line in
 // the midground, drifting clouds, and birds crossing the sky. None
@@ -42,16 +43,17 @@ const BIRD_SPEED_MIN = 5;
 const BIRD_SPEED_MAX = 9;
 
 // Materials are shared so we make one of each.
-const MOUNTAIN_BASE_MAT = new THREE.MeshStandardMaterial({
+const MOUNTAIN_BASE_MAT = new THREE.MeshLambertMaterial({
   color: 0x2c3a4f,
-  roughness: 1,
   flatShading: true,
 });
-const MOUNTAIN_SNOW_MAT = new THREE.MeshStandardMaterial({
+const MOUNTAIN_SNOW_MAT = new THREE.MeshLambertMaterial({
   color: 0xeef3fb,
-  roughness: 1,
   flatShading: true,
 });
+// Clouds and birds are tinted per stage mood (applyBackdropMood) so
+// they don't glow white against a night sky.
+const CLOUD_DAY = new THREE.Color(0xf2f2f7);
 const CLOUD_MAT = new THREE.MeshBasicMaterial({
   color: 0xf2f2f7,
   transparent: true,
@@ -145,15 +147,6 @@ function buildMountainMesh(rng: () => number): THREE.Group {
   return group;
 }
 
-function buildTreeMesh(_rng: () => number): { group: THREE.Group } {
-  // Backdrop trees use the same Kenney tall-pine helper as the
-  // procgen ones - real 3D geometry, no billboard. Larger uniform
-  // scale (3.5x ~ 5.4 m tall) so the row reads at distance against
-  // the 70-160 m mountain range.
-  const group = buildTreeGroup(3.5);
-  return { group };
-}
-
 function buildCloudMesh(rng: () => number): THREE.Mesh {
   const w = 18 + rng() * 22;
   const h = 6 + rng() * 5;
@@ -230,19 +223,33 @@ export function createBackdrop(): Backdrop {
   }
 
   // Tree line on each side of the playfield.
+  // Tree lines: 336 pines drawn as instances - one InstancedMesh per
+  // model variant and material group (a handful of draw calls instead
+  // of ~670 separate meshes, each of which used to carry its own
+  // cloned geometry).
+  const treeMats: Record<'treePineTallA' | 'treePineTallADetailed', THREE.Matrix4[]> = {
+    treePineTallA: [],
+    treePineTallADetailed: [],
+  };
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
   for (let i = 0; i < TREE_COUNT_PER_SIDE; i++) {
     const z = (i / (TREE_COUNT_PER_SIDE - 1)) * (segLen + 40) + (rng() - 0.5) * 4;
     for (const sign of [-1, 1]) {
       const xJitter = rng() * (TREE_LINE_FAR - TREE_LINE_OUTER);
-      const built = buildTreeMesh(rng);
-      built.group.position.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
-      built.group.scale.multiplyScalar(0.85 + rng() * 0.5);
-      built.group.rotation.y = rng() * Math.PI * 2;
-      root.add(built.group);
+      const variant = rng() < 0.5 ? 'treePineTallA' : 'treePineTallADetailed';
+      const s = 3.5 * (0.85 + rng() * 0.5);
+      pos.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
+      q.setFromAxisAngle(up, rng() * Math.PI * 2);
+      scl.set(s, s, s);
+      treeMats[variant].push(new THREE.Matrix4().compose(pos, q, scl));
     }
   }
+  root.add(createKitPropInstances('treePineTallA', treeMats.treePineTallA));
+  root.add(createKitPropInstances('treePineTallADetailed', treeMats.treePineTallADetailed));
 
-  // Clouds drifting from -X to +X.
   const clouds: Cloud[] = [];
   for (let i = 0; i < CLOUD_COUNT; i++) {
     const c = buildCloudMesh(rng);
@@ -280,6 +287,19 @@ export function createBackdrop(): Backdrop {
 // no longer carry snow caps (the sphere drape didn't fit the conical
 // pine silhouette and read as a giant white dome covering the tree),
 // so toggling weather on the backdrop is a visual no-op now.
+// Tint clouds and birds for the stage mood: at night clouds sink
+// toward the sky colour (faintly lighter so they still read as
+// shapes) and birds fade toward silhouettes that barely separate from
+// the sky.
+export function applyBackdropMood(_b: Backdrop, light: StageLighting) {
+  const sky = new THREE.Color(light.sky);
+  const k = light.darkness;
+  CLOUD_MAT.color.copy(CLOUD_DAY).lerp(sky.clone().offsetHSL(0, 0, 0.08), k * 0.85);
+  CLOUD_MAT.opacity = 0.55 - 0.25 * k;
+  BIRD_MAT.color.setHex(0x111114).lerp(sky, k * 0.5);
+  BIRD_MAT.opacity = 0.85 - 0.35 * k;
+}
+
 export function setBackdropSnow(_b: Backdrop, _on: boolean) {
   // intentionally empty
 }

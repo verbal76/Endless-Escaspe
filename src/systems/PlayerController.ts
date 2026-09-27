@@ -68,6 +68,7 @@ export function updatePlayer(
     p.stamina = Math.max(0, p.stamina - STAMINA_DRAIN_PER_S * dt);
     if (p.stamina <= 0) {
       p.exhausted = true;
+      p.isRunning = false;
       input.run = false;
     }
   } else {

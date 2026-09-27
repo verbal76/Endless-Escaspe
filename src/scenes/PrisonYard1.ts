@@ -170,7 +170,7 @@ export function createGround(): THREE.Mesh {
   // same loaded texture instance. Falls back to a flat green when
   // the asset preload didn't resolve.
   const grassTex = getGrassTexture();
-  let mat: THREE.MeshStandardMaterial;
+  let mat: THREE.MeshLambertMaterial;
   if (grassTex) {
     const tex = grassTex.clone();
     tex.needsUpdate = true;
@@ -180,21 +180,26 @@ export function createGround(): THREE.Mesh {
     // Linear filter would blend into a muddy green; nearest preserves
     // the per-blade detail of the source tile.
     tex.repeat.set(200, 450);
+    // Close up, nearest keeps the per-blade pixel detail. In the
+    // distance the 450x-tiled grass used to minify with no mipmaps and
+    // shimmered / moire'd badly; trilinear mip filtering plus a little
+    // anisotropy (the ground is always seen at a grazing angle) keeps
+    // the far field calm.
     tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    mat = new THREE.MeshStandardMaterial({
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
+    tex.anisotropy = 4;
+    mat = new THREE.MeshLambertMaterial({
       map: tex,
-      roughness: 1,
       // Slight emissive lift so the ground stays legible on the
       // deep-night palette, same trick the obstacle materials use.
       emissive: 0xffffff,
       emissiveMap: tex,
-      emissiveIntensity: 0.18,
+      emissiveIntensity: 0.08,
     });
   } else {
-    mat = new THREE.MeshStandardMaterial({
+    mat = new THREE.MeshLambertMaterial({
       color: 0x3f6a2c,
-      roughness: 1,
     });
   }
   const m = new THREE.Mesh(geo, mat);

@@ -46,79 +46,51 @@ const OBJ_BY_KIND: Record<KitKind, string> = {
 // entries so OBJLoader's emitted Mesh.material.name keys cleanly into
 // this lookup. Emissive intensity matches the rest of the obstacle
 // materials so deep-night nights still read - see Obstacles.ts.
-type MaterialDef = { color: number; emissiveIntensity: number; metalness?: number };
+// Emissive "self-lift" keeps props legible at night. It used to sit
+// at 0.38-0.45, which flattened all shading into a uniform glow; the
+// stage moods now carry night readability through ambient light, so
+// the lift is a subtle 0.10-0.14.
+type MaterialDef = { color: number; emissiveIntensity: number };
 const PALETTE: Record<string, MaterialDef> = {
-  // Concrete kit props (barrier A/B, block) - dirty light grey.
-  concrete: { color: 0xbababa, emissiveIntensity: 0.40 },
-  // Yellow caution sign on barrierB.
-  signs: { color: 0xffd14a, emissiveIntensity: 0.45 },
-  // Dumpster body - dark olive-green (typical municipal dumpster).
-  wall: { color: 0x4a5a3a, emissiveIntensity: 0.42 },
-  // Dumpster lid edges + metallic trim.
-  wall_metal: { color: 0x8a8e94, emissiveIntensity: 0.40, metalness: 0.4 },
-  // Dumpster closed-top lid - darker grey.
-  roof: { color: 0x32323a, emissiveIntensity: 0.40 },
-  // Dirt visible inside the open dumpster.
-  dirt: { color: 0x6e5232, emissiveIntensity: 0.38 },
-  // Tall-pine OBJ kit: real 3D geometry (trunk + stacked leaf cones)
-  // with two named MTL materials. Bark colour comes straight from the
-  // kit's MTL Kd; the leaf colour is overridden from the MTL's teal
-  // to a forest green so the tree row reads as evergreen pines
-  // instead of stylised cyan tropicals.
-  woodBarkDark: { color: 0xcc7659, emissiveIntensity: 0.40 },
-  leafsDark: { color: 0x3a7d2e, emissiveIntensity: 0.42 },
+  concrete: { color: 0xbababa, emissiveIntensity: 0.12 },
+  signs: { color: 0xffd14a, emissiveIntensity: 0.14 },
+  wall: { color: 0x4a5a3a, emissiveIntensity: 0.12 },
+  wall_metal: { color: 0x8a8e94, emissiveIntensity: 0.12 },
+  roof: { color: 0x32323a, emissiveIntensity: 0.12 },
+  dirt: { color: 0x6e5232, emissiveIntensity: 0.11 },
+  woodBarkDark: { color: 0xcc7659, emissiveIntensity: 0.12 },
+  leafsDark: { color: 0x3a7d2e, emissiveIntensity: 0.12 },
 };
 
-// Default material for any unrecognised MTL name (so a future kit
-// doesn't crash if it pulls in an unfamiliar material).
-const DEFAULT_DEF: MaterialDef = { color: 0xb0b0b0, emissiveIntensity: 0.40 };
+const DEFAULT_DEF: MaterialDef = { color: 0xb0b0b0, emissiveIntensity: 0.12 };
 
-// Materials are shared across every spawned prop of the same MTL
-// name. Built lazily on first use.
-const SHARED_MATERIALS: Record<string, THREE.MeshStandardMaterial> = {};
+// Lambert (per-vertex diffuse) instead of Standard PBR: the art is
+// flat low-poly, so the PBR maths bought nothing visible and cost
+// fragment time on mid-range phones.
+const SHARED_MATERIALS: Record<string, THREE.MeshLambertMaterial> = {};
 
-function materialFor(name: string): THREE.MeshStandardMaterial {
+function materialFor(name: string): THREE.MeshLambertMaterial {
   const cached = SHARED_MATERIALS[name];
   if (cached) return cached;
   const def = PALETTE[name] ?? DEFAULT_DEF;
-  // If we have a real PNG for this MTL (currently wall, treeB, and
-  // a wall_garage stand-in for wall_metal), bind it as map +
-  // emissiveMap so the prop reads with detail. Falls back to the
-  // hand-picked solid colour from PALETTE for materials whose PNGs
-  // we don't have yet (concrete / signs / roof / dirt / grass).
   const tex = getPropTexture(name);
   const mat = tex
-    ? new THREE.MeshStandardMaterial({
+    ? new THREE.MeshLambertMaterial({
         map: tex,
         emissive: 0xffffff,
         emissiveMap: tex,
         emissiveIntensity: def.emissiveIntensity,
-        roughness: 0.7,
-        metalness: def.metalness ?? 0.1,
       })
-    : new THREE.MeshStandardMaterial({
+    : new THREE.MeshLambertMaterial({
         color: def.color,
         emissive: def.color,
         emissiveIntensity: def.emissiveIntensity,
-        roughness: 0.7,
-        metalness: def.metalness ?? 0.1,
       });
   markShared(mat);
   SHARED_MATERIALS[name] = mat;
   return mat;
 }
 
-// One parsed template per kind. A template is a list of submeshes;
-// each submesh comes from a `usemtl` block inside the OBJ's single
-// group (so a dumpster with wall + wall_metal + roof yields three
-// submeshes). Geometries are markShared so per-spawn clones can be
-// disposed independently while the template buffers stay resident.
-//
-// When OBJLoader hits multiple `usemtl` switches in one `g` group it
-// builds ONE Mesh with an array of materials + matching geometry
-// groups (multi-material). We capture every material name so the
-// per-spawn factory can apply the correct palette material to each
-// group instead of forcing the whole mesh through one material.
 type SubMesh = { geometry: THREE.BufferGeometry; materialNames: string[] };
 const TEMPLATES: Partial<Record<KitKind, SubMesh[]>> = {};
 
@@ -146,17 +118,10 @@ function parseTemplate(kind: KitKind): SubMesh[] {
   return subs;
 }
 
-// Spawn a prop instance. The caller positions + rotates the returned
-// Group; `scale` is applied here (some obstacle kinds need anisotropic
-// scaling to fit their existing hitbox - e.g. lowwall stretches the
-// short barrier model along X).
-//
-// `materialOverride` replaces every `usemtl` name with the supplied
-// palette key so the whole prop renders as that single material -
-// useful for variant-skin spawns. Without it each material name
-// from the OBJ is looked up individually so a multi-material rig
-// (e.g. tall-pine = woodBarkDark + leafsDark) gets the correct
-// per-section colour.
+// Build a prop instance. Geometry is the shared parsed template (never
+// cloned - every dumpster in a segment references the same buffers,
+// and the dispose pass skips shared resources); only the transform is
+// per-instance.
 export function createKitProp(
   kind: KitKind,
   scale: number | THREE.Vector3,
@@ -165,28 +130,31 @@ export function createKitProp(
   const subs = parseTemplate(kind);
   const group = new THREE.Group();
   for (const s of subs) {
-    // Geometry is shared at the template level, so clone() per spawn
-    // keeps per-instance edits (e.g. a future texture pass embedding
-    // vertex colours) from leaking across props. BufferGeometry.clone
-    // deep-copies userData, so the clone inherits userData.shared
-    // from the template - explicitly unset it here so the scene-
-    // rebuild dispose pass actually frees the per-instance buffer.
-    const geo = s.geometry.clone();
-    geo.userData.shared = false;
-    const mats = s.materialNames.map((n) =>
-      materialFor(materialOverride ?? n),
-    );
-    // Three.js matches a material array against geometry.groups -
-    // each face's group.materialIndex picks from the array. Pass an
-    // array for multi-material rigs; a single Material for single-
-    // material ones.
-    const mesh = new THREE.Mesh(geo, mats.length > 1 ? mats : mats[0]);
+    const mats = s.materialNames.map((n) => materialFor(materialOverride ?? n));
+    const mesh = new THREE.Mesh(s.geometry, mats.length > 1 ? mats : mats[0]);
     group.add(mesh);
   }
   if (typeof scale === 'number') {
     group.scale.setScalar(scale);
   } else {
     group.scale.copy(scale);
+  }
+  return group;
+}
+
+// Many copies of one prop in a single draw call per material group:
+// one InstancedMesh per template sub-mesh, sharing the template
+// geometry and materials. `matrices` are full world transforms.
+export function createKitPropInstances(kind: KitKind, matrices: readonly THREE.Matrix4[]): THREE.Group {
+  const subs = parseTemplate(kind);
+  const group = new THREE.Group();
+  for (const s of subs) {
+    const mats = s.materialNames.map((n) => materialFor(n));
+    const inst = new THREE.InstancedMesh(s.geometry, mats.length > 1 ? mats : mats[0], matrices.length);
+    for (let i = 0; i < matrices.length; i++) inst.setMatrixAt(i, matrices[i]);
+    inst.instanceMatrix.needsUpdate = true;
+    inst.computeBoundingSphere();
+    group.add(inst);
   }
   return group;
 }

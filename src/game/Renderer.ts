@@ -7,6 +7,10 @@ export type GameRenderer = {
   gl: ExpoWebGLRenderingContext;
   renderer: THREE.WebGLRenderer;
   worldRoot: THREE.Group;
+  // Cached light handles so per-stage lighting updates never have to
+  // search the scene graph.
+  ambient: THREE.AmbientLight;
+  sun: THREE.DirectionalLight;
   draw: () => void;
 };
 
@@ -61,6 +65,8 @@ export function createRenderer(gl: ExpoWebGLRenderingContext): GameRenderer {
     scene,
     camera,
     worldRoot,
+    ambient,
+    sun,
     draw: () => {
       renderer.render(scene, camera);
       gl.endFrameEXP();

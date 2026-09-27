@@ -78,16 +78,14 @@ function getMaterials(kind: VehicleKind): Record<string, THREE.Material> {
   const tex = getVehicleColormap();
   const sharedMat = tex
     ? markShared(
-        new THREE.MeshStandardMaterial({
+        new THREE.MeshLambertMaterial({
           map: tex,
-          roughness: 0.55,
-          metalness: 0.20,
           // Slight self-illumination via emissiveMap so the silhouette
           // stays legible against the deep-night palette without
           // washing out the texture under daylight.
           emissive: 0xffffff,
           emissiveMap: tex,
-          emissiveIntensity: 0.18,
+          emissiveIntensity: 0.08,
         }),
       )
     : null;
@@ -106,12 +104,10 @@ function getMaterials(kind: VehicleKind): Record<string, THREE.Material> {
   // the vehicle still renders distinguishable parts.
   const make = (color: number) =>
     markShared(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshLambertMaterial({
         color,
         emissive: color,
-        emissiveIntensity: 0.20,
-        roughness: 0.55,
-        metalness: 0.20,
+        emissiveIntensity: 0.08,
       }),
     );
   const mats = {
@@ -165,16 +161,10 @@ export function createVehicle(kind: VehicleKind): THREE.Group {
   const mats = getMaterials(kind);
   const group = new THREE.Group();
   for (const part of template.parts) {
-    // Geometry is shared (template-level) so we clone() per instance.
-    // Without the clone, every mesh of the same kind would share an
-    // attribute buffer and any future per-instance tweak (vertex
-    // colours from a future texture pass, e.g.) would leak to the
-    // others. BufferGeometry.clone deep-copies userData, so the clone
-    // inherits userData.shared from the template - explicitly unset
-    // it here so the scene-rebuild dispose pass actually frees the
-    // per-instance buffer.
-    const geo = part.geometry.clone();
-    geo.userData.shared = false;
+    // Template geometry is shared by every vehicle (nothing tweaks it
+    // per instance); the scene-rebuild dispose pass skips it because
+    // the template is marked shared.
+    const geo = part.geometry;
     const mesh = new THREE.Mesh(geo, materialFor(part.name, mats));
     group.add(mesh);
   }

@@ -38,25 +38,23 @@ const DOG_SCALE = 1.4;
 // of that atlas) index correctly into the texture we already loaded
 // for vehicles. Build the material lazily so the texture preload has
 // finished by the time createDog runs.
-let CACHED_DOG_MAT: THREE.MeshStandardMaterial | null = null;
-function getDogMaterial(): THREE.MeshStandardMaterial {
+let CACHED_DOG_MAT: THREE.MeshLambertMaterial | null = null;
+function getDogMaterial(): THREE.MeshLambertMaterial {
   if (CACHED_DOG_MAT) return CACHED_DOG_MAT;
   const tex = getVehicleColormap();
   const mat = tex
-    ? new THREE.MeshStandardMaterial({
+    ? new THREE.MeshLambertMaterial({
         map: tex,
         emissive: 0xffffff,
         emissiveMap: tex,
-        emissiveIntensity: 0.18,
-        roughness: 0.7,
+        emissiveIntensity: 0.08,
       })
-    : new THREE.MeshStandardMaterial({
+    : new THREE.MeshLambertMaterial({
         // Fallback if the texture preload didn't resolve: solid
         // orange-red matching the kit preview thumbnail.
         color: 0xc26a3a,
         emissive: 0xc26a3a,
-        emissiveIntensity: 0.20,
-        roughness: 0.7,
+        emissiveIntensity: 0.08,
       });
   markShared(mat);
   CACHED_DOG_MAT = mat;

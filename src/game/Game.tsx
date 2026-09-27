@@ -130,7 +130,8 @@ import { logDebug } from '../util/debug';
 import { disposeSubtree } from '../util/dispose';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
-import { spawnFences } from '../scenes/Fence';
+import { spawnChainLinkWall, spawnFences } from '../scenes/Fence';
+import { createBlobShadow, placeBlobShadow } from '../scenes/BlobShadows';
 import {
   consumeSearchlightTrigger,
   isPlayerLit,
@@ -150,7 +151,7 @@ import {
   updateGuardStateMarker,
   type GuardStateMarker,
 } from '../scenes/GuardStateMarker';
-import { createBackdrop, setBackdropSnow, updateBackdrop } from '../scenes/Backdrop';
+import { applyBackdropMood, createBackdrop, setBackdropSnow, updateBackdrop } from '../scenes/Backdrop';
 import {
   createWeather,
   noiseMultiplier,
@@ -161,7 +162,7 @@ import {
   type WeatherKind,
 } from '../scenes/Weather';
 import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
-import { applyDynamicLighting, applyStageLighting } from '../scenes/Lighting';
+import { applyStageLighting, getStageLighting, type StageLighting } from '../scenes/Lighting';
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
 import { createMusic, type MusicPlayer } from '../scenes/Music';
 import {
@@ -235,6 +236,9 @@ export function Game() {
     let playerFigure = createPlayerFigure(playerSkin);
     r.worldRoot.add(playerFigure.group);
 
+    const playerShadow = createBlobShadow(1.1);
+    r.worldRoot.add(playerShadow);
+
     const backdrop = createBackdrop();
     r.worldRoot.add(backdrop.group);
 
@@ -301,6 +305,7 @@ export function Game() {
       lastState: Guard['state'];
       // Laser sight shown during the shot wind-up.
       laser: AimLaser;
+      shadow: THREE.Mesh;
       // Effective vision range this frame (drives the cone's length).
       range: number;
       // Summoned by a full camera alarm (removed on restart).
@@ -317,7 +322,7 @@ export function Game() {
       weatherKind: WeatherKind;
       weatherEnabledAtInit: boolean;
       weather: Weather;
-      groundMat: THREE.MeshStandardMaterial;
+      groundMat: THREE.MeshLambertMaterial;
       // Win-line material is null for arena variants (no win line).
       winLineMat: THREE.MeshBasicMaterial | null;
       baseVisionRange: number;
@@ -327,6 +332,7 @@ export function Game() {
       procgen: ProcgenSystem;
       lightTowers: LightTower[];
       dogs: Dog[];
+      dogShadows: THREE.Mesh[];
       cameras: Camera[];
       threatArrows: ThreatArrow[];
       bossStage: boolean;
@@ -360,7 +366,10 @@ export function Game() {
       guard.mesh = figure.group;
       const laser = createAimLaser();
       root.add(laser.mesh);
+      const shadow = createBlobShadow(1.2);
+      root.add(shadow);
       return {
+        shadow,
         guard,
         figure,
         equipment,
@@ -402,7 +411,7 @@ export function Game() {
       const segLen = chunkCount * CHUNK_LEN;
 
       const ground = createGround();
-      const groundMat = ground.material as THREE.MeshStandardMaterial;
+      const groundMat = ground.material as THREE.MeshLambertMaterial;
       root.add(ground);
 
       // Per-segment weather. Picked deterministically from the segment
@@ -441,23 +450,12 @@ export function Game() {
         root.add(winLine);
       }
 
-      // Arena back wall: a wireframe panel running across the far
-      // end of the playfield so the eye sees an enclosed yard.
-      // Player z is already clamped to segmentEndZ in PlayerController
-      // so this is purely visual.
+      // Arena back wall: a chain-link panel across the far end of the
+      // playfield so the eye sees an enclosed yard. Player z is already
+      // clamped to segmentEndZ in PlayerController so this is purely
+      // visual.
       if (isBossArena) {
-        const wallW = PLAY_HALF_W * 2 + 1.5;
-        const wallH = 2.6;
-        const wallGeo = new THREE.BoxGeometry(wallW, wallH, 0.05, 12, 5, 1);
-        const wallMat = new THREE.MeshBasicMaterial({
-          color: 0x111114,
-          wireframe: true,
-          transparent: true,
-          opacity: 0.7,
-        });
-        const wall = new THREE.Mesh(wallGeo, wallMat);
-        wall.position.set(0, wallH / 2, segLen);
-        root.add(wall);
+        spawnChainLinkWall(root, PLAY_HALF_W * 2 + 0.6, 0, segLen);
       }
 
       const baseVisionRange = visionRangeFor(stage);
@@ -527,12 +525,16 @@ export function Game() {
       // close range, detach into chase when the handler does. One per
       // entry in dogCountFor; we pair them with the first N guards.
       const dogs: Dog[] = [];
+      const dogShadows: THREE.Mesh[] = [];
       const dogCount = dogCountFor(stage) + (isBossArena ? 1 : 0);
       for (let i = 0; i < dogCount && i < guards.length; i++) {
         const handler = guards[i];
         const d = createDog(i + 1, handler.id, handler.x + 1, handler.z);
         root.add(d.group);
         dogs.push(d);
+        const ds = createBlobShadow(0.9);
+        root.add(ds);
+        dogShadows.push(ds);
       }
 
       // Boss arenas force a minimum of 4 cameras even on early-stage
@@ -571,6 +573,7 @@ export function Game() {
         procgen,
         lightTowers,
         dogs,
+        dogShadows,
         cameras,
         threatArrows,
         bossStage,
@@ -590,11 +593,11 @@ export function Game() {
     const initialStage = useStore.getState().stage;
     let scene: Scene = buildScene(initialStage, useStore.getState().segmentSeed);
 
-    // Per-stage scene lighting (day -> dusk -> night). Cycles every
-    // 5 stages and trends darker each cycle (see Lighting.ts). Re-
-    // applied on every rebuild so loading a save at stage 17 doesn't
-    // keep the bright stage-1 sky.
-    applyStageLighting(r.renderer, r.scene, initialStage);
+    // One lighting mood per stage (day / afternoon / dusk / night /
+    // deep night; see Lighting.ts). Applied once per (re)build - the
+    // mood never changes during a stage.
+    let lighting: StageLighting = applyStageLighting(r, initialStage);
+    applyBackdropMood(backdrop, lighting);
     setBackdropSnow(backdrop, scene.weatherKind === 'snow');
     useStore
       .getState()
@@ -623,7 +626,8 @@ export function Game() {
       logDebug('log', 'rebuildScene', { stage, seed });
       tearDownScene(scene);
       scene = buildScene(stage, seed);
-      applyStageLighting(r.renderer, r.scene, stage);
+      lighting = applyStageLighting(r, stage);
+      applyBackdropMood(backdrop, lighting);
       setBackdropSnow(backdrop, scene.weatherKind === 'snow');
       // The boss countdown is re-armed by resetSegment(), which every
       // rebuild is followed by.
@@ -644,11 +648,6 @@ export function Game() {
     // wherever the splash-demo left them and back to spawn.
     let lastRunState = useStore.getState().runState;
     let animTime = 0;
-    // Day/night cycle clock. Independent of animTime (which resets
-    // on each segment) so the cycle progresses continuously across
-    // resets / restarts and the player sees an unbroken sun-up
-    // sun-down loop. Bumped each frame from the update tick.
-    let cycleTime = 0;
     // Boss-arena countdown. Armed by resetSegment() (every rebuild,
     // restart and fresh run goes through it); the update loop ticks it
     // in real time during gameplay and fires handleWin at zero.
@@ -687,6 +686,7 @@ export function Game() {
         if (!e.reinforcement) continue;
         scene.root.remove(e.figure.group);
         scene.root.remove(e.laser.mesh);
+        scene.root.remove(e.shadow);
         disposeSubtree(e.figure.group);
         disposeSubtree(e.laser.mesh);
         const arrow = scene.threatArrows[i];
@@ -1084,9 +1084,6 @@ export function Game() {
         if (st.runState === 'idle' && !st.paused) {
           demoTime += dt;
           animTime += dt;
-          // Bump the day/night cycle on the splash too so the
-          // start screen shows the world fading the same way.
-          cycleTime += dt;
           // Forward bias with a slow x-wander. The 0.62 forward
           // scalar keeps the cycle leisurely; the sin term makes the
           // path feel hand-piloted rather than ruler-straight.
@@ -1113,10 +1110,6 @@ export function Game() {
 
       tracker.tickTime(dt);
       animTime += dt;
-      // Cycle uses raw dt (not effDt) so slow-mo + pause don't
-      // freeze the day/night progression; the lighting feels alive
-      // even during a slow-mo capture.
-      cycleTime += dt;
       if (shakeRemaining > 0) {
         shakeRemaining = Math.max(0, shakeRemaining - dt);
       }
@@ -1313,9 +1306,12 @@ export function Game() {
         ? noiseMultiplier(scene.weather.kind)
         : 1.0;
       const litBonus = lightVisionBonusFor(st.stage);
+      // Night moods shorten guard sight in the dark, but a player
+      // standing in a floodlight is fully visible whatever the hour -
+      // so after dark the lights are what give you away.
       const effectiveVisionRange = (lit
         ? scene.baseVisionRange * (1 + litBonus)
-        : scene.baseVisionRange) * weatherVision;
+        : scene.baseVisionRange * lighting.visionMul) * weatherVision;
 
       const litRateBase = lit
         ? player.isCrouched
@@ -1440,14 +1436,14 @@ export function Game() {
         if (next >= 1.0 && !chaserGuard) chaserGuard = g;
       }
 
-      // Pass 2: write detection to the store and run guard AI. This
+      st.setDetections(nextDetection);
+      // Pass 2: run guard AI. This
       // ordering lets us implement the AI tier-3 broadcast: if any
       // guard has hit chase, point the nearest other non-chase
       // guard at the same investigation target.
       for (const entry of scene.guardEntries) {
         const g = entry.guard;
         const next = nextDetection.get(g.id) ?? 0;
-        st.setDetection(g.id, next);
         // Tier 3 broadcast: silent investigation cue for non-chasing
         // guards in earshot of the chaser.
         if (aiTier >= 3 && chaserGuard && g.id !== chaserGuard.id && g.state !== 'chase') {
@@ -1624,13 +1620,6 @@ export function Game() {
       const nowMs = Date.now();
       const renderDt = lastRenderMs ? Math.min(0.1, (nowMs - lastRenderMs) / 1000) : 1 / 60;
       lastRenderMs = nowMs;
-      // Day/night cycle: applyDynamicLighting writes a smoothly
-      // blended palette into the renderer + scene each frame so the
-      // world fades through bright -> dusk -> night -> dawn -> ...
-      // continuously, mirrored over a 3-minute round trip. Cheap
-      // (lerps + uniform updates only) so the per-frame call doesn't
-      // measurably affect framerate.
-      applyDynamicLighting(r.renderer, r.scene, cycleTime);
 
       // Idle bob/spin on every uncollected pickup. Cheap; only the
       // mesh transform is touched.
@@ -1660,6 +1649,10 @@ export function Game() {
         hidden: player.isHidden,
       });
       setFigurePosition(playerFigure, player.x, player.z);
+      placeBlobShadow(playerShadow, player.x, player.z);
+      for (let i = 0; i < scene.dogs.length; i++) {
+        placeBlobShadow(scene.dogShadows[i], scene.dogs[i].x, scene.dogs[i].z);
+      }
 
       for (const entry of scene.guardEntries) {
         const g = entry.guard;
@@ -1685,6 +1678,7 @@ export function Game() {
           stunProgress,
         });
         setFigurePosition(fig, g.x, g.z);
+        placeBlobShadow(entry.shadow, g.x, g.z);
         // Override the swinging arm pose so flashlight + pistol stay
         // aimed reliably down the figure's facing direction. Skipped
         // while stunned - the knockout pose owns the arms and we

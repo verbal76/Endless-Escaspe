@@ -11,11 +11,10 @@ const HIT_RADIUS = 0.55;
 let nextProjectileId = 1;
 
 const projectileGeo = new THREE.SphereGeometry(PROJECTILE_R, 8, 8);
-const projectileMat = new THREE.MeshStandardMaterial({
+const projectileMat = new THREE.MeshLambertMaterial({
   color: 0xff5544,
   emissive: 0xff2222,
   emissiveIntensity: 0.6,
-  roughness: 0.4,
 });
 
 export class ProjectileSystem {

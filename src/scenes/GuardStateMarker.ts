@@ -75,12 +75,8 @@ export function createGuardStateMarker(): GuardStateMarker {
     opacity: 1,
     depthWrite: false,
   });
-  const dotMat = new THREE.MeshBasicMaterial({
-    color: 0xffffff,
-    transparent: true,
-    opacity: 1,
-    depthWrite: false,
-  });
+  // Stem and dot always share colour and opacity: one material.
+  const dotMat = stemMat;
   const haloMat = new THREE.MeshBasicMaterial({
     color: 0xffffff,
     transparent: true,

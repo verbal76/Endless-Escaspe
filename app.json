@@ -16,6 +16,7 @@
       "package": "com.verbal76.endlessescaspe",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/adaptive-icon-background.png",
         "backgroundColor": "#0b0d12"
       },
       "edgeToEdgeEnabled": true,

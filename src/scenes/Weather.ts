@@ -35,6 +35,8 @@ const SNOW_MAT = new THREE.MeshBasicMaterial({
   opacity: 0.85,
 });
 const SNOW_GEO = new THREE.SphereGeometry(0.05, 4, 3);
+// The weather column follows the player; its lightning plane is
+// re-positioned on each strike.
 
 const LIGHTNING_MAT = new THREE.MeshBasicMaterial({
   color: 0xffffff,
@@ -54,86 +56,122 @@ type Particle = {
   driftSeed: number;
 };
 
+// All precipitation is drawn in ONE draw call: rain as a single
+// LineSegments whose vertex buffer is rewritten each frame, snow as a
+// single InstancedMesh. (Previously every drop was its own Line /
+// Mesh with its own BufferGeometry: ~280 draw calls.)
 export type Weather = {
   kind: WeatherKind;
   group: THREE.Group;
   particles: Particle[];
-  // Per-particle visual handle. For rain we use Line segments
-  // (a single Geometry shared by all rain Lines for performance);
-  // for snow we use Mesh instances of the small sphere geo.
-  visuals: THREE.Object3D[];
+  rain: THREE.LineSegments | null;
+  snow: THREE.InstancedMesh | null;
   lightning: THREE.Mesh | null;
   lightningTimer: number;
   lightningFlash: number; // 0..1, fades out after a strike
 };
 
 export function pickWeather(seed: number): WeatherKind {
-  // Seeded coin so the choice is reproducible per segment.
   const r = ((Math.sin(seed * 9999.7) * 43758.5453) % 1 + 1) % 1;
   if (r < 0.55) return 'clear';
   if (r < 0.78) return 'rain';
   return 'snow';
 }
 
-function buildRainLine(): THREE.Line {
-  const verts = new Float32Array([0, 0, 0, 0, -0.45, 0]);
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
-  return new THREE.Line(geo, RAIN_MAT);
-}
+const RAIN_STREAK = 0.45;
 
 function buildLightningMesh(): THREE.Mesh {
-  // Tall thin plane in the midground used as a flash source.
   const geo = new THREE.PlaneGeometry(180, 80);
   const m = new THREE.Mesh(geo, LIGHTNING_MAT);
   m.position.set(0, 40, CHUNK_LEN * CHUNKS_AHEAD * 0.55);
   return m;
 }
 
-function spawnParticle(centerX: number, centerZ: number): Particle {
+// Re-seed a particle in place (no allocation).
+function respawn(p: Particle, centerX: number, centerZ: number) {
   const angle = Math.random() * Math.PI * 2;
   const r = Math.random() * COLUMN_RADIUS;
-  return {
-    x: centerX + Math.cos(angle) * r,
-    z: centerZ + Math.sin(angle) * r,
-    y: SPAWN_HEIGHT_MIN + Math.random() * (SPAWN_HEIGHT_MAX - SPAWN_HEIGHT_MIN),
-    driftSeed: Math.random() * Math.PI * 2,
-  };
+  p.x = centerX + Math.cos(angle) * r;
+  p.z = centerZ + Math.sin(angle) * r;
+  p.y = SPAWN_HEIGHT_MIN + Math.random() * (SPAWN_HEIGHT_MAX - SPAWN_HEIGHT_MIN);
+  p.driftSeed = Math.random() * Math.PI * 2;
 }
 
 export function createWeather(kind: WeatherKind, centerX: number, centerZ: number): Weather {
   const group = new THREE.Group();
   const particles: Particle[] = [];
-  const visuals: THREE.Object3D[] = [];
+  let rain: THREE.LineSegments | null = null;
+  let snow: THREE.InstancedMesh | null = null;
 
   if (kind !== 'clear') {
     for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const p = spawnParticle(centerX, centerZ);
+      const p = { x: 0, y: 0, z: 0, driftSeed: 0 };
+      respawn(p, centerX, centerZ);
       particles.push(p);
-      const visual =
-        kind === 'rain' ? buildRainLine() : new THREE.Mesh(SNOW_GEO, SNOW_MAT);
-      visual.position.set(p.x, p.y, p.z);
-      group.add(visual);
-      visuals.push(visual);
+    }
+    if (kind === 'rain') {
+      const geo = new THREE.BufferGeometry();
+      const pos = new Float32Array(PARTICLE_COUNT * 6);
+      const attr = new THREE.BufferAttribute(pos, 3);
+      attr.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('position', attr);
+      rain = new THREE.LineSegments(geo, RAIN_MAT);
+      // The column follows the player; skip culling rather than
+      // recomputing bounds every frame.
+      rain.frustumCulled = false;
+      group.add(rain);
+    } else {
+      snow = new THREE.InstancedMesh(SNOW_GEO, SNOW_MAT, PARTICLE_COUNT);
+      snow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      snow.frustumCulled = false;
+      group.add(snow);
     }
   }
 
   const lightning = kind === 'rain' ? buildLightningMesh() : null;
   if (lightning) group.add(lightning);
 
-  return {
+  const w: Weather = {
     kind,
     group,
     particles,
-    visuals,
+    rain,
+    snow,
     lightning,
     lightningTimer: kind === 'rain' ? 4 + Math.random() * 6 : 0,
     lightningFlash: 0,
   };
+  writeBuffers(w);
+  return w;
 }
 
-// Integrate particles + lightning. Keeps the falling column anchored
-// to (centerX, centerZ) so it follows the player.
+const tmpM = new THREE.Matrix4();
+
+function writeBuffers(w: Weather) {
+  if (w.rain) {
+    const attr = w.rain.geometry.attributes.position as THREE.BufferAttribute;
+    const a = attr.array as Float32Array;
+    for (let i = 0; i < w.particles.length; i++) {
+      const p = w.particles[i];
+      const o = i * 6;
+      a[o] = p.x;
+      a[o + 1] = p.y;
+      a[o + 2] = p.z;
+      a[o + 3] = p.x;
+      a[o + 4] = p.y - RAIN_STREAK;
+      a[o + 5] = p.z;
+    }
+    attr.needsUpdate = true;
+  } else if (w.snow) {
+    for (let i = 0; i < w.particles.length; i++) {
+      const p = w.particles[i];
+      tmpM.makeTranslation(p.x, p.y, p.z);
+      w.snow.setMatrixAt(i, tmpM);
+    }
+    w.snow.instanceMatrix.needsUpdate = true;
+  }
+}
+
 export function updateWeather(w: Weather, dt: number, centerX: number, centerZ: number) {
   if (w.kind === 'clear') return;
 
@@ -143,36 +181,20 @@ export function updateWeather(w: Weather, dt: number, centerX: number, centerZ: 
     p.y -= fallSpeed * dt;
     if (w.kind === 'snow') {
       p.driftSeed += dt * 1.4;
-      const sway = Math.sin(p.driftSeed) * SNOW_DRIFT_AMP * dt;
-      p.x += sway;
+      p.x += Math.sin(p.driftSeed) * SNOW_DRIFT_AMP * dt;
     }
-
-    // Out-of-column or hit ground: respawn somewhere fresh in the
-    // column above the player.
     const dx = p.x - centerX;
     const dz = p.z - centerZ;
     const outOfColumn = dx * dx + dz * dz > COLUMN_RADIUS * COLUMN_RADIUS * 1.3;
-    if (p.y < 0 || outOfColumn) {
-      const fresh = spawnParticle(centerX, centerZ);
-      p.x = fresh.x;
-      p.y = fresh.y;
-      p.z = fresh.z;
-      p.driftSeed = fresh.driftSeed;
-    }
-
-    const v = w.visuals[i];
-    v.position.set(p.x, p.y, p.z);
+    if (p.y < 0 || outOfColumn) respawn(p, centerX, centerZ);
   }
+  writeBuffers(w);
 
-  // Lightning during rain: random strikes every few seconds, with a
-  // brief flash that fades over half a second.
   if (w.lightning) {
     w.lightningTimer -= dt;
     if (w.lightningTimer <= 0) {
       w.lightningFlash = 1;
       w.lightningTimer = 5 + Math.random() * 8;
-      // Re-position the flash so it appears in different spots in
-      // the midground.
       w.lightning.position.x = (Math.random() - 0.5) * 200;
       w.lightning.position.z = CHUNK_LEN * CHUNKS_AHEAD * (0.3 + Math.random() * 0.5);
     }
@@ -183,9 +205,6 @@ export function updateWeather(w: Weather, dt: number, centerX: number, centerZ: 
   }
 }
 
-// Modifier multipliers used by DetectionSystem. Snow boosts vision
-// (player more visible against bright background); rain dampens
-// noise (footfalls masked by the storm).
 export function visionMultiplier(kind: WeatherKind): number {
   return kind === 'snow' ? 1.10 : 1.0;
 }

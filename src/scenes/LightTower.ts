@@ -20,12 +20,11 @@ const BEAM_BASE_R = 4.0;
 const BEAM_FOOTPRINT_OFFSET = 5.0;
 export const LIGHT_FOOTPRINT_R = 4.0;
 
-const POLE_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.7 });
-const HEAD_MAT = new THREE.MeshStandardMaterial({
+const POLE_MAT = new THREE.MeshLambertMaterial({ color: 0x4a4a52 });
+const HEAD_MAT = new THREE.MeshLambertMaterial({
   color: 0xffe7a3,
   emissive: 0xffce6a,
   emissiveIntensity: 0.6,
-  roughness: 0.3,
 });
 // Beam: shader material that fades to alpha=0 at the cone's wide end
 // (the ground side after the pole-tilt rotation) so the beam smoothly

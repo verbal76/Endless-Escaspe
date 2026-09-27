@@ -4,8 +4,9 @@ import { PLAYER_X_LIMIT, PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
 
 // Chain-link fence running the full segment length on both X edges.
-// Visualised as a wireframe BoxGeometry with high subdivisions so
-// the wireframe looks like a wire mesh rather than a flat panel.
+// Visualised as a textured, alpha-tested diamond-mesh panel with a
+// top rail and instanced posts (it used to be a subdivided wireframe
+// box, which read as a debug mesh).
 // Collision is handled by clamping the player to PLAY_HALF_W in
 // PlayerController, so the fence is purely cosmetic *unless* it's
 // razor-wire-tipped (late stages), in which case touching the
@@ -17,17 +18,16 @@ const FENCE_X_OFFSET = 0.3;
 const RAZOR_TOP_HEIGHT = 0.25;
 
 const POST_MAT = markShared(
-  new THREE.MeshStandardMaterial({
+  new THREE.MeshLambertMaterial({
     color: 0x3a3d44,
-    roughness: 0.7,
   }),
 );
 
 const RAZOR_MAT = markShared(
-  new THREE.MeshBasicMaterial({
-    color: 0xff4040,
-    transparent: true,
-    opacity: 0.9,
+  new THREE.MeshLambertMaterial({
+    color: 0xd8dde4,
+    emissive: 0xff3030,
+    emissiveIntensity: 0.35,
   }),
 );
 
@@ -42,6 +42,72 @@ export function fenceColorFor(stage: number, weather: WeatherKind): number {
   return stage <= 2 ? 0x111114 : 0xc8d0d6;
 }
 
+// Chain-link texture: a diamond wire lattice generated in code (no
+// asset, no canvas - RN has none) as a small tiling RGBA DataTexture.
+// Alpha is 0 between the wires so the mesh reads as see-through
+// fencing; alphaTest keeps it cheap (no sorting / blending).
+const LINK_TEX_SIZE = 32;
+// Metres of fence covered by one texture tile (one diamond).
+const LINK_TILE_M = 0.42;
+let LINK_TEX: THREE.DataTexture | null = null;
+function chainLinkTexture(): THREE.DataTexture {
+  if (LINK_TEX) return LINK_TEX;
+  const n = LINK_TEX_SIZE;
+  const data = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      // Distance to the two diagonal wire families (wrapping).
+      const a = Math.abs(((x + y) % n) - n / 2);
+      const b = Math.abs(((x - y + n) % n) - n / 2);
+      const d = Math.min(n / 2 - a, n / 2 - b);
+      const wire = d < 1.6 ? 1 : d < 2.4 ? 0.5 : 0;
+      const i = (y * n + x) * 4;
+      // Slight sheen along the wire centre.
+      const shade = d < 0.8 ? 255 : 205;
+      data[i] = shade;
+      data[i + 1] = shade;
+      data[i + 2] = shade;
+      data[i + 3] = Math.round(wire * 255);
+    }
+  }
+  const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = 4;
+  tex.needsUpdate = true;
+  markShared(tex);
+  LINK_TEX = tex;
+  return tex;
+}
+
+// Plane geometry whose UVs are pre-scaled so the shared texture tiles
+// at LINK_TILE_M regardless of panel size (no per-panel texture copy).
+function chainLinkPanel(width: number, height: number): THREE.PlaneGeometry {
+  const geo = new THREE.PlaneGeometry(width, height);
+  const uv = geo.attributes.uv as THREE.BufferAttribute;
+  for (let i = 0; i < uv.count; i++) {
+    uv.setXY(i, (uv.getX(i) * width) / LINK_TILE_M, (uv.getY(i) * height) / LINK_TILE_M);
+  }
+  uv.needsUpdate = true;
+  return geo;
+}
+
+function chainLinkMaterial(color: number): THREE.MeshLambertMaterial {
+  return new THREE.MeshLambertMaterial({
+    color,
+    map: chainLinkTexture(),
+    alphaTest: 0.35,
+    side: THREE.DoubleSide,
+    emissive: color,
+    emissiveIntensity: 0.15,
+  });
+}
+
+const RAIL_MAT = markShared(new THREE.MeshLambertMaterial({ color: 0x55585f }));
+
 export function spawnFences(
   worldRoot: THREE.Group,
   stage: number,
@@ -55,63 +121,90 @@ export function spawnFences(
   visualLen: number = segLen + 4,
 ) {
   const totalLen = visualLen;
-  const segsZ = Math.max(8, Math.round(totalLen / 0.6));
-  const segsY = 5;
-  const fenceGeo = new THREE.BoxGeometry(
-    FENCE_THICKNESS,
-    FENCE_HEIGHT,
-    totalLen,
-    1,
-    segsY,
-    segsZ,
-  );
+  const fenceX = PLAY_HALF_W + FENCE_X_OFFSET;
+  // Panels start a little behind spawn so the camera never sees the
+  // fence begin.
+  const startZ = -6;
+  const len = totalLen - startZ;
+  const mat = chainLinkMaterial(fenceColorFor(stage, weather));
+  const panelGeo = chainLinkPanel(len, FENCE_HEIGHT);
+  for (const sx of [-1, 1]) {
+    const panel = new THREE.Mesh(panelGeo, mat);
+    panel.rotation.y = Math.PI / 2;
+    panel.position.set(sx * fenceX, FENCE_HEIGHT / 2, startZ + len / 2);
+    worldRoot.add(panel);
+  }
 
-  const fenceMat = new THREE.MeshBasicMaterial({
-    color: fenceColorFor(stage, weather),
-    wireframe: true,
-    transparent: true,
-    opacity: 0.65,
-  });
+  // Top rail along each side.
+  const railGeo = new THREE.CylinderGeometry(0.035, 0.035, len, 6);
+  railGeo.rotateX(Math.PI / 2);
+  for (const sx of [-1, 1]) {
+    const rail = new THREE.Mesh(railGeo, RAIL_MAT);
+    rail.position.set(sx * fenceX, FENCE_HEIGHT, startZ + len / 2);
+    worldRoot.add(rail);
+  }
 
-  const left = new THREE.Mesh(fenceGeo, fenceMat);
-  left.position.set(-(PLAY_HALF_W + FENCE_X_OFFSET), FENCE_HEIGHT / 2, totalLen / 2);
-  worldRoot.add(left);
-
-  const right = new THREE.Mesh(fenceGeo, fenceMat);
-  right.position.set(PLAY_HALF_W + FENCE_X_OFFSET, FENCE_HEIGHT / 2, totalLen / 2);
-  worldRoot.add(right);
-
-  // Razor wire: an additional thin red strip running along the top
-  // of each fence as a visual warning. Hit detection is handled by
-  // isTouchingFence + the razor flag in the game loop.
+  // Razor wire: a coiled strip along the top of each fence as a
+  // visual warning. Hit detection is handled by isTouchingFence + the
+  // razor flag in the game loop.
   if (razorWire) {
-    const razorGeo = new THREE.BoxGeometry(
-      FENCE_THICKNESS * 1.4,
-      RAZOR_TOP_HEIGHT,
-      totalLen,
-    );
+    const coilGeo = new THREE.TorusGeometry(0.16, 0.018, 4, 10);
+    const COIL_STEP = 0.32;
+    const coils = Math.floor(len / COIL_STEP);
+    const inst = new THREE.InstancedMesh(coilGeo, RAZOR_MAT, coils * 2);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), 0);
+    const pos = new THREE.Vector3();
+    const one = new THREE.Vector3(1, 1, 1);
+    let k = 0;
     for (const sx of [-1, 1]) {
-      const wire = new THREE.Mesh(razorGeo, RAZOR_MAT);
-      wire.position.set(
-        sx * (PLAY_HALF_W + FENCE_X_OFFSET),
-        FENCE_HEIGHT + RAZOR_TOP_HEIGHT * 0.5,
-        totalLen / 2,
-      );
-      worldRoot.add(wire);
+      for (let i = 0; i < coils; i++) {
+        pos.set(sx * fenceX, FENCE_HEIGHT + RAZOR_TOP_HEIGHT * 0.6, startZ + i * COIL_STEP);
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.35 * (i % 2 === 0 ? 1 : -1));
+        inst.setMatrixAt(k++, m.compose(pos, q, one));
+      }
     }
+    inst.instanceMatrix.needsUpdate = true;
+    inst.computeBoundingSphere();
+    worldRoot.add(inst);
   }
 
-  const postGeo = new THREE.CylinderGeometry(0.08, 0.08, FENCE_HEIGHT, 6);
-  const postSpacing = 6;
-  const postCount = Math.floor(totalLen / postSpacing) + 1;
+  // Posts every 3 m on both sides, drawn as one instanced mesh.
+  const postGeo = new THREE.CylinderGeometry(0.06, 0.07, FENCE_HEIGHT + 0.1, 6);
+  const postSpacing = 3;
+  const postCount = Math.floor(len / postSpacing) + 1;
+  const posts = new THREE.InstancedMesh(postGeo, POST_MAT, postCount * 2);
+  const pm = new THREE.Matrix4();
+  let pi = 0;
   for (let i = 0; i < postCount; i++) {
-    const z = i * postSpacing;
+    const z = startZ + i * postSpacing;
     for (const sx of [-1, 1]) {
-      const post = new THREE.Mesh(postGeo, POST_MAT);
-      post.position.set(sx * (PLAY_HALF_W + FENCE_X_OFFSET), FENCE_HEIGHT / 2, z);
-      worldRoot.add(post);
+      pm.makeTranslation(sx * fenceX, (FENCE_HEIGHT + 0.1) / 2, z);
+      posts.setMatrixAt(pi++, pm);
     }
   }
+  posts.instanceMatrix.needsUpdate = true;
+  posts.computeBoundingSphere();
+  worldRoot.add(posts);
+}
+
+// Chain-link panel for a straight run between two points (used for
+// the boss arena back wall).
+export function spawnChainLinkWall(
+  worldRoot: THREE.Group,
+  width: number,
+  centerX: number,
+  z: number,
+  color: number = 0xc8d0d6,
+) {
+  const wall = new THREE.Mesh(chainLinkPanel(width, FENCE_HEIGHT), chainLinkMaterial(color));
+  wall.position.set(centerX, FENCE_HEIGHT / 2, z);
+  worldRoot.add(wall);
+  const railGeo = new THREE.CylinderGeometry(0.035, 0.035, width, 6);
+  railGeo.rotateZ(Math.PI / 2);
+  const rail = new THREE.Mesh(railGeo, RAIL_MAT);
+  rail.position.set(centerX, FENCE_HEIGHT, z);
+  worldRoot.add(rail);
 }
 
 // Touch detection for razor wire - the player is considered to be

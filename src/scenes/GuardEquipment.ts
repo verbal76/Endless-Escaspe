@@ -20,15 +20,11 @@ const PISTOL_W = 0.10;
 const PISTOL_H = 0.14;
 const PISTOL_L = 0.22;
 
-const FLASHLIGHT_MAT = new THREE.MeshStandardMaterial({
+const FLASHLIGHT_MAT = new THREE.MeshLambertMaterial({
   color: 0x303035,
-  roughness: 0.4,
-  metalness: 0.5,
 });
-const PISTOL_MAT = new THREE.MeshStandardMaterial({
+const PISTOL_MAT = new THREE.MeshLambertMaterial({
   color: 0x202024,
-  roughness: 0.3,
-  metalness: 0.6,
 });
 const BEAM_MAT = new THREE.ShaderMaterial({
   transparent: true,

@@ -16,6 +16,8 @@ import {
 } from '../scenes/Obstacles';
 import { PICKUP_RADIUS, buildPickupMesh } from '../scenes/Pickup';
 import { NavGrid, type Cell } from './NavGrid';
+import { createPropShadows } from '../scenes/BlobShadows';
+import { disposeSubtree } from '../util/dispose';
 
 let nextObstacleId = 1;
 let nextChunkId = 1;
@@ -481,15 +483,34 @@ export class ProcgenSystem {
       p.mesh = m;
       this.worldRoot.add(m);
     }
+    chunk.shadow = createPropShadows(chunk.obstacles);
+    if (chunk.shadow) this.worldRoot.add(chunk.shadow);
     this.chunks.push(chunk);
   }
 
+  // Detach AND free a chunk's meshes. (Previously meshes were only
+  // detached here, before the scene-level dispose walk ran, so every
+  // obstacle's per-instance GPU buffers leaked on each rebuild -
+  // roughly 2000 geometries per stage change.)
   private despawnChunk(chunk: Chunk) {
     for (const o of chunk.obstacles) {
-      if (o.mesh) this.worldRoot.remove(o.mesh);
+      if (o.mesh) {
+        this.worldRoot.remove(o.mesh);
+        disposeSubtree(o.mesh);
+        o.mesh = null;
+      }
     }
     for (const p of chunk.pickups) {
-      if (p.mesh) this.worldRoot.remove(p.mesh);
+      if (p.mesh) {
+        this.worldRoot.remove(p.mesh);
+        disposeSubtree(p.mesh);
+        p.mesh = null;
+      }
+    }
+    if (chunk.shadow) {
+      this.worldRoot.remove(chunk.shadow);
+      (chunk.shadow as THREE.InstancedMesh).dispose?.();
+      chunk.shadow = null;
     }
   }
 

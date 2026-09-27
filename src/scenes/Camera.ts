@@ -18,13 +18,11 @@ export const CAM_HALF_ANGLE_RAD = (35 * Math.PI) / 180; // 70deg cone
 const CAM_RATE = 0.10; // alarm bar contribution per second at full proximity
 const CAM_DECAY = 0.04; // alarm bar decay when no camera sees player
 
-const POLE_MAT = new THREE.MeshStandardMaterial({
+const POLE_MAT = new THREE.MeshLambertMaterial({
   color: 0x35373d,
-  roughness: 0.8,
 });
-const HOUSING_MAT = new THREE.MeshStandardMaterial({
+const HOUSING_MAT = new THREE.MeshLambertMaterial({
   color: 0x111114,
-  roughness: 0.5,
 });
 const LENS_MAT = new THREE.MeshBasicMaterial({
   color: 0xff4040,

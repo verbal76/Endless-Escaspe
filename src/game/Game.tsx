@@ -10,9 +10,15 @@ import { updateCameraRig } from './CameraRig';
 import { ProcgenSystem } from '../systems/ProcgenSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { updatePlayer } from '../systems/PlayerController';
-import { updateGuard } from '../systems/GuardAI';
-import { updateDetection } from '../systems/DetectionSystem';
-import { updateHide } from '../systems/HideSystem';
+import { resetGuardMemory, updateGuard, hearNoiseAt, type GuardSenses } from '../systems/GuardAI';
+import {
+  EXTERNAL_FEED_GAIN,
+  baseNoisePerSecond,
+  noiseRadius,
+  updateDetection,
+  type DetectionResult,
+} from '../systems/DetectionSystem';
+import { isNearCover } from '../systems/HideSystem';
 import {
   createGround,
   createGuard,
@@ -77,6 +83,8 @@ import {
 import {
   createDog,
   dogHits,
+  resetDog,
+  scareDog,
   setDogTransform,
   updateDogs,
   type Dog,
@@ -106,6 +114,17 @@ import { CatchFlash } from '../components/HUD/CatchFlash';
 import { EventFlash } from '../components/HUD/EventFlash';
 import { Tutorial } from '../components/HUD/Tutorial';
 import { GameModal } from '../components/HUD/GameModal';
+import { Toast } from '../components/HUD/Toast';
+import {
+  createAimLaser,
+  createNoiseRing,
+  createTargetMarker,
+  updateAimLaser,
+  updateNoiseRing,
+  updateTargetMarker,
+  type AimLaser,
+} from '../scenes/StealthCues';
+import { AIM_TIME_S } from '../systems/GuardAI';
 import { BossTimer } from '../components/HUD/BossTimer';
 import { logDebug } from '../util/debug';
 import { disposeSubtree } from '../util/dispose';
@@ -222,6 +241,21 @@ export function Game() {
     const radialMeter = createRadialMeter();
     r.worldRoot.add(radialMeter.group);
 
+    // Stealth readability cues (mount-once): hearing radius around the
+    // player and the crowbar target ring.
+    const noiseRing = createNoiseRing();
+    r.worldRoot.add(noiseRing.mesh);
+    const crowbarMarker = createTargetMarker();
+    r.worldRoot.add(crowbarMarker.mesh);
+    // Written by update(), read by render().
+    let noiseRadiusNow = 0;
+    let noiseLoudness = 0;
+    let crowbarTarget: { x: number; z: number } | null = null;
+    // Reused per-frame detection outputs.
+    const senseOut: DetectionResult = { visual: false, heard: false };
+    const guardSenses = new Map<number, GuardSenses>();
+    const nextDetection = new Map<number, number>();
+
     const siren: SirenHandle = createSiren();
     const pickupSounds: PickupSounds = createPickupSounds();
     // Background music. Initial volume picked from the store so a
@@ -265,6 +299,12 @@ export function Game() {
       // detect transitions into alert/investigate/chase so the pop
       // animation only fires on the leading edge.
       lastState: Guard['state'];
+      // Laser sight shown during the shot wind-up.
+      laser: AimLaser;
+      // Effective vision range this frame (drives the cone's length).
+      range: number;
+      // Summoned by a full camera alarm (removed on restart).
+      reinforcement: boolean;
     };
 
     type Scene = {
@@ -297,6 +337,39 @@ export function Game() {
       // loop counts down from it once gameplay is active.
       isBossArena: boolean;
       bossSurviveSeconds: number;
+      // Camera-alarm reinforcements spawned this segment, and whether
+      // the alarm was already full last frame (rising-edge detect).
+      reinforcements: number;
+      alarmWasFull: boolean;
+    };
+
+    // Build one guard (figure, equipment, marker, laser) under `root`.
+    const makeGuardEntry = (
+      root: THREE.Group,
+      cfg: { id: number; homeX: number; homeZ: number; homeRadius: number },
+      baseVisionRange: number,
+      reinforcement: boolean,
+    ): GuardEntry => {
+      const guard = createGuard(cfg);
+      const figure = createGuardFigure();
+      figure.group.position.set(guard.x, 0, guard.z);
+      root.add(figure.group);
+      const equipment = attachGuardEquipment(figure, baseVisionRange);
+      const marker = createGuardStateMarker();
+      figure.group.add(marker.group);
+      guard.mesh = figure.group;
+      const laser = createAimLaser();
+      root.add(laser.mesh);
+      return {
+        guard,
+        figure,
+        equipment,
+        marker,
+        lastState: guard.state,
+        laser,
+        range: baseVisionRange,
+        reinforcement,
+      };
     };
 
     // ---- Per-segment scene builder ----------------------------------
@@ -398,18 +471,8 @@ export function Game() {
       // unlocked them yet. Detection rates are bumped 30% inside
       // the arena too (see the `tuning` block in update()).
       const guardCount = guardCountFor(stage) + (isBossArena ? 3 : 0);
-      const guardEntries: GuardEntry[] = createGuardConfigs(guardCount, segLen).map(
-        (cfg) => {
-          const guard = createGuard(cfg);
-          const figure = createGuardFigure();
-          figure.group.position.set(guard.x, 0, guard.z);
-          root.add(figure.group);
-          const equipment = attachGuardEquipment(figure, baseVisionRange);
-          const marker = createGuardStateMarker();
-          figure.group.add(marker.group);
-          guard.mesh = figure.group;
-          return { guard, figure, equipment, marker, lastState: guard.state };
-        },
+      const guardEntries: GuardEntry[] = createGuardConfigs(guardCount, segLen).map((cfg) =>
+        makeGuardEntry(root, cfg, baseVisionRange, false),
       );
       const guards: Guard[] = guardEntries.map((e) => e.guard);
 
@@ -514,6 +577,8 @@ export function Game() {
         bossGuardId,
         isBossArena,
         bossSurviveSeconds: ARENA_SURVIVE_SECONDS,
+        reinforcements: 0,
+        alarmWasFull: false,
       };
     };
 
@@ -566,6 +631,8 @@ export function Game() {
 
     // Per-segment stats accumulators (stars input).
     const tracker = new RunTracker();
+    // Camera alarm level (0..1); mirrored to the store for the HUD.
+    let alarmLevel = 0;
     // Scratch map reused every frame for dog smell per handler.
     const dogSmellByHandler = new Map<number, number>();
     let lastSegmentSeed = useStore.getState().segmentSeed;
@@ -612,6 +679,57 @@ export function Game() {
     type FadingPickup = { mesh: THREE.Object3D; age: number };
     const fadingPickups: FadingPickup[] = [];
 
+    // Drop camera-alarm reinforcements (restart / new segment).
+    const removeReinforcements = () => {
+      if (scene.reinforcements === 0) return;
+      for (let i = scene.guardEntries.length - 1; i >= 0; i--) {
+        const e = scene.guardEntries[i];
+        if (!e.reinforcement) continue;
+        scene.root.remove(e.figure.group);
+        scene.root.remove(e.laser.mesh);
+        disposeSubtree(e.figure.group);
+        disposeSubtree(e.laser.mesh);
+        const arrow = scene.threatArrows[i];
+        scene.root.remove(arrow.mesh);
+        disposeSubtree(arrow.mesh);
+        scene.guardEntries.splice(i, 1);
+        scene.guards.splice(i, 1);
+        scene.threatArrows.splice(i, 1);
+        useStore.getState().setDetection(e.guard.id, 0);
+      }
+      scene.reinforcements = 0;
+    };
+
+    // Full camera alarm: dispatch a reinforcement guard from further
+    // up the yard toward where the cameras last saw the player.
+    const MAX_REINFORCEMENTS = 2;
+    const summonReinforcement = (sightX: number, sightZ: number): boolean => {
+      if (scene.reinforcements >= MAX_REINFORCEMENTS) return false;
+      const nav = scene.procgen.nav;
+      const side = scene.reinforcements % 2 === 0 ? 1 : -1;
+      const wantZ = Math.min(scene.segmentEndZ - 2, player.z + 22);
+      const cell = nav.nearestFree(side * (PLAY_HALF_W - 1.5), wantZ, 20);
+      if (!cell) return false;
+      const id = scene.guards.reduce((m, g) => Math.max(m, g.id), 0) + 1;
+      const x = nav.colX(cell.col);
+      const z = nav.rowZ(cell.row);
+      const entry = makeGuardEntry(
+        scene.root,
+        { id, homeX: x, homeZ: z, homeRadius: 6 },
+        scene.baseVisionRange,
+        true,
+      );
+      scene.guardEntries.push(entry);
+      scene.guards.push(entry.guard);
+      const arrow = createThreatArrow();
+      scene.root.add(arrow.mesh);
+      scene.threatArrows.push(arrow);
+      hearNoiseAt(entry.guard, sightX, sightZ);
+      useStore.getState().setDetection(id, 0.45);
+      scene.reinforcements++;
+      return true;
+    };
+
     const resetSegment = () => {
       tracker.reset();
       bossClock.arm(scene.isBossArena ? scene.bossSurviveSeconds : 0);
@@ -630,6 +748,7 @@ export function Game() {
       st.setStance('walk');
       st.setRunning(false);
       st.setStamina(1);
+      alarmLevel = 0;
       st.setAlarmLevel(0);
       for (const g of scene.guards) {
         g.x = g.homeX;
@@ -641,17 +760,18 @@ export function Game() {
         g.fireCooldown = 0;
         g.stunTimer = 0;
         resetNavState(g.nav);
+        resetGuardMemory(g);
         st.setDetection(g.id, 0);
       }
       // Reset dogs to their handler's spawn position and cancel
       // any chase state.
       for (const d of scene.dogs) {
         const handler = scene.guards.find((g) => g.id === d.handlerGuardId);
-        d.x = handler ? handler.x + 1 : 0;
-        d.z = handler ? handler.z : 1;
-        d.state = 'leash';
+        resetDog(d, handler ? handler.x + 1 : 0, handler ? handler.z : 1);
         setDogTransform(d);
       }
+      removeReinforcements();
+      scene.alarmWasFull = false;
       projectiles.clear();
       // Clear active smoke clouds and consume any pending pickup-use
       // flags so a tap right before a segment boundary doesn't
@@ -768,13 +888,12 @@ export function Game() {
         g.fireCooldown = 0;
         g.stunTimer = 0;
         resetNavState(g.nav);
+        resetGuardMemory(g);
         st.setDetection(g.id, 0);
       }
       for (const d of scene.dogs) {
         const handler = scene.guards.find((g) => g.id === d.handlerGuardId);
-        d.x = handler ? handler.x + 1 : 0;
-        d.z = handler ? handler.z : 1;
-        d.state = 'leash';
+        resetDog(d, handler ? handler.x + 1 : 0, handler ? handler.z : 1);
         // Snap the mesh to the new home position so the player
         // doesn't see the dog "teleport" a frame later when the
         // update loop's render pass picks up the change.
@@ -951,6 +1070,9 @@ export function Game() {
 
       if (st.runState !== 'playing' || st.paused) {
         projectiles.clear();
+        noiseRadiusNow = 0;
+        crowbarTarget = null;
+        for (const e of scene.guardEntries) e.guard.aimTimer = 0;
         // Silence the siren on pause / non-playing states so the
         // speaker doesn't keep wailing while the player is in menus.
         updateSiren(siren, 0, useStore.getState().masterVolume);
@@ -1027,7 +1149,7 @@ export function Game() {
 
       const staminaActive = staminaEnabledFor(st.stage);
       updatePlayer(player, scene.procgen.obstacles(), effDt, scene.segmentEndZ, staminaActive);
-      updateHide(player, scene.procgen.obstacles());
+      const nearCover = isNearCover(player, scene.procgen.obstacles());
       if (player.stance !== st.stance) st.setStance(player.stance);
       st.setStamina(player.stamina);
       // Exhaustion switches the RUN toggle off inside updatePlayer;
@@ -1085,7 +1207,11 @@ export function Game() {
       if (input.useCrowbar) {
         input.useCrowbar = false;
         if (st.consumePickup('crowbar')) {
-          const hit = applyCrowbarStun(player.x, player.z, scene.guards);
+          let hit = applyCrowbarStun(player.x, player.z, scene.guards);
+          // The swing also scares off any dog within reach.
+          for (const d of scene.dogs) {
+            if (scareDog(d, player.x, player.z, CROWBAR_RANGE + 0.5)) hit = true;
+          }
           const arc = createSwingArc(player.x, player.z, CROWBAR_RANGE);
           r.worldRoot.add(arc.mesh);
           swingArcs.push(arc);
@@ -1218,25 +1344,46 @@ export function Game() {
       // guard pass below can read the current level.
       const newAlarm =
         scene.cameras.length > 0
-          ? updateCameraAlarm(scene.cameras, player, scene.procgen.obstacles(), st.alarmLevel, effDt)
+          ? updateCameraAlarm(scene.cameras, player, scene.procgen.obstacles(), alarmLevel, effDt)
           : 0;
-      if (scene.cameras.length > 0) st.setAlarmLevel(newAlarm);
+      // The authoritative level lives here: the store setter coalesces
+      // sub-1% changes for the HUD, and feeding that coalesced value
+      // back in (as before) meant per-frame increments (~0.0015) were
+      // always dropped and the alarm could never fill.
+      alarmLevel = newAlarm;
+      st.setAlarmLevel(newAlarm);
       // While the alarm is full, scale every guard's effective
       // vision range up by 25% - readable as "the whole yard is
       // looking for you now."
       const alarmHot = newAlarm >= 1.0;
+      if (alarmHot && !scene.alarmWasFull) {
+        if (summonReinforcement(player.x, player.z)) {
+          st.showToast('ALARM! A guard has been dispatched', 'warn');
+          haptics.heartLost();
+        }
+        // Every guard hears the alarm and converges on the sighting.
+        for (const g of scene.guards) {
+          if (g.state !== 'chase') hearNoiseAt(g, player.x, player.z);
+        }
+      }
+      scene.alarmWasFull = alarmHot;
       const effectiveVisionRangeWithAlarm = alarmHot
         ? effectiveVisionRange * 1.25
         : effectiveVisionRange;
 
       // Pass 1: compute new detection for every guard, including
       // any dog smell contribution to the handler.
-      const nextDetection: Record<number, number> = {};
+      nextDetection.clear();
       let maxDetection = 0;
+      let anyVisual = false;
       let chaserGuard: Guard | null = null;
       // Every dog moves exactly once per frame here; leashed dogs
       // report smell for their handler's meter.
-      updateDogs(scene.dogs, scene.guards, player, effDt, dogSmellByHandler);
+      updateDogs(scene.dogs, scene.guards, player, effDt, dogSmellByHandler, {
+        grid: scene.procgen.nav,
+        obstacles: scene.procgen.obstacles(),
+        smoke: smokeRegions,
+      });
       for (const entry of scene.guardEntries) {
         const g = entry.guard;
         const prev = st.detection[g.id] ?? 0;
@@ -1259,7 +1406,13 @@ export function Game() {
         // so adding the bump *after* the function would never move
         // the meter. With the bump inside, decay is skipped on any
         // frame where lit / dog / searchlight is feeding the guard.
-        const externalBumps = stunned ? 0 : litAdd + dogSmell + searchlightBump;
+        // Floodlight and dog feeds now compete with decay whenever the
+        // guard can't see the player, so they're scaled up to stay
+        // meaningful; the searchlight jolt is a one-off and unscaled.
+        const externalBumps = stunned
+          ? 0
+          : (litAdd + dogSmell) * EXTERNAL_FEED_GAIN + searchlightBump;
+        entry.range = guardRange;
         const next = updateDetection(
           g,
           player,
@@ -1271,8 +1424,18 @@ export function Game() {
           weatherNoise,
           smokeRegions,
           externalBumps,
+          senseOut,
         );
-        nextDetection[g.id] = next;
+        nextDetection.set(g.id, next);
+        let sense = guardSenses.get(g.id);
+        if (!sense) {
+          sense = { visual: false, heard: false, aiTier };
+          guardSenses.set(g.id, sense);
+        }
+        sense.visual = senseOut.visual;
+        sense.heard = senseOut.heard;
+        sense.aiTier = aiTier;
+        if (senseOut.visual) anyVisual = true;
         if (next > maxDetection) maxDetection = next;
         if (next >= 1.0 && !chaserGuard) chaserGuard = g;
       }
@@ -1283,7 +1446,7 @@ export function Game() {
       // guard at the same investigation target.
       for (const entry of scene.guardEntries) {
         const g = entry.guard;
-        const next = nextDetection[g.id] ?? 0;
+        const next = nextDetection.get(g.id) ?? 0;
         st.setDetection(g.id, next);
         // Tier 3 broadcast: silent investigation cue for non-chasing
         // guards in earshot of the chaser.
@@ -1291,11 +1454,10 @@ export function Game() {
           const dx = g.x - chaserGuard.x;
           const dz = g.z - chaserGuard.z;
           if (dx * dx + dz * dz <= 400 /* 20m */) {
-            g.investigationTarget = { x: player.x, z: player.z };
-            if (g.state === 'wander' || g.state === 'return') {
-              g.state = 'investigate';
-              g.behaviorTimer = 0;
-            }
+            // Radio call-out: head for where the chaser last SAW the
+            // player, not the player's live position.
+            const spot = chaserGuard.lastSeen;
+            if (spot) hearNoiseAt(g, spot.x, spot.z);
           }
         }
         updateGuard(g, player, next, effDt, scene.procgen.obstacles(), (gFiring, tx, tz) => {
@@ -1317,8 +1479,38 @@ export function Game() {
             aimZ = tz + player.vz * lead;
           }
           projectiles.spawn(fx, fz, aimX, aimZ);
-        }, scene.procgen.nav);
+        }, scene.procgen.nav, guardSenses.get(g.id));
       }
+
+      // Tucked in safely: crouched by cover with no guard looking.
+      player.isHidden = nearCover && !anyVisual;
+
+      // Noise ring: how far the current action carries.
+      noiseRadiusNow = noiseRadius(player, tuning, weatherNoise);
+      noiseLoudness = noiseRadiusNow > 0 ? Math.min(1, baseNoisePerSecond(player) / 0.8) : 0;
+
+      // Crowbar reach: nearest un-stunned guard or active dog in range.
+      crowbarTarget = null;
+      if (st.inventory.crowbar > 0) {
+        let best = CROWBAR_RANGE_SQ;
+        for (const g of scene.guards) {
+          if (g.stunTimer > 0) continue;
+          const dSq = (g.x - player.x) ** 2 + (g.z - player.z) ** 2;
+          if (dSq <= best) {
+            best = dSq;
+            crowbarTarget = g;
+          }
+        }
+        for (const d of scene.dogs) {
+          if (d.state === 'flee') continue;
+          const dSq = (d.x - player.x) ** 2 + (d.z - player.z) ** 2;
+          if (dSq <= best) {
+            best = dSq;
+            crowbarTarget = d;
+          }
+        }
+      }
+      st.setCrowbarInRange(crowbarTarget !== null);
 
       // Sustained "!" markers above each guard. Priority order:
       //   stunned  -> red    (knocked out by crowbar)
@@ -1398,7 +1590,7 @@ export function Game() {
         return;
       }
 
-      if (projectiles.update(effDt, player)) {
+      if (projectiles.update(effDt, player, scene.procgen.obstacles())) {
         handleCatch('killed');
         return;
       }
@@ -1425,7 +1617,13 @@ export function Game() {
     };
 
 
+    // Wall-clock delta between rendered frames, for purely visual
+    // smoothing that must not assume 60 fps.
+    let lastRenderMs = 0;
     const render = (_alpha: number) => {
+      const nowMs = Date.now();
+      const renderDt = lastRenderMs ? Math.min(0.1, (nowMs - lastRenderMs) / 1000) : 1 / 60;
+      lastRenderMs = nowMs;
       // Day/night cycle: applyDynamicLighting writes a smoothly
       // blended palette into the renderer + scene each frame so the
       // world fades through bright -> dusk -> night -> dawn -> ...
@@ -1497,6 +1695,9 @@ export function Game() {
         if (stunProgress === undefined) {
           poseGuardArms(fig);
           entry.equipment.beam.visible = true;
+          // Cone length tracks the guard's real effective range (lit,
+          // weather, alarm, boss guard) instead of the stage base.
+          entry.equipment.beam.scale.setScalar(entry.range / scene.baseVisionRange);
         } else {
           entry.equipment.beam.visible = false;
         }
@@ -1505,7 +1706,9 @@ export function Game() {
         // figure rotates around Y by figure.group.rotation.y; we
         // negate that on the marker's own Y rotation.
         entry.marker.group.rotation.y = -fig.group.rotation.y;
-        updateGuardStateMarker(entry.marker, 1 / 60);
+        entry.equipment.pistol.getWorldPosition(tmpVec);
+        updateAimLaser(entry.laser, tmpVec, player.x, player.z, g.aimTimer / AIM_TIME_S, animTime);
+        updateGuardStateMarker(entry.marker, renderDt);
       }
 
       // Radial meter follows the player; lit by the highest detection.
@@ -1517,6 +1720,8 @@ export function Game() {
         if (v > maxDetection) maxDetection = v;
       }
       updateRadialMeter(radialMeter, maxDetection);
+      updateNoiseRing(noiseRing, player.x, player.z, noiseRadiusNow, noiseLoudness, animTime, renderDt);
+      updateTargetMarker(crowbarMarker, crowbarTarget, animTime);
 
       for (let i = 0; i < scene.guards.length; i++) {
         const g = scene.guards[i];
@@ -1570,6 +1775,7 @@ export function Game() {
       <SettingsScreen />
       <Tutorial />
       <GameModal />
+      <Toast />
     </View>
   );
 }

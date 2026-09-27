@@ -146,3 +146,81 @@ export function anyObstacleHitsCircle(
   }
   return false;
 }
+
+// Does the segment A->B pass through the obstacle's footprint? Used
+// for line of sight and bullets so both respect the same silhouettes
+// the player collides with (OBB for elongated props). `shrink` pulls
+// the footprint in slightly so grazing an edge doesn't count.
+export function segmentHitsObstacle(
+  o: Obstacle,
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  shrink: number = 0,
+): boolean {
+  if (o.halfW !== undefined && o.halfL !== undefined && o.rotY !== undefined) {
+    const hw = o.halfW - shrink;
+    const hl = o.halfL - shrink;
+    if (hw <= 0 || hl <= 0) return false;
+    const cosR = Math.cos(-o.rotY);
+    const sinR = Math.sin(-o.rotY);
+    const ax0 = ax - o.x;
+    const az0 = az - o.z;
+    const bx0 = bx - o.x;
+    const bz0 = bz - o.z;
+    const lax = ax0 * cosR - az0 * sinR;
+    const laz = ax0 * sinR + az0 * cosR;
+    const lbx = bx0 * cosR - bz0 * sinR;
+    const lbz = bx0 * sinR + bz0 * cosR;
+    // Liang-Barsky slab clip against [-hw,hw] x [-hl,hl].
+    let t0 = 0;
+    let t1 = 1;
+    const dx = lbx - lax;
+    const dz = lbz - laz;
+    const clip = (p: number, q: number): boolean => {
+      if (p === 0) return q >= 0;
+      const t = q / p;
+      if (p < 0) {
+        if (t > t1) return false;
+        if (t > t0) t0 = t;
+      } else {
+        if (t < t0) return false;
+        if (t < t1) t1 = t;
+      }
+      return true;
+    };
+    return (
+      clip(-dx, lax + hw) &&
+      clip(dx, hw - lax) &&
+      clip(-dz, laz + hl) &&
+      clip(dz, hl - laz) &&
+      t0 <= t1
+    );
+  }
+  const r = o.r - shrink;
+  if (r <= 0) return false;
+  return !lineOfSightClear(ax, az, bx, bz, [{ x: o.x, z: o.z, r }]);
+}
+
+// True if no obstacle at least `minHeight` tall blocks A->B.
+export function clearLine(
+  obstacles: readonly Obstacle[],
+  ax: number,
+  az: number,
+  bx: number,
+  bz: number,
+  minHeight: number,
+  shrink: number = 0.05,
+): boolean {
+  const loX = Math.min(ax, bx);
+  const hiX = Math.max(ax, bx);
+  const loZ = Math.min(az, bz);
+  const hiZ = Math.max(az, bz);
+  for (const o of obstacles) {
+    if (o.height < minHeight) continue;
+    if (o.x + o.r < loX || o.x - o.r > hiX || o.z + o.r < loZ || o.z - o.r > hiZ) continue;
+    if (segmentHitsObstacle(o, ax, az, bx, bz, shrink)) return false;
+  }
+  return true;
+}

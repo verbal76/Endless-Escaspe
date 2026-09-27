@@ -157,6 +157,19 @@ export type Guard = {
   stunTimer: number;
   // Path-following state (see Navigator.ts).
   nav: NavState;
+  // Perception memory. lastSeen is only written while the guard has
+  // real line of sight; lastHeard is a fuzzy fix from noise. The AI
+  // pursues these, never the player's live position when blind.
+  lastSeen: { x: number; z: number } | null;
+  lastHeard: { x: number; z: number } | null;
+  sinceSeen: number;
+  hearTimer: number;
+  // Tier-2 look-and-scan after losing sight.
+  lookTimer: number;
+  lookBase: number;
+  // Shot wind-up progress (seconds). > 0 means the guard is aiming
+  // and the laser telegraph is visible.
+  aimTimer: number;
   mesh: Object3D | null;
   visionMesh: Object3D | null;
 };

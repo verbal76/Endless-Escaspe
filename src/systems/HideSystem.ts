@@ -1,23 +1,18 @@
 import type { Obstacle, Player } from '../types/world';
 import { dist2Sq } from '../util/math';
 
-const HIDE_RANGE_SQ = 2.5 * 2.5;
+const NEAR_COVER_SQ = 2.5 * 2.5;
 
-// Hidden-from-guards: the player is in CROUCH stance (low profile)
-// AND close enough to a cover obstacle that it masks them. The
-// detection system's line-of-sight raycasts still do the heavy
-// lifting; this flag exposes the state to HUD subscribers.
-export function updateHide(p: Player, obstacles: readonly Obstacle[]) {
-  if (!p.isCrouched) {
-    p.isHidden = false;
-    return;
-  }
+// Is the player crouched close to a cover-height prop? This no longer
+// hides the player on its own - cover is directional and handled by
+// line of sight in DetectionSystem. The game loop combines this with
+// "no guard can currently see you" to drive player.isHidden, which the
+// HUD / figure pose use to show that the player is tucked in safely.
+export function isNearCover(p: Player, obstacles: readonly Obstacle[]): boolean {
+  if (!p.isCrouched) return false;
   for (const o of obstacles) {
-    if (!o.isCover) continue;
-    if (dist2Sq(p.x, p.z, o.x, o.z) <= HIDE_RANGE_SQ) {
-      p.isHidden = true;
-      return;
-    }
+    if (o.height < 1.0) continue;
+    if (dist2Sq(p.x, p.z, o.x, o.z) <= NEAR_COVER_SQ + o.r * o.r) return true;
   }
-  p.isHidden = false;
+  return false;
 }

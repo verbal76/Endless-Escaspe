@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
-import type { Guard, Player } from '../types/world';
+import type { Guard, Obstacle, Player } from '../types/world';
+import type { NavGrid } from '../systems/NavGrid';
+import { createNavState, navigateToward, resetNavState, type NavState } from '../systems/Navigator';
+import type { SmokeRegion } from '../systems/DetectionSystem';
 import { dist2Sq } from '../util/math';
 import { PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
@@ -12,8 +15,11 @@ import { getVehicleColormap } from '../util/textures';
 // - "Smells" the player out to SMELL_RADIUS regardless of
 //   line-of-sight; a scaled fraction of that smell is added to the
 //   handler guard's detection meter every frame.
-// - When the handler enters chase, the dog detaches and runs the
-//   player down at a higher top speed than the guards.
+// - When the handler enters chase (or the player gets too close) the
+//   dog detaches and runs the player down, pathing around props.
+// - Escapable: a sprinting player outruns it, it gives up at range
+//   or after a while without closing in, smoke makes it lose the
+//   scent, and a crowbar swing scares it off.
 // - On reaching the player it costs a heart (caller handles the
 //   collision check via dogHits()).
 //
@@ -93,11 +99,36 @@ const SMELL_RADIUS_SQ = SMELL_RADIUS * SMELL_RADIUS;
 const SMELL_RATE = 0.25;
 
 const DOG_PATROL_SPEED = 2.2;
-const DOG_CHASE_SPEED = 7.5;
+// Faster than a walking or crouching player, slower than a sprint
+// (7.0 m/s): a running player can always open distance.
+export const DOG_CHASE_SPEED = 5.6;
+const DOG_RETURN_SPEED = 3.4;
+const DOG_FLEE_SPEED = 6.0;
+// A dog gives up when the player gets this far ahead...
+export const DOG_GIVE_UP_DIST = 15;
+// ...or when its sprint burst runs out. Sized so that from stage 5
+// (stamina-limited sprints, ~3.3 s) a sprint followed by walking
+// still escapes: the sprint opens ~4.6 m and the dog then needs >6 s
+// to close it again. A player who never runs gets caught.
+export const DOG_CHASE_BURST_S = 6;
+// Standing next to a leashed dog tips it off; crouching lets you
+// slip closer.
+export const DOG_TRIGGER_STANDING = 3.8;
+export const DOG_TRIGGER_CROUCHED = 2.2;
+export const DOG_CONFUSED_S = 3.5;
+export const DOG_FLEE_S = 4;
+// After losing the scent the dog won't re-engage for this long.
+const DOG_REENGAGE_COOLDOWN_S = 4;
+const DOG_RADIUS = 0.4;
 
 export const DOG_HIT_RADIUS = 0.45;
 
-type DogState = 'leash' | 'chase';
+// leash    - trailing the handler, sniffing (feeds handler's meter)
+// chase    - running the player down
+// confused - lost the scent in smoke; sniffs around aimlessly
+// flee     - scared off by a crowbar swing
+// return   - trotting back to the handler
+export type DogState = 'leash' | 'chase' | 'confused' | 'flee' | 'return';
 
 export type Dog = {
   id: number;
@@ -106,6 +137,13 @@ export type Dog = {
   z: number;
   facing: number;
   state: DogState;
+  stateTimer: number;
+  // Seconds spent in the current chase burst.
+  sinceClose: number;
+  cooldown: number;
+  wanderX: number;
+  wanderZ: number;
+  nav: NavState;
   group: THREE.Group;
 };
 
@@ -123,58 +161,173 @@ export function createDog(id: number, handlerGuardId: number, x: number, z: numb
   }
   group.scale.setScalar(DOG_SCALE);
   group.position.set(x, 0, z);
-  return { id, handlerGuardId, x, z, facing: 0, state: 'leash', group };
+  return {
+    id,
+    handlerGuardId,
+    x,
+    z,
+    facing: 0,
+    state: 'leash',
+    stateTimer: 0,
+    sinceClose: 0,
+    cooldown: 0,
+    wanderX: x,
+    wanderZ: z,
+    nav: createNavState(),
+    group,
+  };
 }
 
-function moveToward(d: Dog, tx: number, tz: number, speed: number, dt: number) {
-  const dx = tx - d.x;
-  const dz = tz - d.z;
-  const len = Math.hypot(dx, dz);
-  if (len < 0.01) return;
-  const nx = d.x + (dx / len) * speed * dt;
-  const nz = d.z + (dz / len) * speed * dt;
-  d.x = Math.max(-PLAY_HALF_W + 0.5, Math.min(PLAY_HALF_W - 0.5, nx));
-  d.z = nz;
-  d.facing = Math.atan2(dx, dz);
+// Dogs face along +Z-forward models: facing = atan2(dx, dz).
+const dogFacing = (dx: number, dz: number) => Math.atan2(dx, dz);
+
+function setDogState(d: Dog, next: DogState, timer: number = 0) {
+  d.state = next;
+  d.stateTimer = timer;
+  d.sinceClose = 0;
+  resetNavState(d.nav);
 }
 
-// Update the dog AI for one frame. Caller passes the handler guard
-// (looked up via handlerGuardId) so the dog can either trail it or,
-// if the guard is chasing, cut loose and run the player down.
-//
-// Returns the smell contribution for *this* frame so the caller can
-// add it onto the handler guard's detection meter. Returns 0 when
-// the dog has detached into chase (the dog itself is the threat at
-// that point; smell stops mattering).
-export function updateDog(d: Dog, handler: Guard | undefined, p: Player, dt: number): number {
-  // Detach into chase when the handler does, OR when the player
-  // walks into the smell radius. Otherwise trail the handler at a
-  // small offset.
+export function resetDog(d: Dog, x: number, z: number) {
+  d.x = x;
+  d.z = z;
+  d.cooldown = 0;
+  setDogState(d, 'leash');
+}
+
+function inSmoke(regions: readonly SmokeRegion[], x: number, z: number): boolean {
+  for (const r of regions) {
+    const dx = x - r.x;
+    const dz = z - r.z;
+    if (dx * dx + dz * dz <= r.radius * r.radius) return true;
+  }
+  return false;
+}
+
+export type DogWorld = {
+  grid: NavGrid | null;
+  obstacles: readonly Obstacle[];
+  smoke: readonly SmokeRegion[];
+};
+
+const EMPTY_WORLD: DogWorld = { grid: null, obstacles: [], smoke: [] };
+
+function go(d: Dog, tx: number, tz: number, speed: number, dt: number, w: DogWorld): boolean {
+  return navigateToward(d, tx, tz, speed, dt, w.grid, w.obstacles, {
+    radius: DOG_RADIUS,
+    repathEvery: d.state === 'chase' ? 0.35 : undefined,
+    facingFn: dogFacing,
+  });
+}
+
+// Update the dog AI for one frame. Returns the smell contribution for
+// the handler's detection meter this frame (only while leashed).
+export function updateDog(
+  d: Dog,
+  handler: Guard | undefined,
+  p: Player,
+  dt: number,
+  w: DogWorld = EMPTY_WORLD,
+): number {
+  d.cooldown = Math.max(0, d.cooldown - dt);
+  d.stateTimer = Math.max(0, d.stateTimer - dt);
   const dSq = dist2Sq(d.x, d.z, p.x, p.z);
-  if (handler && handler.state === 'chase') {
-    d.state = 'chase';
-  } else if (d.state === 'leash' && dSq <= SMELL_RADIUS_SQ * 0.18) {
-    // Standing next to a dog tips them off even without their
-    // handler reacting. (Smell-radius * sqrt(0.18) ~= 38% of full.)
-    d.state = 'chase';
+  const playerHiddenBySmoke = inSmoke(w.smoke, p.x, p.z) || inSmoke(w.smoke, d.x, d.z);
+
+  // Engage.
+  if ((d.state === 'leash' || d.state === 'return') && d.cooldown <= 0 && !playerHiddenBySmoke) {
+    const trigger = p.isCrouched ? DOG_TRIGGER_CROUCHED : DOG_TRIGGER_STANDING;
+    const handlerChasing = !!handler && handler.state === 'chase' && dSq <= DOG_GIVE_UP_DIST * DOG_GIVE_UP_DIST;
+    if (handlerChasing || dSq <= trigger * trigger) setDogState(d, 'chase');
   }
 
-  if (d.state === 'chase') {
-    moveToward(d, p.x, p.z, DOG_CHASE_SPEED, dt);
-  } else if (handler) {
-    // Trail position: 1m to the side of the handler, on whichever
-    // side leaves the dog inside the playfield.
-    const offset = handler.x < 0 ? 1 : -1;
-    moveToward(d, handler.x + offset, handler.z, DOG_PATROL_SPEED, dt);
+  switch (d.state) {
+    case 'chase': {
+      if (playerHiddenBySmoke) {
+        // Smoke kills the scent: the dog loses track and sniffs around.
+        setDogState(d, 'confused', DOG_CONFUSED_S);
+        d.wanderX = d.x;
+        d.wanderZ = d.z;
+        break;
+      }
+      d.sinceClose += dt;
+      if (dSq > DOG_GIVE_UP_DIST * DOG_GIVE_UP_DIST || d.sinceClose > DOG_CHASE_BURST_S) {
+        setDogState(d, 'return');
+        d.cooldown = DOG_REENGAGE_COOLDOWN_S;
+        break;
+      }
+      go(d, p.x, p.z, DOG_CHASE_SPEED, dt, w);
+      break;
+    }
+    case 'confused': {
+      // Short aimless sniffing hops around where the scent was lost.
+      if (Math.hypot(d.wanderX - d.x, d.wanderZ - d.z) < 0.4) {
+        const a = Math.random() * Math.PI * 2;
+        d.wanderX = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, d.x + Math.cos(a) * 2));
+        d.wanderZ = d.z + Math.sin(a) * 2;
+      }
+      if (!go(d, d.wanderX, d.wanderZ, 1.6, dt, w)) {
+        d.wanderX = d.x;
+        d.wanderZ = d.z;
+      }
+      if (d.stateTimer <= 0) {
+        setDogState(d, 'return');
+        d.cooldown = DOG_REENGAGE_COOLDOWN_S;
+      }
+      break;
+    }
+    case 'flee': {
+      const dx = d.x - p.x;
+      const dz = d.z - p.z;
+      const len = Math.hypot(dx, dz) || 1;
+      if (!go(d, d.x + (dx / len) * 4, d.z + (dz / len) * 4, DOG_FLEE_SPEED, dt, w)) {
+        // Cornered: bolt sideways instead.
+        go(d, d.x - (dz / len) * 4, d.z + (dx / len) * 4, DOG_FLEE_SPEED, dt, w);
+      }
+      if (d.stateTimer <= 0) {
+        setDogState(d, 'return');
+        d.cooldown = DOG_REENGAGE_COOLDOWN_S;
+      }
+      break;
+    }
+    case 'return': {
+      if (!handler) {
+        setDogState(d, 'leash');
+        break;
+      }
+      const offset = handler.x < 0 ? 1 : -1;
+      const ok = go(d, handler.x + offset, handler.z, DOG_RETURN_SPEED, dt, w);
+      if (!ok || dist2Sq(d.x, d.z, handler.x + offset, handler.z) < 1.5) setDogState(d, 'leash');
+      break;
+    }
+    case 'leash':
+    default: {
+      if (handler) {
+        // Trail position: 1m to the side of the handler, on whichever
+        // side leaves the dog inside the playfield.
+        const offset = handler.x < 0 ? 1 : -1;
+        go(d, handler.x + offset, handler.z, DOG_PATROL_SPEED, dt, w);
+      }
+      break;
+    }
   }
 
   // Smell contribution to the handler's detection meter only while
   // still on leash.
-  if (d.state === 'leash' && handler && dSq <= SMELL_RADIUS_SQ) {
+  if (d.state === 'leash' && handler && dSq <= SMELL_RADIUS_SQ && !playerHiddenBySmoke) {
     const proximity = 1 - dSq / SMELL_RADIUS_SQ;
     return SMELL_RATE * proximity * dt;
   }
   return 0;
+}
+
+// Crowbar swing within reach sends the dog running. Returns true if
+// the dog was scared off.
+export function scareDog(d: Dog, px: number, pz: number, reach: number): boolean {
+  if (dist2Sq(d.x, d.z, px, pz) > reach * reach) return false;
+  setDogState(d, 'flee', DOG_FLEE_S);
+  d.cooldown = DOG_FLEE_S + DOG_REENGAGE_COOLDOWN_S;
+  return true;
 }
 
 export function setDogTransform(d: Dog) {
@@ -183,6 +336,7 @@ export function setDogTransform(d: Dog) {
 }
 
 export function dogHits(d: Dog, p: Player): boolean {
+  if (d.state !== 'chase') return false;
   return dist2Sq(d.x, d.z, p.x, p.z) <= DOG_HIT_RADIUS * DOG_HIT_RADIUS;
 }
 
@@ -192,13 +346,14 @@ export function dogHits(d: Dog, p: Player): boolean {
 // Previously dogs were ticked from two places - the per-guard
 // detection pass (every dog of that handler, whatever its state) and
 // a later "detached dogs" pass (every chasing dog) - so a chasing dog
-// moved twice per frame, covering ~15 m/s instead of 7.5.
+// moved twice per frame, covering ~15 m/s instead of its chase speed.
 export function updateDogs(
   dogs: readonly Dog[],
   guards: readonly Guard[],
   p: Player,
   dt: number,
   out: Map<number, number>,
+  w: DogWorld = EMPTY_WORLD,
 ): Map<number, number> {
   out.clear();
   for (const d of dogs) {
@@ -206,7 +361,7 @@ export function updateDogs(
     // A crowbar-stunned handler holds the leash still: the dog stays
     // put and contributes no smell until the handler gets up.
     if (d.state === 'leash' && handler && handler.stunTimer > 0) continue;
-    const smell = updateDog(d, handler, p, dt);
+    const smell = updateDog(d, handler, p, dt, w);
     if (handler && smell > 0) out.set(handler.id, (out.get(handler.id) ?? 0) + smell);
   }
   return out;

@@ -14,6 +14,9 @@ import { buildNavGrid } from '../src/systems/NavGrid';
 import { ProcgenSystem, NAV_CELL, NAV_INFLATE } from '../src/systems/ProcgenSystem';
 import type { Obstacle } from '../src/types/world';
 
+// These are pathing tests: the chaser is told it can see its target.
+const SEEN = { visual: true, heard: false, aiTier: 1 };
+
 const DT = 1 / 60;
 
 test('bug 1: razor wire - a player pressed against the fence counts as touching it', () => {
@@ -110,7 +113,7 @@ test('bug 6: a guard inside a U-shaped pocket paths out instead of freezing', ()
   p.z = 16;
   let reached = false;
   for (let i = 0; i < 60 * 12; i++) {
-    updateGuard(g, p, 1, DT, obs, undefined, grid);
+    updateGuard(g, p, 1, DT, obs, undefined, grid, SEEN);
     if (Math.hypot(g.x - p.x, g.z - p.z) < 1.2) {
       reached = true;
       break;
@@ -134,7 +137,7 @@ test('bug 6: chasing guards reach a stationary player across generated layouts',
     g.state = 'chase';
     let ok = false;
     for (let i = 0; i < 60 * 40; i++) {
-      updateGuard(g, p, 1, DT, pg.obstacles(), undefined, nav);
+      updateGuard(g, p, 1, DT, pg.obstacles(), undefined, nav, SEEN);
       if (Math.hypot(g.x - p.x, g.z - p.z) < 1.3) {
         ok = true;
         break;

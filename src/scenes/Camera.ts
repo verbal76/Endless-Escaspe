@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Obstacle, Player } from '../types/world';
-import { lineOfSightClear, type Circle } from '../util/collision';
+import { clearLine } from '../util/collision';
 import { dist2Sq } from '../util/math';
 import { PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
@@ -8,9 +8,10 @@ import { markShared } from '../util/dispose';
 // Wall-mounted security camera. Pointed inwards from one of the
 // fence sides, fixed in place, narrow cone, no kill range. Detection
 // from cameras feeds a separate "yard alarm" bar (store.alarmLevel)
-// rather than per-guard detection. When the alarm hits 1.0 it
-// summons an extra guard for the rest of the run by raising the
-// effective threat level on existing guards.
+// rather than per-guard detection. When the alarm fills, Game.tsx
+// dispatches a reinforcement guard toward the sighting (up to two per
+// segment), every guard hears the alarm and converges on the spot,
+// and guard vision is boosted while the bar stays full.
 
 export const CAM_RANGE = 11;
 export const CAM_HALF_ANGLE_RAD = (35 * Math.PI) / 180; // 70deg cone
@@ -129,11 +130,9 @@ function cameraSeesPlayer(
   while (d > Math.PI) d -= Math.PI * 2;
   while (d < -Math.PI) d += Math.PI * 2;
   if (Math.abs(d) > CAM_HALF_ANGLE_RAD) return false;
-  // Cover blocks cameras the same way it blocks guards.
-  const blockers: Circle[] = obstacles
-    .filter((o) => o.height >= 1.0)
-    .map((o) => ({ x: o.x, z: o.z, r: o.r * 0.85 }));
-  return lineOfSightClear(c.x, c.z, p.x, p.z, blockers);
+  // Cover blocks cameras the same way it blocks guards (real prop
+  // footprints; crouched players hide behind hip-height props).
+  return clearLine(obstacles, c.x, c.z, p.x, p.z, p.isCrouched ? 0.3 : 1.0);
 }
 
 // Per-frame alarm-bar update. Returns the new level (0..1). Caller

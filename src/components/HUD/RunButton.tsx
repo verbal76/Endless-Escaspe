@@ -12,8 +12,10 @@ import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
 
 // RUN is a speed-toggle that doubles whatever stance speed is active.
-// Placed up-and-left of the joystick so the player's left thumb can
-// reach it without their eye leaving the action.
+// Lives in the right-hand action cluster (left of the CROUCH / WALK
+// column) so the left thumb stays free for the floating joystick.
+// While exhausted the button is dimmed and taps are ignored by the
+// controller until stamina recovers.
 //
 // Uses Gesture.Tap so a second-finger tap during a joystick Pan
 // fires reliably; Pressable shares the responder pipeline with the
@@ -72,12 +74,11 @@ export function RunButton() {
 const styles = StyleSheet.create({
   btn: {
     position: 'absolute',
-    // Right of the joystick. Joystick lives at left:30, bottom:40,
-    // size 130 - so its right edge is x=160. Put RUN to its right
-    // and slightly above so it's reachable by the left thumb without
-    // overlapping the joystick gesture area.
-    left: 180,
-    bottom: 60,
+    // Right-hand cluster: the stance column sits at right:63 (78 wide,
+    // bottom 100..220). RUN goes just left of it, centred on the
+    // column, clear of the look arrows below (bottom 30).
+    right: 63 + 78 + 14,
+    bottom: 125,
     width: 70,
     height: 70,
     borderRadius: 35,

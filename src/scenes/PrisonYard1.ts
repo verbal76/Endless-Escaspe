@@ -78,6 +78,13 @@ export function createGuard(cfg: GuardConfig): Guard {
     fireCooldown: 0,
     stunTimer: 0,
     nav: createNavState(),
+    lastSeen: null,
+    lastHeard: null,
+    sinceSeen: 999,
+    hearTimer: 0,
+    lookTimer: 0,
+    lookBase: 0,
+    aimTimer: 0,
     mesh: null,
     visionMesh: null,
   };

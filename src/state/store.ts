@@ -136,6 +136,16 @@ type Store = {
   // a new segment starts; mirrored to / from the game loop via the
   // setters below.
   inventory: Inventory;
+  // True while a crowbar is carried and something (guard or dog) is
+  // inside swing range; the crowbar slot glows to match the in-world
+  // target ring.
+  crowbarInRange: boolean;
+  // Short in-game notice (camera alarm dispatch, tutorial prompts).
+  // `id` changes on every post so repeated text still re-animates.
+  toast: { id: number; text: string; tone: 'info' | 'warn' | 'tip' } | null;
+  setCrowbarInRange: (b: boolean) => void;
+  showToast: (text: string, tone?: 'info' | 'warn' | 'tip') => void;
+  clearToast: () => void;
   setRunState: (s: RunState) => void;
   setHearts: (n: number) => void;
   setDetection: (id: number, v: number) => void;
@@ -210,6 +220,13 @@ export const useStore = create<Store>((set) => ({
   catchCounter: 0,
   bestStars: {},
   inventory: { ...EMPTY_INVENTORY },
+  crowbarInRange: false,
+  toast: null,
+  setCrowbarInRange: (b) =>
+    set((st) => (st.crowbarInRange === b ? st : { crowbarInRange: b })),
+  showToast: (text, tone = 'info') =>
+    set((st) => ({ toast: { id: (st.toast?.id ?? 0) + 1, text, tone } })),
+  clearToast: () => set((st) => (st.toast === null ? st : { toast: null })),
   setRunState: (s) => set({ runState: s }),
   setHearts: (n) => set({ hearts: n }),
   setDetection: (id, v) =>

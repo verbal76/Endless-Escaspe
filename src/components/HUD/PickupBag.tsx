@@ -77,7 +77,7 @@ function SmokeIcon({ tint }: { tint: string }) {
   );
 }
 
-function PickupSlot({ slot, count }: { slot: Slot; count: number }) {
+function PickupSlot({ slot, count, highlight }: { slot: Slot; count: number; highlight: boolean }) {
   const empty = count <= 0;
   const pressed = useSharedValue(0);
 
@@ -122,6 +122,8 @@ function PickupSlot({ slot, count }: { slot: Slot; count: number }) {
         style={[
           styles.btn,
           !empty && { borderColor: slot.border, backgroundColor: slot.active },
+          // Target in swing range: gold ring matching the world marker.
+          highlight && styles.inRange,
           style,
         ]}
       >
@@ -140,12 +142,18 @@ function PickupSlot({ slot, count }: { slot: Slot; count: number }) {
 export function PickupBag() {
   const inventory = useStore((s) => s.inventory);
   const runState = useStore((s) => s.runState);
+  const crowbarInRange = useStore((s) => s.crowbarInRange);
   if (runState !== 'playing') return null;
 
   return (
     <View style={styles.col}>
       {SLOTS.map((slot) => (
-        <PickupSlot key={slot.kind} slot={slot} count={inventory[slot.kind]} />
+        <PickupSlot
+          key={slot.kind}
+          slot={slot}
+          count={inventory[slot.kind]}
+          highlight={slot.kind === 'crowbar' && crowbarInRange && inventory.crowbar > 0}
+        />
       ))}
     </View>
   );
@@ -172,6 +180,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  inRange: {
+    borderColor: '#ffd14a',
+    borderWidth: 2,
   },
   count: {
     color: 'rgba(255,255,255,0.95)',

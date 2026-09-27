@@ -1,4 +1,5 @@
 import { dist2Sq } from './math';
+import type { Obstacle } from '../types/world';
 
 export type Circle = { x: number; z: number; r: number };
 
@@ -117,4 +118,31 @@ export function lineOfSightClear(
     if ((t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1)) return false;
   }
   return true;
+}
+
+// Real-footprint overlap test for a circular mover against one
+// obstacle: circle-vs-OBB for elongated props (cars, barriers,
+// dumpsters), circle-vs-circle otherwise. Shared by the player, the
+// guards and the dogs so everything collides with the same shapes
+// the navigation grid rasterises.
+export function obstacleHitsCircle(o: Obstacle, x: number, z: number, r: number): boolean {
+  if (o.halfW !== undefined && o.halfL !== undefined && o.rotY !== undefined) {
+    // Cheap reject before the rotation maths.
+    const reach = o.r + r;
+    if (Math.abs(o.x - x) > reach || Math.abs(o.z - z) > reach) return false;
+    return circleHitObb({ x, z, r }, { x: o.x, z: o.z, halfW: o.halfW, halfL: o.halfL, rotY: o.rotY });
+  }
+  return circleHit({ x, z, r }, { x: o.x, z: o.z, r: o.r });
+}
+
+export function anyObstacleHitsCircle(
+  obstacles: readonly Obstacle[],
+  x: number,
+  z: number,
+  r: number,
+): boolean {
+  for (const o of obstacles) {
+    if (obstacleHitsCircle(o, x, z, r)) return true;
+  }
+  return false;
 }

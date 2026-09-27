@@ -15,6 +15,7 @@ import {
   buildObstacleMesh,
 } from '../scenes/Obstacles';
 import { PICKUP_RADIUS, buildPickupMesh } from '../scenes/Pickup';
+import { NavGrid, type Cell } from './NavGrid';
 
 let nextObstacleId = 1;
 let nextChunkId = 1;
@@ -23,13 +24,6 @@ let nextPickupId = 1;
 const SPAWN_X_MIN = -PLAY_HALF_W + 0.7;
 const SPAWN_X_MAX = PLAY_HALF_W - 0.7;
 const SPACING_BUFFER = 0.6; // extra metres on top of (a.r + b.r)
-const SLAB_STEP = 1.0;
-const SLAB_HALF_DEPTH = 1.2;
-// Player needs at minimum a 2.5 m wide corridor at every Z slab.
-// (Bumped from PLAYER_RADIUS*4 = 1.6 m: with the larger Kenney prop
-// footprints + 2.7 m car radius two cars at opposite walls used to
-// leave a barely-1.6 m gap that read visually as a wall.)
-const REQUIRED_GAP_W = 2.5;
 
 // Distance gate. The optional `seam` list lets the caller include
 // obstacles from the previous chunk so the check spans the chunk
@@ -193,55 +187,35 @@ function placeCoverScatter(
   }
 }
 
-// Sweep across Z slabs; require at least one X-window of width
-// REQUIRED_GAP_W that is free of non-cover obstacles. Cover blocks
-// are pass-through, so they don't count as obstructions.
-//
-// Slab inclusion uses each obstacle's actual Z extent (z +/- r) vs
-// the slab's half-depth. The earlier center-only check missed big
-// props like the 2.7 m radius cars: a car at z=10 spans z=7.3..12.7
-// but the old test only included it in slabs within +/- 1.2 m of
-// z=10, so two cars at offset Z could collude to block the corridor
-// without a single slab seeing both.
-function isSolvable(obstacles: Obstacle[], startZ: number, endZ: number): boolean {
-  for (let z = startZ; z <= endZ; z += SLAB_STEP) {
-    const blockers: Array<{ lo: number; hi: number }> = [];
-    for (const o of obstacles) {
-      if (o.isCover) continue;
-      // Skip the obstacle only if its full Z footprint sits entirely
-      // outside this slab's depth band.
-      if (o.z + o.r < z - SLAB_HALF_DEPTH) continue;
-      if (o.z - o.r > z + SLAB_HALF_DEPTH) continue;
-      blockers.push({ lo: o.x - o.r - PLAYER_RADIUS, hi: o.x + o.r + PLAYER_RADIUS });
-    }
-    blockers.sort((a, b) => a.lo - b.lo);
-    let cursor = -PLAY_HALF_W;
-    let widest = 0;
-    for (const b of blockers) {
-      if (b.lo > cursor) widest = Math.max(widest, b.lo - cursor);
-      cursor = Math.max(cursor, b.hi);
-    }
-    if (cursor < PLAY_HALF_W) widest = Math.max(widest, PLAY_HALF_W - cursor);
-    if (widest < REQUIRED_GAP_W) return false;
-  }
-  return true;
-}
+// Per-chunk population ranges. Pack-5 difficulty scaling feeds a
+// denser spec for later stages; the default is the original tuning.
+export type ChunkSpec = {
+  obstacleMin: number;
+  obstacleMax: number; // exclusive
+  coverMin: number;
+  coverMax: number; // exclusive
+};
+export const DEFAULT_CHUNK_SPEC: ChunkSpec = {
+  obstacleMin: 4,
+  obstacleMax: 8,
+  coverMin: 1,
+  coverMax: 3,
+};
 
 function generateChunkContents(
   rng: Rng,
   startZ: number,
+  spec: ChunkSpec,
+  // 0..1 thinning applied on retry attempts so a crowded roll that
+  // keeps failing the walkability check converges instead of giving
+  // up and leaving the chunk empty.
+  thin: number,
   seam?: readonly Obstacle[],
 ): Obstacle[] {
   const obstacles: Obstacle[] = [];
-  // Roughly half the prior density (was 8-14 + 2-5 cover). The
-  // Kenney prop kit's larger footprints + the bumped car radius
-  // were turning the play area into a maze; cutting per-chunk
-  // counts lets the player thread between props without constant
-  // back-and-forth while keeping enough cover to actually hide
-  // behind.
-  const obstacleCount = randInt(rng, 4, 8);
+  const obstacleCount = Math.round(randInt(rng, spec.obstacleMin, spec.obstacleMax) * (1 - thin));
   placeNonCoverScatter(rng, obstacles, startZ, obstacleCount, seam);
-  const coverCount = randInt(rng, 1, 3);
+  const coverCount = Math.max(1, Math.round(randInt(rng, spec.coverMin, spec.coverMax) * (1 - thin * 0.5)));
   placeCoverScatter(rng, obstacles, startZ, coverCount, seam);
   return obstacles;
 }
@@ -256,7 +230,13 @@ const CROWBAR_PICK_THRESHOLD = 0.45;
 // overlap obstacles. Skip the first chunk so the player isn't
 // handed a freebie at spawn (and so the very first segment ramps
 // the player past at least one bare-handed encounter).
-function placePickups(rng: Rng, chunkIndex: number, obstacles: Obstacle[], startZ: number): Pickup[] {
+function placePickups(
+  rng: Rng,
+  chunkIndex: number,
+  obstacles: Obstacle[],
+  startZ: number,
+  reachable: (x: number, z: number) => boolean,
+): Pickup[] {
   if (chunkIndex === 0) return [];
   // Roll: 8% chance of zero pickups, 76% one, 16% two. Expected count
   // per chunk = 1.08, which is 10% below the 5/70/25 split we shipped
@@ -275,6 +255,8 @@ function placePickups(rng: Rng, chunkIndex: number, obstacles: Obstacle[], start
       // pickup as having radius PICKUP_RADIUS for spacing too so
       // the player can grab it without being stuck inside a crate.
       if (tooClose(obstacles, x, z, PICKUP_RADIUS)) continue;
+      // Only on ground the player can actually walk to.
+      if (!reachable(x, z)) continue;
       // Also don't bunch two pickups on top of each other in the
       // same chunk - cheap distance check against the ones we've
       // already placed in this pass.
@@ -303,32 +285,111 @@ function placePickups(rng: Rng, chunkIndex: number, obstacles: Obstacle[], start
   return pickups;
 }
 
+// Walkability context shared across the chunks of one segment (or
+// one Endless run). `grid` holds every gameplay obstacle rasterised
+// at the player's radius; `seeds` are grid cells already proven
+// reachable from spawn, sitting in rows that no future chunk can
+// alter (future obstacles start at least 1.5 m into their own chunk
+// and are at most ~3 m in radius, so they never reach more than
+// SEED_BACKOFF below their chunk's start).
+export type Walkability = {
+  grid: NavGrid;
+  seeds: Cell[];
+};
+const SEED_BACKOFF = 2.5;
+const SOLVE_CELL = 0.3;
+const SOLVE_MARGIN = 0.12;
+
+export function createWalkability(spawnX: number, spawnZ: number, zMin: number, zMax: number): Walkability {
+  // A little wider than the player so accepted paths aren't
+  // pixel-tight squeezes between two props.
+  const grid = new NavGrid(SOLVE_CELL, PLAYER_RADIUS + SOLVE_MARGIN, zMin, zMax);
+  return { grid, seeds: [{ col: grid.colOf(spawnX), row: grid.rowOf(spawnZ) }] };
+}
+
+// Try to populate a chunk so that the player can still walk from the
+// proven-reachable seeds to the chunk's far edge. Every obstacle kind
+// - cover included - is rasterised with its real footprint (OBB for
+// elongated props), which is exactly what PlayerController collides
+// against. Returns the chunk plus the reachability mask of the
+// successful flood so pickups can be placed on reachable ground.
 export function generateChunk(
   rng: Rng,
   startZ: number,
   chunkIndex: number,
-  seam?: readonly Obstacle[],
+  seam: readonly Obstacle[] | undefined,
+  walk: Walkability,
+  spec: ChunkSpec = DEFAULT_CHUNK_SPEC,
 ): Chunk {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const obstacles = generateChunkContents(rng, startZ, seam);
-    if (isSolvable(obstacles, startZ, startZ + CHUNK_LEN)) {
-      return {
-        id: nextChunkId++,
-        startZ,
-        endZ: startZ + CHUNK_LEN,
-        obstacles,
-        pickups: placePickups(rng, chunkIndex, obstacles, startZ),
-      };
+  const endZ = startZ + CHUNK_LEN;
+  const grid = walk.grid;
+  grid.extendTo(endZ + 1);
+  const endRow = grid.rowOf(endZ - 0.01);
+  const ATTEMPTS = 8;
+  for (let attempt = 0; attempt <= ATTEMPTS; attempt++) {
+    // Final attempt is deliberately empty: always walkable because
+    // the previous chunk was proven to reach this chunk's start.
+    const obstacles =
+      attempt === ATTEMPTS
+        ? []
+        : generateChunkContents(rng, startZ, spec, Math.min(0.75, attempt * 0.12), seam);
+    for (const o of obstacles) grid.addObstacle(o);
+    const reach = grid.flood(walk.seeds, endRow);
+    let reachesEnd = false;
+    for (let c = 0; c < grid.cols; c++) {
+      if (reach[endRow * grid.cols + c]) {
+        reachesEnd = true;
+        break;
+      }
     }
+    if (!reachesEnd) {
+      for (const o of obstacles) grid.removeObstacle(o);
+      continue;
+    }
+    const pickups = placePickups(rng, chunkIndex, obstacles, startZ, (x, z) => {
+      const col = grid.colOf(x);
+      const row = grid.rowOf(z);
+      return reach[row * grid.cols + col] === 1 && Math.abs(grid.colX(col) - x) < grid.cell;
+    });
+    // Advance the proven-reachable seed row to just below the next
+    // chunk's earliest possible footprint.
+    const seedRow = grid.rowOf(endZ - SEED_BACKOFF);
+    const next: Cell[] = [];
+    for (let c = 0; c < grid.cols; c++) {
+      if (reach[seedRow * grid.cols + c]) next.push({ col: c, row: seedRow });
+    }
+    // Seeds from this flood are only sound if the flood didn't need
+    // rows above the seed row, which future chunks may alter. Re-run
+    // it capped at the seed row; fall back to the uncapped result if
+    // (unusually) the capped fill loses every cell.
+    const capped = grid.flood(walk.seeds, seedRow);
+    const safe: Cell[] = [];
+    for (let c = 0; c < grid.cols; c++) {
+      if (capped[seedRow * grid.cols + c]) safe.push({ col: c, row: seedRow });
+    }
+    walk.seeds = safe.length > 0 ? safe : next;
+    return {
+      id: nextChunkId++,
+      startZ,
+      endZ,
+      obstacles,
+      pickups,
+    };
   }
-  return {
-    id: nextChunkId++,
-    startZ,
-    endZ: startZ + CHUNK_LEN,
-    obstacles: [],
-    pickups: [],
-  };
+  // Unreachable: the empty attempt always succeeds.
+  throw new Error('procgen: empty chunk failed walkability');
 }
+
+// Guard / dog navigation grid resolution and clearance radius.
+export const NAV_CELL = 0.5;
+// Deliberately a little larger than the movers' collision radius
+// (GUARD_MOVE_RADIUS / dog radius) so a path through free cell centres
+// never scrapes a prop corner between two cells.
+export const NAV_INFLATE = 0.7;
+// Player spawn point; the walkability flood starts here.
+export const SPAWN_X = 0;
+export const SPAWN_Z = 1;
+export const PLAYFIELD_BACK_Z = -2;
 
 export class ProcgenSystem {
   private chunks: Chunk[] = [];
@@ -347,16 +408,30 @@ export class ProcgenSystem {
   // no gameplay state - obstacles() / pickups() exclude them.
   private horizonChunks: number;
 
+  private spec: ChunkSpec;
+  private walk: Walkability;
+  // Pathfinding grid for guards and dogs (gameplay obstacles only).
+  readonly nav: NavGrid;
+  // Cached gameplay query results. Rebuilt only when chunks change,
+  // so the per-frame callers don't allocate fresh arrays.
+  private obstacleCache: Obstacle[] = [];
+  private pickupCache: Pickup[] = [];
+
   constructor(
     seed: number,
     worldRoot: THREE.Group,
     chunkCount: number = CHUNKS_AHEAD,
     horizonChunks: number = 0,
+    spec: ChunkSpec = DEFAULT_CHUNK_SPEC,
   ) {
     this.rng = mulberry32(seed);
     this.worldRoot = worldRoot;
     this.chunkCount = Math.max(1, chunkCount | 0);
     this.horizonChunks = Math.max(0, horizonChunks | 0);
+    this.spec = spec;
+    const zMax = this.chunkCount * CHUNK_LEN + 2;
+    this.walk = createWalkability(SPAWN_X, SPAWN_Z, PLAYFIELD_BACK_Z, zMax);
+    this.nav = new NavGrid(NAV_CELL, NAV_INFLATE, PLAYFIELD_BACK_Z, zMax);
   }
 
   init() {
@@ -367,6 +442,7 @@ export class ProcgenSystem {
       const idx = this.chunkCount + i;
       this.spawnChunk(idx, idx * CHUNK_LEN, true);
     }
+    this.rebuildCaches();
   }
 
   private spawnChunk(chunkIndex: number, startZ: number, isHorizon: boolean) {
@@ -381,14 +457,18 @@ export class ProcgenSystem {
       previous && previous.endZ === startZ
         ? previous.obstacles.filter((o) => o.z >= startZ - SEAM_DEPTH)
         : undefined;
-    const chunk = generateChunk(this.rng, startZ, chunkIndex, seam);
+    let chunk: Chunk;
     if (isHorizon) {
-      chunk.isHorizon = true;
-      // Strip pickups from horizon chunks - their meshes would tease
-      // the player toward something they can never collect (the win
-      // line ends the segment first), and the gameplay queries
-      // already filter horizon chunks out anyway.
-      chunk.pickups = [];
+      // Horizon chunks are scenery only (excluded from collision), so
+      // they skip the walkability check and carry no pickups - their
+      // meshes would tease the player toward something they can never
+      // collect.
+      const obstacles = generateChunkContents(this.rng, startZ, this.spec, 0, seam);
+      chunk = { id: nextChunkId++, startZ, endZ: startZ + CHUNK_LEN, obstacles, pickups: [], isHorizon: true };
+    } else {
+      chunk = generateChunk(this.rng, startZ, chunkIndex, seam, this.walk, this.spec);
+      this.nav.extendTo(chunk.endZ + 1);
+      for (const o of chunk.obstacles) this.nav.addObstacle(o);
     }
     for (const o of chunk.obstacles) {
       const m = buildObstacleMesh(o);
@@ -413,37 +493,44 @@ export class ProcgenSystem {
     }
   }
 
-  // v1: fixed 5-chunk segment, no recycling.
+  private rebuildCaches() {
+    this.obstacleCache = [];
+    this.pickupCache = [];
+    for (const c of this.chunks) {
+      if (c.isHorizon) continue;
+      for (const o of c.obstacles) this.obstacleCache.push(o);
+      for (const p of c.pickups) this.pickupCache.push(p);
+    }
+  }
+
+  // Fixed-length campaign segments don't recycle chunks.
   update(_playerZ: number) {}
 
   // Gameplay queries skip horizon chunks so their decorative
   // obstacles never block the player's collision pass and never
   // factor into guard line-of-sight. The horizon meshes are
-  // already in the scene; they just exist for the eye.
-  obstacles(): Obstacle[] {
-    const out: Obstacle[] = [];
-    for (const c of this.chunks) {
-      if (c.isHorizon) continue;
-      for (const o of c.obstacles) out.push(o);
-    }
-    return out;
+  // already in the scene; they just exist for the eye. Both return
+  // a cached array - callers must not mutate it.
+  obstacles(): readonly Obstacle[] {
+    return this.obstacleCache;
   }
 
-  pickups(): Pickup[] {
-    const out: Pickup[] = [];
-    for (const c of this.chunks) {
-      if (c.isHorizon) continue;
-      for (const p of c.pickups) out.push(p);
-    }
-    return out;
+  pickups(): readonly Pickup[] {
+    return this.pickupCache;
   }
 
   endZ(): number {
     return this.chunks.length ? this.chunks[this.chunks.length - 1].endZ : 0;
   }
 
+  // Test / debug hook: the gameplay chunks in order.
+  gameplayChunks(): readonly Chunk[] {
+    return this.chunks.filter((c) => !c.isHorizon);
+  }
+
   dispose() {
     for (const c of this.chunks) this.despawnChunk(c);
     this.chunks = [];
+    this.rebuildCaches();
   }
 }

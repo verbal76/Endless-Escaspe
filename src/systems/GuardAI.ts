@@ -1,7 +1,8 @@
 import type { Guard, Obstacle, Player } from '../types/world';
 import { dist2Sq } from '../util/math';
-import { circleHit } from '../util/collision';
 import { PLAY_HALF_W } from '../util/geometry';
+import type { NavGrid } from './NavGrid';
+import { navigateToward, resetNavState } from './Navigator';
 
 // Guards no longer follow a fixed waypoint loop. Each one wanders a
 // home zone, reacts to player noise / line-of-sight, escalates
@@ -47,7 +48,10 @@ const INVESTIGATE_TIMEOUT_S = 21;
 const RETURN_HOME_RADIUS = 1.5;
 
 const FIRE_COOLDOWN_S = 1.3;
-const GUARD_COLLISION_R = 0.6;
+// Movement collision radius against props. Slightly under the nav
+// grid's clearance (NAV_INFLATE) so planned paths are always
+// physically followable.
+const GUARD_COLLISION_R = 0.5;
 
 // Detection thresholds drive transitions.
 const TH_ALERT = 0.18;     // even small noise triggers a pause + scan
@@ -64,53 +68,56 @@ const TH_FIRE = 0.85;
 
 export type GuardFireFn = (g: Guard, targetX: number, targetZ: number) => void;
 
-function rngTarget(g: Guard): { x: number; z: number } {
+function rngTarget(g: Guard, grid: NavGrid | null): { x: number; z: number } {
   const angle = Math.random() * Math.PI * 2;
   const r = Math.random() * g.homeRadius;
   // Stay inside playfield even if homeRadius nudges outside.
-  const x = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, g.homeX + Math.cos(angle) * r));
-  const z = Math.max(2, Math.min(g.homeZ + g.homeRadius, g.homeZ + Math.sin(angle) * r));
+  let x = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, g.homeX + Math.cos(angle) * r));
+  let z = Math.max(2, Math.min(g.homeZ + g.homeRadius, g.homeZ + Math.sin(angle) * r));
+  // Never aim at a spot inside a prop - the guard would grind
+  // against it until the retarget timer fired.
+  if (grid) {
+    const cell = grid.nearestFree(x, z, 8);
+    if (cell) {
+      x = grid.colX(cell.col);
+      z = grid.rowZ(cell.row);
+    }
+  }
   return { x, z };
 }
 
+// Pathfinding move (A* over the guard nav grid with real-footprint
+// collision). Returns false when the guard is genuinely stuck so the
+// state machine can choose a new goal instead of standing still.
 function moveToward(
   g: Guard,
   tx: number,
   tz: number,
   speed: number,
   obstacles: readonly Obstacle[],
+  grid: NavGrid | null,
   dt: number,
-) {
-  const dx = tx - g.x;
-  const dz = tz - g.z;
-  const d = Math.hypot(dx, dz);
-  if (d < 0.001) return;
-  let nx = g.x + (dx / d) * speed * dt;
-  let nz = g.z + (dz / d) * speed * dt;
-  // Simple obstacle steering: if the desired next pos collides, try
-  // a perpendicular sidestep. Good enough to keep guards from
-  // chronically jamming into a crate; not full pathfinding.
-  const blockedFwd = obstacles.some((o) =>
-    circleHit({ x: nx, z: nz, r: GUARD_COLLISION_R }, { x: o.x, z: o.z, r: o.r }),
-  );
-  if (blockedFwd) {
-    const px = g.x + (-dz / d) * speed * dt;
-    const pz = g.z + (dx / d) * speed * dt;
-    const blockedSide = obstacles.some((o) =>
-      circleHit({ x: px, z: pz, r: GUARD_COLLISION_R }, { x: o.x, z: o.z, r: o.r }),
-    );
-    if (!blockedSide) {
-      nx = px;
-      nz = pz;
-    } else {
-      // Both directions blocked: stand still this frame.
-      nx = g.x;
-      nz = g.z;
+  repathEvery?: number,
+): boolean {
+  return navigateToward(g, tx, tz, speed, dt, grid, obstacles, {
+    radius: GUARD_COLLISION_R,
+    repathEvery,
+  });
+}
+
+function pickSearchPoint(g: Guard, grid: NavGrid | null, cx: number, cz: number) {
+  const angle = Math.random() * Math.PI * 2;
+  const r = (0.4 + Math.random() * 0.6) * SEARCH_RADIUS;
+  let sx = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, cx + Math.cos(angle) * r));
+  let sz = Math.max(2, cz + Math.sin(angle) * r);
+  if (grid) {
+    const cell = grid.nearestFree(sx, sz, 8);
+    if (cell) {
+      sx = grid.colX(cell.col);
+      sz = grid.rowZ(cell.row);
     }
   }
-  g.x = nx;
-  g.z = nz;
-  g.facing = Math.atan2(dz, dx);
+  g.investigationTarget = { x: sx, z: sz };
 }
 
 function setState(g: Guard, next: Guard['state'], player?: Player) {
@@ -123,6 +130,7 @@ function setState(g: Guard, next: Guard['state'], player?: Player) {
   if (next === 'wander' || next === 'return') {
     g.investigationTarget = null;
   }
+  resetNavState(g.nav);
 }
 
 export function updateGuard(
@@ -132,6 +140,7 @@ export function updateGuard(
   dt: number,
   obstacles: readonly Obstacle[],
   onFire?: GuardFireFn,
+  grid: NavGrid | null = null,
 ) {
   // Crowbar stun: the guard freezes in place, no AI tick, no firing.
   // We still drain the cooldown timers and the stun itself so the
@@ -186,14 +195,18 @@ export function updateGuard(
       // guard would bail back to wander if the player broke LOS for
       // even a moment after being spotted.
       if (g.investigationTarget) {
-        moveToward(
+        const ok = moveToward(
           g,
           g.investigationTarget.x,
           g.investigationTarget.z,
           SPEED_ALERT_TRAIL,
           obstacles,
+          grid,
           dt,
         );
+        // Blocked trail: skip straight to investigating (which
+        // re-targets around the blockage) rather than freezing.
+        if (!ok) g.behaviorTimer = ALERT_PAUSE_S;
       }
       if (g.behaviorTimer >= ALERT_PAUSE_S) {
         setState(g, 'investigate', p);
@@ -202,28 +215,25 @@ export function updateGuard(
     }
     case 'investigate': {
       if (g.investigationTarget) {
-        moveToward(g, g.investigationTarget.x, g.investigationTarget.z, SPEED_INVESTIGATE, obstacles, dt);
+        const ok = moveToward(
+          g,
+          g.investigationTarget.x,
+          g.investigationTarget.z,
+          SPEED_INVESTIGATE,
+          obstacles,
+          grid,
+          dt,
+        );
         const arrived =
           dist2Sq(g.x, g.z, g.investigationTarget.x, g.investigationTarget.z) <= ARRIVE_EPS_SQ;
-        if (arrived) {
-          // Reached the spot - now SWEEP the area instead of bailing
-          // home. Pick a new search target within SEARCH_RADIUS of
-          // the last known position; the guard will walk to that,
-          // arrive, and pick another, repeating until the investigate
-          // timeout fires. This triples the ground covered after a
-          // sighting so the player can't just step around a corner
-          // and have the guard immediately forget them.
-          const angle = Math.random() * Math.PI * 2;
-          const r = (0.4 + Math.random() * 0.6) * SEARCH_RADIUS;
-          const sx = Math.max(
-            -PLAY_HALF_W + 1,
-            Math.min(
-              PLAY_HALF_W - 1,
-              g.investigationTarget.x + Math.cos(angle) * r,
-            ),
-          );
-          const sz = Math.max(2, g.investigationTarget.z + Math.sin(angle) * r);
-          g.investigationTarget = { x: sx, z: sz };
+        if (arrived || !ok) {
+          // Reached the spot (or can't get there) - SWEEP the area
+          // instead of bailing home. Pick a new search target within
+          // SEARCH_RADIUS of the last known position; the guard walks
+          // to it, arrives, and picks another, repeating until the
+          // investigate timeout fires.
+          pickSearchPoint(g, grid, g.investigationTarget.x, g.investigationTarget.z);
+          resetNavState(g.nav);
         }
       }
       if (g.behaviorTimer >= INVESTIGATE_TIMEOUT_S && detection < TH_INVESTIGATE) {
@@ -232,18 +242,20 @@ export function updateGuard(
       break;
     }
     case 'chase': {
-      moveToward(g, p.x, p.z, SPEED_CHASE, obstacles, dt);
+      // Chase re-plans frequently because the goal keeps moving; a
+      // stuck result just means "keep re-planning" here.
+      moveToward(g, p.x, p.z, SPEED_CHASE, obstacles, grid, dt, 0.4);
       // Firing is now handled by the standalone TH_FIRE block at the
       // top of this function so chase / non-chase guards can both
       // shoot. Keep the move-fast behaviour here.
       break;
     }
     case 'return': {
-      moveToward(g, g.homeX, g.homeZ, SPEED_RETURN, obstacles, dt);
+      const ok = moveToward(g, g.homeX, g.homeZ, SPEED_RETURN, obstacles, grid, dt);
       const home = dist2Sq(g.x, g.z, g.homeX, g.homeZ);
-      if (home <= RETURN_HOME_RADIUS * RETURN_HOME_RADIUS) {
+      if (!ok || home <= RETURN_HOME_RADIUS * RETURN_HOME_RADIUS) {
         setState(g, 'wander');
-        g.wanderTarget = rngTarget(g);
+        g.wanderTarget = rngTarget(g, grid);
         g.wanderTimer = 0;
       }
       break;
@@ -252,10 +264,15 @@ export function updateGuard(
     default: {
       const arrived = dist2Sq(g.x, g.z, g.wanderTarget.x, g.wanderTarget.z) <= ARRIVE_EPS_SQ;
       if (arrived || g.wanderTimer >= WANDER_RETARGET_S) {
-        g.wanderTarget = rngTarget(g);
+        g.wanderTarget = rngTarget(g, grid);
         g.wanderTimer = 0;
       }
-      moveToward(g, g.wanderTarget.x, g.wanderTarget.z, SPEED_WANDER, obstacles, dt);
+      const ok = moveToward(g, g.wanderTarget.x, g.wanderTarget.z, SPEED_WANDER, obstacles, grid, dt);
+      if (!ok) {
+        g.wanderTarget = rngTarget(g, grid);
+        g.wanderTimer = 0;
+        resetNavState(g.nav);
+      }
       break;
     }
   }

@@ -11,6 +11,11 @@ export const PLAY_HALF_W = 9;
 export const CHUNK_LEN = 24; // world units along Z per chunk
 export const CHUNKS_AHEAD = 5;
 export const PLAYER_RADIUS = 0.45;
+// Furthest |x| the player's centre can reach: PlayerController clamps
+// the player's body (not its centre) to the playfield edge. Anything
+// that asks "is the player against the fence" must use this, not
+// PLAY_HALF_W.
+export const PLAYER_X_LIMIT = PLAY_HALF_W - PLAYER_RADIUS;
 export const OBSTACLE_RADIUS = 0.6;
 export const COVER_RADIUS = 0.9;
 

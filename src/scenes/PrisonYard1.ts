@@ -8,6 +8,7 @@ import {
 } from '../util/geometry';
 import { createModelFigure, type ModelFigure } from './ModelFigure';
 import { getGrassTexture } from '../util/textures';
+import { createNavState } from '../systems/Navigator';
 
 // Player + guard figures are now Kenney-modelled OBJs (see
 // ModelFigure.ts) instead of the procedural blocks. Public API names
@@ -41,6 +42,7 @@ export function createPlayer(): Player {
     isCrouched: false,
     isHidden: false,
     stamina: 1,
+    exhausted: false,
   };
 }
 
@@ -75,6 +77,7 @@ export function createGuard(cfg: GuardConfig): Guard {
     investigationTarget: null,
     fireCooldown: 0,
     stunTimer: 0,
+    nav: createNavState(),
     mesh: null,
     visionMesh: null,
   };

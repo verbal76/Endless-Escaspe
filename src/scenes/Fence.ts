@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { WeatherKind } from './Weather';
-import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
+import { PLAYER_X_LIMIT, PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
 
 // Chain-link fence running the full segment length on both X edges.
@@ -116,9 +116,13 @@ export function spawnFences(
 
 // Touch detection for razor wire - the player is considered to be
 // in contact with the fence when they're hard up against the
-// PlayerController's x-clamp boundary.
+// PlayerController's x-clamp boundary. The clamp limits the player's
+// *centre* to PLAYER_X_LIMIT (half-width minus body radius); testing
+// against PLAY_HALF_W itself was unreachable, so razor wire never
+// fired.
+export const FENCE_TOUCH_EPS = 0.04;
 export function isTouchingFence(px: number): boolean {
-  return Math.abs(px) >= PLAY_HALF_W - 0.04;
+  return Math.abs(px) >= PLAYER_X_LIMIT - FENCE_TOUCH_EPS;
 }
 
 // Arena variant: a closed rectangular fence around a small playfield.

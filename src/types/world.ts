@@ -1,4 +1,5 @@
 import type { Object3D } from 'three';
+import type { NavState } from '../systems/Navigator';
 
 export type RunState = 'idle' | 'playing' | 'caught' | 'cleared';
 
@@ -110,6 +111,10 @@ export type Player = {
   // before they can sprint again). Stamina is only enforced from
   // the stamina-enabled stage tier - see progression.staminaEnabledFor.
   stamina: number;
+  // Latched when a sprint drains stamina to zero. While set, running
+  // is refused (and the RUN toggle is switched off) until stamina has
+  // recovered to STAMINA_RECOVER_AT; the player must re-engage RUN.
+  exhausted: boolean;
 };
 
 // Guard behaviour state machine.
@@ -150,6 +155,8 @@ export type Guard = {
   // not transition state, does not move, and DetectionSystem skips
   // its vision contribution. Decays in the AI update tick.
   stunTimer: number;
+  // Path-following state (see Navigator.ts).
+  nav: NavState;
   mesh: Object3D | null;
   visionMesh: Object3D | null;
 };

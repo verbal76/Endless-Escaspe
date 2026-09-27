@@ -4,22 +4,16 @@ import {
   PLAYER_CROUCH_SPEED,
   PLAYER_RADIUS,
   PLAYER_WALK_SPEED,
-  PLAY_HALF_W,
+  PLAYER_X_LIMIT,
 } from '../util/geometry';
-import { circleHit, circleHitObb, pushCircleFromObb } from '../util/collision';
+import { obstacleHitsCircle, pushCircleFromObb } from '../util/collision';
 
 // Collision dispatch: obstacles with halfW/halfL/rotY use circle-vs-
 // OBB so the player can walk right up to the actual silhouette of
 // elongated props (cars, jersey barriers, hedgerows). Obstacles
 // without those fields fall back to circle-vs-circle on `o.r`.
 function obstacleHitsPlayer(o: Obstacle, px: number, pz: number): boolean {
-  if (o.halfW !== undefined && o.halfL !== undefined && o.rotY !== undefined) {
-    return circleHitObb(
-      { x: px, z: pz, r: PLAYER_RADIUS },
-      { x: o.x, z: o.z, halfW: o.halfW, halfL: o.halfL, rotY: o.rotY },
-    );
-  }
-  return circleHit({ x: px, z: pz, r: PLAYER_RADIUS }, { x: o.x, z: o.z, r: o.r });
+  return obstacleHitsCircle(o, px, pz, PLAYER_RADIUS);
 }
 
 const PLAYFIELD_BACK_Z = -2;
@@ -34,6 +28,8 @@ function baseSpeedFor(stance: Player['stance']): number {
 // ~3.3s of sprinting; regen takes ~6.6s to fully refill.
 const STAMINA_DRAIN_PER_S = 0.30;
 const STAMINA_REGEN_PER_S = 0.15;
+// Pool level an exhausted player must regain before RUN works again.
+export const STAMINA_RECOVER_AT = 0.3;
 
 export function updatePlayer(
   p: Player,
@@ -45,13 +41,21 @@ export function updatePlayer(
   // Stance and run come straight from the HUD radio/toggle.
   p.stance = input.stance;
   p.isCrouched = p.stance === 'crouch';
-  // Stamina gate: when enabled (late stages), running is blocked
-  // while the pool is empty. Players still have to release the
-  // toggle and re-engage once stamina returns - prevents holding
-  // RUN through the whole regen cycle.
+  // Stamina gate (late stages). Draining the pool to zero latches
+  // `exhausted`: running is refused and the RUN toggle is switched
+  // off, so the player has to recover to STAMINA_RECOVER_AT and then
+  // re-engage RUN. (Previously one frame of regen lifted stamina back
+  // over the 0.001 gate, so running flickered on/off every frame at
+  // an empty pool.)
+  if (!staminaEnabled) {
+    p.exhausted = false;
+  } else if (p.exhausted && p.stamina >= STAMINA_RECOVER_AT) {
+    p.exhausted = false;
+  }
   let wantsRun = input.run;
-  if (staminaEnabled) {
-    if (wantsRun && p.stamina <= 0.001) wantsRun = false;
+  if (staminaEnabled && p.exhausted) {
+    wantsRun = false;
+    input.run = false;
   }
   p.isRunning = wantsRun;
 
@@ -62,6 +66,10 @@ export function updatePlayer(
     p.stamina = 1;
   } else if (p.isRunning) {
     p.stamina = Math.max(0, p.stamina - STAMINA_DRAIN_PER_S * dt);
+    if (p.stamina <= 0) {
+      p.exhausted = true;
+      input.run = false;
+    }
   } else {
     p.stamina = Math.min(1, p.stamina + STAMINA_REGEN_PER_S * dt);
   }
@@ -136,7 +144,7 @@ export function updatePlayer(
   // Soft playfield walls. PLAY_HALF_W is the half-width of the
   // playfield; the player can roam its full width (the camera now
   // tracks them at 1:1, no lateral dampening).
-  const xLimit = PLAY_HALF_W - PLAYER_RADIUS;
+  const xLimit = PLAYER_X_LIMIT;
   if (nx > xLimit) nx = xLimit;
   if (nx < -xLimit) nx = -xLimit;
   if (nz < PLAYFIELD_BACK_Z) nz = PLAYFIELD_BACK_Z;

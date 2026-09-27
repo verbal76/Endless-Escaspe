@@ -185,3 +185,29 @@ export function setDogTransform(d: Dog) {
 export function dogHits(d: Dog, p: Player): boolean {
   return dist2Sq(d.x, d.z, p.x, p.z) <= DOG_HIT_RADIUS * DOG_HIT_RADIUS;
 }
+
+// Advance every dog exactly once per frame and return the smell each
+// leashed dog feeds its handler (keyed by handler guard id).
+//
+// Previously dogs were ticked from two places - the per-guard
+// detection pass (every dog of that handler, whatever its state) and
+// a later "detached dogs" pass (every chasing dog) - so a chasing dog
+// moved twice per frame, covering ~15 m/s instead of 7.5.
+export function updateDogs(
+  dogs: readonly Dog[],
+  guards: readonly Guard[],
+  p: Player,
+  dt: number,
+  out: Map<number, number>,
+): Map<number, number> {
+  out.clear();
+  for (const d of dogs) {
+    const handler = guards.find((g) => g.id === d.handlerGuardId);
+    // A crowbar-stunned handler holds the leash still: the dog stays
+    // put and contributes no smell until the handler gets up.
+    if (d.state === 'leash' && handler && handler.stunTimer > 0) continue;
+    const smell = updateDog(d, handler, p, dt);
+    if (handler && smell > 0) out.set(handler.id, (out.get(handler.id) ?? 0) + smell);
+  }
+  return out;
+}

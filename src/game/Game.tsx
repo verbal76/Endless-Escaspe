@@ -78,7 +78,7 @@ import {
   createDog,
   dogHits,
   setDogTransform,
-  updateDog,
+  updateDogs,
   type Dog,
 } from '../scenes/Dog';
 import { isTouchingFence } from '../scenes/Fence';
@@ -154,16 +154,10 @@ import {
 } from '../scenes/PickupSounds';
 import { writeSaves, type Save } from '../util/storage';
 import { haptics } from '../util/haptics';
-
-// Stats thresholds. Higher = lenient; lower = stingy.
-const STAT_DETECTED_3 = 3;   // <= seconds detected for 3 stars on this metric
-const STAT_DETECTED_2 = 12;
-const STAT_TIMES_3 = 0;
-const STAT_TIMES_2 = 2;
-const STAT_TIME_3 = 60;
-const STAT_TIME_2 = 120;
-const SEEN_THRESHOLD = 0.5;
-const DETECTED_THRESHOLD = 0.3;
+import { scoreStars } from '../util/scoring';
+import { RunTracker } from '../util/runStats';
+import { BossClock } from '../util/bossClock';
+import { resetNavState } from '../systems/Navigator';
 
 // Crowbar tuning. Range is intentionally short so the player has to
 // commit to a melee approach; duration is long enough to clear a
@@ -203,23 +197,6 @@ function applyCrowbarStun(
   nearest.behaviorTimer = 0;
   nearest.fireCooldown = Math.max(nearest.fireCooldown, 0.5);
   return true;
-}
-
-function scoreStars(s: Omit<RunStats, 'stars'>): number {
-  let pts = 0;
-  // Each metric: 0 / 0.5 / 1 contribution.
-  pts += s.timesSeen <= STAT_TIMES_3 ? 1 : s.timesSeen <= STAT_TIMES_2 ? 0.5 : 0;
-  pts +=
-    s.timeDetected <= STAT_DETECTED_3
-      ? 1
-      : s.timeDetected <= STAT_DETECTED_2
-        ? 0.5
-        : 0;
-  pts +=
-    s.runDurationS <= STAT_TIME_3 ? 1 : s.runDurationS <= STAT_TIME_2 ? 0.5 : 0;
-  pts += s.livesUsed === 0 ? 1 : s.livesUsed === 1 ? 0.5 : 0;
-  // Out of 4 -> stars 1..3 (always at least 1 for clearing).
-  return Math.max(1, Math.min(3, Math.round((pts / 4) * 3)));
 }
 
 export function Game() {
@@ -446,6 +423,23 @@ export function Game() {
       const procgen = new ProcgenSystem(seed, root, chunkCount, HORIZON_CHUNKS);
       procgen.init();
 
+      // Guard home points are laid out on a fixed pattern, so a prop
+      // can land right on one. Snap each home to the nearest cell a
+      // guard can actually stand on, otherwise the guard spawns inside
+      // the prop and can never move.
+      for (const e of guardEntries) {
+        const g = e.guard;
+        const cell = procgen.nav.nearestFree(g.homeX, g.homeZ, 16);
+        if (cell) {
+          g.homeX = procgen.nav.colX(cell.col);
+          g.homeZ = procgen.nav.rowZ(cell.row);
+          g.x = g.homeX;
+          g.z = g.homeZ;
+          g.wanderTarget = { x: g.homeX, z: g.homeZ };
+          e.figure.group.position.set(g.x, 0, g.z);
+        }
+      }
+
       // Snow weather: dust the top of every obstacle with a thin
       // white cap so the world reads as blanketed.
       if (weatherKind === 'snow') {
@@ -566,19 +560,14 @@ export function Game() {
       scene = buildScene(stage, seed);
       applyStageLighting(r.renderer, r.scene, stage);
       setBackdropSnow(backdrop, scene.weatherKind === 'snow');
-      // Re-arm the boss-arena countdown to match the fresh scene's
-      // target. Non-arena scenes report 0 so the HUD knows to hide.
-      bossTimeRemaining = scene.isBossArena ? scene.bossSurviveSeconds : 0;
-      useStore
-        .getState()
-        .setBossTimeRemaining(scene.isBossArena ? scene.bossSurviveSeconds : 0);
+      // The boss countdown is re-armed by resetSegment(), which every
+      // rebuild is followed by.
     };
 
-    // Per-run stats accumulators.
-    let runTime = 0;
-    let timeDetectedAcc = 0;
-    let timesSeenAcc = 0;
-    let prevAnyDetected = false;
+    // Per-segment stats accumulators (stars input).
+    const tracker = new RunTracker();
+    // Scratch map reused every frame for dog smell per handler.
+    const dogSmellByHandler = new Map<number, number>();
     let lastSegmentSeed = useStore.getState().segmentSeed;
     let lastStage = useStore.getState().stage;
     let lastRestartCounter = useStore.getState().restartCounter;
@@ -593,11 +582,12 @@ export function Game() {
     // resets / restarts and the player sees an unbroken sun-up
     // sun-down loop. Bumped each frame from the update tick.
     let cycleTime = 0;
-    // Boss-arena countdown. Initialised from the scene's
-    // bossSurviveSeconds at build / rebuild; the update loop
-    // decrements it during gameplay and fires handleWin at zero.
-    // Stays at 0 on linear segments.
-    let bossTimeRemaining = scene.isBossArena ? scene.bossSurviveSeconds : 0;
+    // Boss-arena countdown. Armed by resetSegment() (every rebuild,
+    // restart and fresh run goes through it); the update loop ticks it
+    // in real time during gameplay and fires handleWin at zero.
+    // Inactive on linear segments.
+    const bossClock = new BossClock();
+    bossClock.arm(scene.isBossArena ? scene.bossSurviveSeconds : 0);
     const tmpVec = new THREE.Vector3();
 
     // Camera-shake state. handleCatch sets shakeRemaining to
@@ -623,16 +613,16 @@ export function Game() {
     const fadingPickups: FadingPickup[] = [];
 
     const resetSegment = () => {
-      runTime = 0;
-      timeDetectedAcc = 0;
-      timesSeenAcc = 0;
-      prevAnyDetected = false;
+      tracker.reset();
+      bossClock.arm(scene.isBossArena ? scene.bossSurviveSeconds : 0);
+      useStore.getState().setBossTimeRemaining(bossClock.displaySeconds());
       animTime = 0;
       player.x = 0;
       player.z = 1;
       player.isHidden = false;
       player.stance = 'walk';
       player.stamina = 1;
+      player.exhausted = false;
       player.isRunning = false;
       player.vx = 0;
       player.vz = 0;
@@ -650,6 +640,7 @@ export function Game() {
         g.investigationTarget = null;
         g.fireCooldown = 0;
         g.stunTimer = 0;
+        resetNavState(g.nav);
         st.setDetection(g.id, 0);
       }
       // Reset dogs to their handler's spawn position and cancel
@@ -721,6 +712,7 @@ export function Game() {
       logDebug('log', 'handleCatch', { cause, stage: st.stage, remaining, isBossArena: scene.isBossArena });
       st.setHearts(remaining);
       st.setLastDeathCause(cause);
+      tracker.onCatch();
       // Trigger the shield+skull catch flash. CatchFlash subscribes
       // to catchCounter; bumping it here means every hit (soft or
       // run-ending) plays the same brief notification before the
@@ -750,13 +742,7 @@ export function Game() {
         // Final death (non-boss): mirror handleWin's stats build so
         // the death banner can render the same post-run summary the
         // win banner uses.
-        const finalStats: RunStats = {
-          timesSeen: timesSeenAcc,
-          timeDetected: timeDetectedAcc,
-          runDurationS: runTime,
-          livesUsed: startingHeartsFor(st.stage),
-          stars: 0,
-        };
+        const finalStats: RunStats = { ...tracker.snapshot(), stars: 0 };
         st.setLastStats(finalStats);
         st.setRunState('caught');
         return;
@@ -769,6 +755,7 @@ export function Game() {
       player.isHidden = false;
       player.stance = 'walk';
       player.stamina = 1;
+      player.exhausted = false;
       st.setStance('walk');
       st.setStamina(1);
       for (const g of scene.guards) {
@@ -780,6 +767,7 @@ export function Game() {
         g.investigationTarget = null;
         g.fireCooldown = 0;
         g.stunTimer = 0;
+        resetNavState(g.nav);
         st.setDetection(g.id, 0);
       }
       for (const d of scene.dogs) {
@@ -828,13 +816,8 @@ export function Game() {
     const handleWin = () => {
       const st = useStore.getState();
       const justClearedStage = st.stage;
-      logDebug('log', 'handleWin', { stage: justClearedStage, isBossArena: scene.isBossArena, runTime });
-      const stats: Omit<RunStats, 'stars'> = {
-        timesSeen: timesSeenAcc,
-        timeDetected: timeDetectedAcc,
-        runDurationS: runTime,
-        livesUsed: 3 - st.hearts,
-      };
+      logDebug('log', 'handleWin', { stage: justClearedStage, isBossArena: scene.isBossArena, runTime: tracker.runTime });
+      const stats: Omit<RunStats, 'stars'> = tracker.snapshot();
       const stars = scoreStars(stats);
       st.setLastStats({ ...stats, stars });
       // Mirror the new high (if any) into the in-memory bestStars
@@ -1006,7 +989,7 @@ export function Game() {
         return;
       }
 
-      runTime += dt;
+      tracker.tickTime(dt);
       animTime += dt;
       // Cycle uses raw dt (not effDt) so slow-mo + pause don't
       // freeze the day/night progression; the lighting feels alive
@@ -1047,6 +1030,9 @@ export function Game() {
       updateHide(player, scene.procgen.obstacles());
       if (player.stance !== st.stance) st.setStance(player.stance);
       st.setStamina(player.stamina);
+      // Exhaustion switches the RUN toggle off inside updatePlayer;
+      // mirror that onto the store so the button un-highlights.
+      if (st.running !== input.run) st.setRunning(input.run);
 
       // Razor wire: touching the fence at razor-wire stages costs
       // a heart and resets the player to spawn. Treat it as a catch.
@@ -1246,9 +1232,11 @@ export function Game() {
       // Pass 1: compute new detection for every guard, including
       // any dog smell contribution to the handler.
       const nextDetection: Record<number, number> = {};
-      let anyDetected = false;
       let maxDetection = 0;
       let chaserGuard: Guard | null = null;
+      // Every dog moves exactly once per frame here; leashed dogs
+      // report smell for their handler's meter.
+      updateDogs(scene.dogs, scene.guards, player, effDt, dogSmellByHandler);
       for (const entry of scene.guardEntries) {
         const g = entry.guard;
         const prev = st.detection[g.id] ?? 0;
@@ -1264,14 +1252,7 @@ export function Game() {
         // chase. updateDetection above already handles the vision /
         // noise side of the freeze.
         const stunned = g.stunTimer > 0;
-        let dogSmell = 0;
-        if (!stunned) {
-          for (const d of scene.dogs) {
-            if (d.handlerGuardId === g.id) {
-              dogSmell += updateDog(d, g, player, effDt);
-            }
-          }
-        }
+        const dogSmell = stunned ? 0 : dogSmellByHandler.get(g.id) ?? 0;
         // Route external feeds through updateDetection so they suppress
         // the decay branch. Critical for early-stage spotlights: the
         // floodlight rate (0.125/s) is below the decay rate (0.15/s)
@@ -1293,7 +1274,6 @@ export function Game() {
         );
         nextDetection[g.id] = next;
         if (next > maxDetection) maxDetection = next;
-        if (next > DETECTED_THRESHOLD) anyDetected = true;
         if (next >= 1.0 && !chaserGuard) chaserGuard = g;
       }
 
@@ -1337,7 +1317,7 @@ export function Game() {
             aimZ = tz + player.vz * lead;
           }
           projectiles.spawn(fx, fz, aimX, aimZ);
-        });
+        }, scene.procgen.nav);
       }
 
       // Sustained "!" markers above each guard. Priority order:
@@ -1382,9 +1362,6 @@ export function Game() {
       // belt-and-braces). Also handle dog->player collision: dogs
       // count as a soft catch identical to a guard touch.
       for (const d of scene.dogs) {
-        if (d.state === 'chase') {
-          updateDog(d, undefined, player, effDt);
-        }
         setDogTransform(d);
         if (dogHits(d, player)) {
           handleCatch();
@@ -1393,9 +1370,7 @@ export function Game() {
       }
 
       // Stats accumulators.
-      if (anyDetected) timeDetectedAcc += effDt;
-      if (maxDetection > SEEN_THRESHOLD && !prevAnyDetected) timesSeenAcc++;
-      prevAnyDetected = maxDetection > SEEN_THRESHOLD;
+      tracker.tickDetection(maxDetection, effDt);
 
       // Live siren volume tracks the highest detection across guards,
       // multiplied by the master volume slider in the pause panel.
@@ -1408,12 +1383,13 @@ export function Game() {
         // handleWin when the clock hits zero. Mirror the integer
         // remaining seconds onto the store so the BossTimer HUD
         // can render without re-mounting on every frame.
-        bossTimeRemaining = Math.max(0, bossTimeRemaining - effDt);
-        const displaySec = Math.ceil(bossTimeRemaining);
+        // Real-time dt: slow-mo must not stretch the survive timer.
+        const finished = bossClock.tick(dt);
+        const displaySec = bossClock.displaySeconds();
         if (st.bossTimeRemaining !== displaySec) {
           st.setBossTimeRemaining(displaySec);
         }
-        if (bossTimeRemaining <= 0) {
+        if (finished) {
           handleWin();
           return;
         }

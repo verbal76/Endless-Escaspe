@@ -100,8 +100,9 @@ function getMaterials(kind: VehicleKind): Record<string, THREE.Material> {
     MATERIALS[kind] = mats;
     return mats;
   }
-  // Texture preload failed: fall back to per-group solid colours so
-  // the vehicle still renders distinguishable parts.
+  // Texture preload failed (reason in Settings > Build / Update Info >
+  // Textures): fall back to per-group solid colours so the vehicle
+  // still renders distinguishable parts.
   const make = (color: number) =>
     markShared(
       new THREE.MeshLambertMaterial({

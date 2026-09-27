@@ -180,10 +180,10 @@ export function createModelFigure(kind: ModelKind, tint: number | null = null): 
   const template = parseTemplate(kind);
   const palette = PALETTES[kind];
 
-  // Try the textured material first. If the asset preload couldn't
-  // resolve the image (network glitch on first launch, etc.) we fall
-  // back to the solid-colour palette so the figure still renders
-  // recognisably. One material is shared across every limb because
+  // Try the textured material first. If the texture preload failed
+  // (see util/textureSource.ts; the reason is shown in Settings >
+  // Build / Update Info > Textures) we fall back to the solid-colour
+  // palette so the figure still renders recognisably. One material is shared across every limb because
   // the OBJ's UVs map all body parts onto a single texture sheet.
   const tex = getCharacterTexture(kind);
   const matKey = tint === null ? kind : `${kind}:${tint.toString(16)}`;

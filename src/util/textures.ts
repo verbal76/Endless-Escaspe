@@ -157,9 +157,10 @@ export function getVehicleColormap(): THREE.Texture | null {
 
 // Prop texture lookup keyed by the MTL `newmtl` name from each
 // Kenney prop OBJ. Returns null if the texture wasn't preloaded
-// (caller falls back to a solid colour). All eight MTL names are
-// covered now; dirt is filled by the rock texture as a stand-in
-// because the Kenney atlas didn't ship a dirt PNG.
+// (caller falls back to a solid colour). Covers wall, wall_metal,
+// concrete, signs, roof and dirt (assets/props/dirt.png); grass goes
+// through getGrassTexture, and the tree materials (leafsDark,
+// woodBarkDark) use solid colours.
 export function getPropTexture(materialName: string): THREE.Texture | null {
   switch (materialName) {
     case 'wall':

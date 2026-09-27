@@ -1,7 +1,7 @@
 #!/bin/bash
-# Runs inside the Android emulator job: installs the release APK, lets
-# it fetch the latest OTA (first launch downloads, second launch runs
-# it) and collects logcat + screenshots for check-render-audit.mjs.
+# Runs inside the Android emulator job: installs the APK, launches it
+# twice (cold start, then a restart) and collects logcat + screenshots
+# for check-render-audit.mjs.
 set -uo pipefail
 PKG=com.verbal76.endlessescaspe
 OUT=render-check

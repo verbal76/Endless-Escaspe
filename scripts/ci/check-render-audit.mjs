@@ -1,5 +1,5 @@
 // Reads an emulator logcat dump and fails unless the app ran the
-// expected commit's update and its render audit found every textured
+// expected commit's code and its render audit found every textured
 // group actually drawn with verified GPU textures.
 import { readFileSync } from 'node:fs';
 

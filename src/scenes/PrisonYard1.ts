@@ -8,6 +8,7 @@ import {
 } from '../util/geometry';
 import { createModelFigure, type ModelFigure } from './ModelFigure';
 import { getGrassTexture } from '../util/textures';
+import { tagAuditMaterial, tagAuditRole } from '../util/renderAudit';
 import { createNavState } from '../systems/Navigator';
 import { outfitById, type OutfitId } from '../util/outfits';
 
@@ -53,8 +54,9 @@ export function createPlayer(): Player {
 //   brown -> character G (grey + red striped jumpsuit)
 export function createPlayerFigure(skin: 'beige' | 'brown' = 'beige', outfit: OutfitId | null = null): ModelFigure {
   const o = outfitById(outfit);
-  if (o) return createModelFigure(o.model, o.tint);
-  return createModelFigure(skin === 'brown' ? 'g' : 'd');
+  const fig = o ? createModelFigure(o.model, o.tint) : createModelFigure(skin === 'brown' ? 'g' : 'd');
+  tagAuditRole(fig.group, 'player');
+  return fig;
 }
 
 export type GuardConfig = {
@@ -128,7 +130,9 @@ export function createGuardConfigs(
 // model we get the moustache + uniform "for free" and the crew is
 // readable as a uniform police force at a glance.
 export function createGuardFigure(): ModelFigure {
-  return createModelFigure('j');
+  const fig = createModelFigure('j');
+  tagAuditRole(fig.group, 'guards');
+  return fig;
 }
 
 // Flat triangular cone on the ground showing the guard's actual
@@ -207,6 +211,7 @@ export function createGround(): THREE.Mesh {
       color: 0x3f6a2c,
     });
   }
+  tagAuditMaterial(mat, 'ground', 'grass');
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
   // Centred so the plane spans roughly z = -500 .. +1300, which

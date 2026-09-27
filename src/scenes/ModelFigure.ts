@@ -6,6 +6,7 @@ import { character_d_OBJ } from '../../assets/characters/characterDObj';
 import { character_g_OBJ } from '../../assets/characters/characterGObj';
 import { character_j_OBJ } from '../../assets/characters/characterJObj';
 import { getCharacterTexture } from '../util/textures';
+import { tagAuditMaterial } from '../util/renderAudit';
 
 // 3D-modeled character figure. Replaces the procedural BlockyFigure
 // for player + guard so the silhouette reads as a real character
@@ -204,6 +205,7 @@ export function createModelFigure(kind: ModelKind, tint: number | null = null): 
         emissive: palette.body,
         emissiveIntensity: 0.08,
       })));
+  tagAuditMaterial(sharedMat, kind === 'j' ? 'guards' : 'player', `figure-${kind}`);
   if (tint !== null) {
     sharedMat.color.setHex(tint);
     sharedMat.emissive.setHex(tint);

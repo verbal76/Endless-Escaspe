@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { markShared } from '../util/dispose';
 import { getPropTexture } from '../util/textures';
+import { tagAuditMaterial } from '../util/renderAudit';
 import { barrierA_OBJ } from '../../assets/props/barrierAObj';
 import { barrierB_OBJ } from '../../assets/props/barrierBObj';
 import { block_OBJ } from '../../assets/props/blockObj';
@@ -62,6 +63,8 @@ const PALETTE: Record<string, MaterialDef> = {
   leafsDark: { color: 0x3a7d2e, emissiveIntensity: 0.12 },
 };
 
+const SOLID_BY_DESIGN: Record<string, true> = { woodBarkDark: true, leafsDark: true };
+
 const DEFAULT_DEF: MaterialDef = { color: 0xb0b0b0, emissiveIntensity: 0.12 };
 
 // Lambert (per-vertex diffuse) instead of Standard PBR: the art is
@@ -87,6 +90,9 @@ function materialFor(name: string): THREE.MeshLambertMaterial {
         emissiveIntensity: def.emissiveIntensity,
       });
   markShared(mat);
+  // Tree bark / leaves are solid colours by design; everything else
+  // in the kit is drawn from its Kenney texture.
+  tagAuditMaterial(mat, 'props', name, !(name in SOLID_BY_DESIGN));
   SHARED_MATERIALS[name] = mat;
   return mat;
 }

@@ -4,6 +4,7 @@ import { markShared } from '../util/dispose';
 import { firetruck_OBJ } from '../../assets/vehicles/firetruckObj';
 import { police_OBJ } from '../../assets/vehicles/policeObj';
 import { getVehicleColormap } from '../util/textures';
+import { tagAuditMaterial } from '../util/renderAudit';
 
 // Kenney-modelled drivable obstacles. Replaces the procedural box-
 // car that used to populate Obstacles.ts's `'car'` branch with one
@@ -90,6 +91,7 @@ function getMaterials(kind: VehicleKind): Record<string, THREE.Material> {
       )
     : null;
   if (sharedMat) {
+    tagAuditMaterial(sharedMat, 'vehicles', `vehicle-${kind}`);
     // Every part references the same textured material; the UVs do
     // the per-region tinting.
     const mats: Record<string, THREE.Material> = {
@@ -116,6 +118,7 @@ function getMaterials(kind: VehicleKind): Record<string, THREE.Material> {
     grill: make(palette.grill),
     wheels: make(palette.wheels),
   };
+  for (const m of Object.values(mats)) tagAuditMaterial(m, 'vehicles', `vehicle-${kind}`);
   MATERIALS[kind] = mats;
   return mats;
 }

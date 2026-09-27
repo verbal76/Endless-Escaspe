@@ -78,6 +78,9 @@ async function loadAssetTexture(
     logDebug('log', `[textures] ${key} via ${src.route} after: ${result.errors.join('; ')}`);
   }
   const tex = new THREE.Texture();
+  // Survives .clone() (Texture.copy copies userData), so the render
+  // audit can match any texture back to its source PNG.
+  tex.userData.textureKey = key;
   // Asset shape that expo-gl's texImage2D wrapper expects: when
   // `downloadAsync` is present on the image object, the wrapper
   // pulls localUri off it (it must be a file:// path on native) and

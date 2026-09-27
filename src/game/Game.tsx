@@ -139,6 +139,11 @@ import {
 import { AIM_TIME_S } from '../systems/GuardAI';
 import { BossTimer } from '../components/HUD/BossTimer';
 import { logDebug } from '../util/debug';
+import { runRenderAudit } from '../util/renderAudit';
+
+const RENDER_AUDIT_DELAY_FRAMES = 3;
+const RENDER_AUDIT_RETRY_FRAMES = 60;
+const RENDER_AUDIT_RETRIES = 3;
 import { disposeSubtree } from '../util/dispose';
 import { createRadialMeter, updateRadialMeter } from '../scenes/RadialMeter';
 import { createThreatArrow, updateThreatArrow, type ThreatArrow } from '../scenes/ThreatArrow';
@@ -731,6 +736,8 @@ export function Game() {
     // tier, slow-mo gate) are re-evaluated each frame because they're
     // cheap.
     const initialStage = useStore.getState().stage;
+    let renderAuditIn = RENDER_AUDIT_DELAY_FRAMES;
+    let renderAuditRetries = 0;
     let scene: Scene = buildScene(initialStage, useStore.getState().segmentSeed, useStore.getState().gameMode);
 
     // One lighting mood per stage (day / afternoon / dusk / night /
@@ -764,6 +771,7 @@ export function Game() {
     // accumulator state against the freshly built guards / dogs.
     const rebuildScene = (stage: number, seed: number, mode: GameMode) => {
       logDebug('log', 'rebuildScene', { stage, seed, mode });
+      renderAuditIn = RENDER_AUDIT_DELAY_FRAMES;
       tearDownScene(scene);
       scene = buildScene(stage, seed, mode);
       if (!scene.endless) backdrop.group.position.z = 0;
@@ -1315,6 +1323,7 @@ export function Game() {
         playerOutfit = st.playerOutfit;
         r.worldRoot.remove(playerFigure.group);
         playerFigure = createPlayerFigure(playerSkin, playerOutfit);
+        renderAuditIn = RENDER_AUDIT_DELAY_FRAMES;
         r.worldRoot.add(playerFigure.group);
       }
       if (st.restartCounter !== lastRestartCounter) {
@@ -2129,6 +2138,22 @@ export function Game() {
         r.camera.position.y += Math.cos(animTime * 71) * amp * 0.7;
       }
       r.draw();
+      // A few frames after each scene build (textures are uploaded
+      // lazily on first draw), check what is really on screen: which
+      // meshes are textured vs flat fallback, and whether the GPU
+      // textures hold the source images (util/renderAudit.ts).
+      // Problems are re-checked a few times a second apart before they
+      // stand (images can still be decoding on the web build).
+      if (renderAuditIn > 0 && --renderAuditIn === 0) {
+        const audit = runRenderAudit(r.renderer, r.scene);
+        if (audit.problems.length > 0 && renderAuditRetries < RENDER_AUDIT_RETRIES) {
+          renderAuditRetries++;
+          renderAuditIn = RENDER_AUDIT_RETRY_FRAMES;
+        } else {
+          renderAuditRetries = 0;
+          if (audit.problems.length > 0) logDebug('warn', '[render-audit]', audit.problems);
+        }
+      }
     };
 
     loopRef.current = startLoop({ update, render });

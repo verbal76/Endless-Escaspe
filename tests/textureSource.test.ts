@@ -130,8 +130,8 @@ test('web uses the asset URL directly', async () => {
 
 test('texture row reports honest counts', () => {
   assert.equal(formatTextureRow({ total: 0, loaded: 0, details: {} }).value, 'Not loaded yet');
-  assert.equal(formatTextureRow({ total: 2, loaded: 2, details: { a: 'asset', b: 'asset' } }).value, '2/2 loaded');
+  assert.equal(formatTextureRow({ total: 2, loaded: 2, details: { a: 'asset', b: 'asset' } }).value, '2/2 resolved');
   const row = formatTextureRow({ total: 2, loaded: 1, details: { a: 'asset', b: 'FAILED: x' } });
-  assert.equal(row.value, '1/2 loaded - 1 FAILED');
+  assert.equal(row.value, '1/2 resolved - 1 FAILED');
   assert.equal(row.full, 'a: asset\nb: FAILED: x');
 });

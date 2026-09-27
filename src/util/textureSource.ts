@@ -146,8 +146,10 @@ export async function resolveTextureSource(
   return { ok: false, errors };
 }
 
-// Build / Update Info row: "11/11 loaded", or which ones failed and
-// why (full text on tap).
+// Build / Update Info row: "11/11 resolved", or which ones failed and
+// why (full text on tap). This only says the image files were found;
+// whether they are actually drawn is the render audit's job
+// (util/renderAudit.ts: "Rendering" / "GPU textures" rows).
 export function formatTextureRow(status: {
   total: number;
   loaded: number;
@@ -157,10 +159,10 @@ export function formatTextureRow(status: {
     .sort()
     .map((k) => `${k}: ${status.details[k]}`)
     .join('\n');
-  if (status.total === 0) return { label: 'Textures', value: 'Not loaded yet' };
+  if (status.total === 0) return { label: 'Texture files', value: 'Not loaded yet' };
   const value =
     status.loaded === status.total
-      ? `${status.loaded}/${status.total} loaded`
-      : `${status.loaded}/${status.total} loaded - ${status.total - status.loaded} FAILED`;
-  return { label: 'Textures', value, full: full || undefined };
+      ? `${status.loaded}/${status.total} resolved`
+      : `${status.loaded}/${status.total} resolved - ${status.total - status.loaded} FAILED`;
+  return { label: 'Texture files', value, full: full || undefined };
 }

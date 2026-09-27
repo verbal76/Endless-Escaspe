@@ -9,6 +9,7 @@ import { PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
 import { dog_OBJ } from '../../assets/animals/dogObj';
 import { getVehicleColormap } from '../util/textures';
+import { tagAuditMaterial } from '../util/renderAudit';
 
 // Patrol dog. Behaviour summary:
 // - Trails its handler guard while the guard is patrolling.
@@ -57,6 +58,7 @@ function getDogMaterial(): THREE.MeshLambertMaterial {
         emissiveIntensity: 0.08,
       });
   markShared(mat);
+  tagAuditMaterial(mat, 'dogs', 'dog');
   CACHED_DOG_MAT = mat;
   return mat;
 }

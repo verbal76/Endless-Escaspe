@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { meshYaw } from '../src/scenes/Obstacles';
 import { createWeather } from '../src/scenes/Weather';
-import { createBackdrop } from '../src/scenes/Backdrop';
+import { createBackdrop, createTreeLine } from '../src/scenes/Backdrop';
 import { getStageLighting } from '../src/scenes/Lighting';
 import { ProcgenSystem } from '../src/systems/ProcgenSystem';
 import { disposeSubtree } from '../src/util/dispose';
@@ -38,13 +38,18 @@ test('rain and snow render in one draw call each', () => {
   }
 });
 
-test('backdrop tree lines are instanced (hundreds of trees, a handful of meshes)', () => {
-  const b = createBackdrop();
+// Pack 5 moved the tree lines out of the fixed backdrop into
+// per-segment / per-Endless-section groups (createTreeLine) so the
+// forest spans the whole yard; the instancing contract is unchanged.
+test('tree lines are instanced (hundreds of trees, a handful of meshes)', () => {
+  const trees = createTreeLine(0, 160, 1);
   let instances = 0;
-  b.group.traverse((c) => {
+  trees.traverse((c) => {
     if ((c as THREE.InstancedMesh).isInstancedMesh) instances += (c as THREE.InstancedMesh).count;
   });
   assert.ok(instances >= 336, `only ${instances} instanced trees`);
+  assert.ok(drawables(trees) <= 6, `${drawables(trees)} drawables for a tree line`);
+  const b = createBackdrop();
   assert.ok(drawables(b.group) < 50, `${drawables(b.group)} drawables in backdrop`);
 });
 

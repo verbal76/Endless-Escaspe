@@ -16,7 +16,11 @@ export type TipId =
   | 'boss'
   | 'crowbar'
   | 'smokebomb'
-  | 'aimed';
+  | 'rock'
+  | 'fork'
+  | 'aimed'
+  | 'endless'
+  | 'daily';
 
 export const TIPS: Record<TipId, string> = {
   stage1: 'Stay out of the guards’ light cones and reach the green line.',
@@ -31,6 +35,10 @@ export const TIPS: Record<TipId, string> = {
   boss: 'Boss round: survive the timer. Lose and you must retry the round.',
   crowbar: 'Crowbar: get close and tap it to knock out a guard. The ring shows who is in reach.',
   smokebomb: 'Smoke bomb: blocks every sight line through the cloud for a few seconds.',
+  rock: 'Rock: tap THROW to toss it ahead. Guards go to check the noise where it lands.',
+  fork: 'Split path: the short lane is guarded, the long way round is safe. Your call.',
+  endless: 'Endless: no finish line. Go as far as you can — it gets harder every 120 m.',
+  daily: 'Daily Run: everyone gets this same yard today. How far can you get?',
   aimed: 'A red laser means a guard is about to shoot — break line of sight!',
 };
 

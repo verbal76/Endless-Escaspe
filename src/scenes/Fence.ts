@@ -119,13 +119,14 @@ export function spawnFences(
   // gameplay end so the fences continue toward the horizon and the
   // path reads as endless rather than terminating at the win line.
   visualLen: number = segLen + 4,
+  // World Z of this run of fence. The first stretch starts a little
+  // behind spawn so the camera never sees the fence begin; Endless
+  // sections butt up against each other.
+  zStart: number | null = null,
 ) {
-  const totalLen = visualLen;
+  const startZ = zStart ?? -6;
+  const len = zStart === null ? visualLen - startZ : visualLen;
   const fenceX = PLAY_HALF_W + FENCE_X_OFFSET;
-  // Panels start a little behind spawn so the camera never sees the
-  // fence begin.
-  const startZ = -6;
-  const len = totalLen - startZ;
   const mat = chainLinkMaterial(fenceColorFor(stage, weather));
   const panelGeo = chainLinkPanel(len, FENCE_HEIGHT);
   for (const sx of [-1, 1]) {

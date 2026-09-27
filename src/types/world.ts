@@ -63,7 +63,8 @@ export type Projectile = {
 //   crowbar    - melee stun on the nearest guard within range.
 //   smokebomb  - drops a vision-blocking cloud at the player's feet
 //                that hides them from any guard inside the radius.
-export type PickupKind = 'crowbar' | 'smokebomb';
+//   rock       - throwable distraction; makes noise where it lands.
+export type PickupKind = 'crowbar' | 'smokebomb' | 'rock';
 
 export type Pickup = {
   id: number;
@@ -90,6 +91,19 @@ export type Chunk = {
   isHorizon?: boolean;
   // Instanced contact shadows for this chunk's props.
   shadow?: Object3D | null;
+  // Risk / reward fork, if this chunk is one (see ProcgenSystem).
+  fork?: ForkInfo;
+};
+
+// A chunk split lengthwise by a wall: one lane is short and straight
+// but watched by a guard post (and holds extra pickups), the other is
+// a slow slalom with no watcher.
+export type ForkInfo = {
+  dangerSide: -1 | 1; // sign of x for the danger lane
+  startZ: number;
+  endZ: number;
+  postX: number;
+  postZ: number;
 };
 
 // Player movement mode. RUN is a separate, orthogonal speed multiplier

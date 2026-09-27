@@ -24,6 +24,9 @@ import {
 import { NameKeyboard } from './NameKeyboard';
 import { getReleaseInfo } from '../../util/releaseRuntime';
 import { formatMenuLine } from '../../util/releaseInfo';
+import { OUTFITS, type OutfitId } from '../../util/outfits';
+import { equipOutfit, purchaseOutfit } from '../../util/economy';
+import { dailySeed, utcDayKey } from '../../util/daily';
 import { color as ui, type as T, fonts } from '../../ui/theme';
 
 const TITLE = 'ENDLESS ESCAPE';
@@ -133,7 +136,7 @@ function FigurePickButton({
   );
 }
 
-type Mode = 'home' | 'name' | 'tutorialPrompt' | 'continue' | 'profile';
+type Mode = 'home' | 'name' | 'tutorialPrompt' | 'continue' | 'profile' | 'outfits';
 
 export function StartScreen() {
   const runState = useStore((s) => s.runState);
@@ -296,6 +299,8 @@ export function StartScreen() {
     upsertSave(save);
     setActiveSave(key);
     setPlayerSkin(pickedSkin);
+    useStore.getState().setPlayerOutfit(save.outfit);
+    useStore.getState().setGameMode('campaign');
     setPlayerName(name);
     setStage(1);
     setBestStars({});
@@ -314,10 +319,52 @@ export function StartScreen() {
     const key = saveKeyFromName(s.name);
     setActiveSave(key);
     setPlayerSkin(s.skin);
+    useStore.getState().setPlayerOutfit(s.outfit);
+    useStore.getState().setGameMode('campaign');
     setPlayerName(s.name);
     setBestStars(s.bestStars);
     setStage(stage ?? s.stage);
     startRun();
+  };
+
+  // Endless / Daily with this character (coins and bests go to it).
+  const beginEndlessForSave = (s: Save, kind: 'endless' | 'daily') => {
+    const st = useStore.getState();
+    const key = saveKeyFromName(s.name);
+    setActiveSave(key);
+    setPlayerSkin(s.skin);
+    setPlayerName(s.name);
+    st.setPlayerOutfit(s.outfit);
+    const day = utcDayKey(new Date());
+    st.setGameMode(kind, kind === 'daily' ? day : null);
+    startRun();
+    st.resetForSegment(kind === 'daily' ? dailySeed(day) : (Math.random() * 0x7fffffff) | 0);
+  };
+
+  const onBuyOrEquip = (s: Save, id: OutfitId) => {
+    const key = saveKeyFromName(s.name);
+    let updated: Save | null = null;
+    if (s.outfits.includes(id)) {
+      updated = equipOutfit(s, id);
+    } else {
+      const r = purchaseOutfit(s, id);
+      if (r.ok) updated = r.save;
+      else {
+        setGameModal({
+          title: r.reason === 'funds' ? 'Not enough coins' : 'Can\'t buy that',
+          body:
+            r.reason === 'funds'
+              ? 'Earn coins by clearing stages (more stars pay more) and by going the distance in Endless and Daily runs.'
+              : 'That outfit is not available.',
+          actions: [{ label: 'OK', variant: 'primary', onPress: () => setGameModal(null) }],
+        });
+        return;
+      }
+    }
+    if (!updated) return;
+    upsertSave(updated);
+    writeSaves({ ...useStore.getState().saves, [key]: updated });
+    if (useStore.getState().activeSaveName === key) useStore.getState().setPlayerOutfit(updated.outfit);
   };
 
   const onOpenProfile = (s: Save) => {
@@ -595,6 +642,51 @@ export function StartScreen() {
     );
   }
 
+  if (mode === 'outfits') {
+    const owner = profileKey ? saves[profileKey] : undefined;
+    if (!owner) return null;
+    return (
+      <View pointerEvents="box-none" style={styles.root}>
+        <Text style={styles.outfitTitle}>OUTFITS</Text>
+        <Text style={styles.outfitCoins}>{owner.coins} coins  ·  cosmetic only</Text>
+        <View style={styles.outfitGrid}>
+          {OUTFITS.map((o) => {
+            const owned = owner.outfits.includes(o.id);
+            const equipped = owner.outfit === o.id;
+            return (
+              <Pressable
+                key={o.id}
+                onPress={() => onBuyOrEquip(owner, o.id)}
+                style={({ pressed }) => [
+                  styles.outfitCell,
+                  equipped && styles.outfitCellEquipped,
+                  pressed && styles.boardCellDown,
+                ]}
+              >
+                <View
+                  style={[
+                    styles.outfitSwatch,
+                    { backgroundColor: o.tint !== null ? `#${o.tint.toString(16).padStart(6, '0')}` : o.model === 'g' ? '#9aa0a8' : '#f2c14a' },
+                  ]}
+                />
+                <Text style={styles.outfitName}>{o.name}</Text>
+                <Text style={styles.outfitState}>
+                  {equipped ? 'WEARING' : owned ? 'TAP TO WEAR' : `${o.price} coins`}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Pressable
+          onPress={() => setMode('profile')}
+          style={({ pressed }) => [styles.bigBtn, styles.bigBtnSecondary, pressed && styles.bigBtnDown]}
+        >
+          <Text style={styles.bigBtnLabel}>BACK</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   // mode === 'profile'. The effect above redirects when the key is
   // stale; just render nothing this frame.
   const profile = profileKey ? saves[profileKey] : undefined;
@@ -618,8 +710,35 @@ export function StartScreen() {
             {clearedStages === 0
               ? 'No stages cleared yet'
               : `${clearedStages} stage${clearedStages === 1 ? '' : 's'} cleared  ·  ${totalStars(profile)}★`}
+            {`  ·  ${profile.coins} coins`}
           </Text>
         </View>
+      <View style={styles.modeRow}>
+          <Pressable
+            onPress={() => beginEndlessForSave(profile, 'endless')}
+            style={({ pressed }) => [styles.modeBtn, pressed && styles.bigBtnDown]}
+          >
+            <Text style={styles.modeLabel}>ENDLESS</Text>
+            <Text style={styles.modeSub}>best {profile.endlessBest} m</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => beginEndlessForSave(profile, 'daily')}
+            style={({ pressed }) => [styles.modeBtn, pressed && styles.bigBtnDown]}
+          >
+            <Text style={styles.modeLabel}>DAILY RUN</Text>
+            <Text style={styles.modeSub}>
+              {profile.daily?.day === utcDayKey(new Date()) ? `today ${profile.daily.best} m` : 'new today'}
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setMode('outfits')}
+            style={({ pressed }) => [styles.modeBtn, pressed && styles.bigBtnDown]}
+          >
+            <Text style={styles.modeLabel}>OUTFITS</Text>
+            <Text style={styles.modeSub}>{profile.coins} coins</Text>
+          </Pressable>
+        </View>
+
       </View>
 
       <ScrollView
@@ -1167,6 +1286,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 12,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginLeft: 18,
+  },
+  modeBtn: {
+    minWidth: 104,
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+    backgroundColor: ui.control,
+    borderWidth: 1,
+    borderColor: ui.controlBorder,
+  },
+  modeLabel: {
+    color: ui.gold,
+    fontFamily: fonts.display,
+    fontSize: T.body,
+    letterSpacing: 1,
+  },
+  modeSub: {
+    color: ui.textMuted,
+    fontSize: T.caption,
+    marginTop: 1,
+  },
+  outfitTitle: {
+    color: ui.gold,
+    fontFamily: fonts.display,
+    fontSize: T.heading,
+  },
+  outfitCoins: {
+    color: ui.textMuted,
+    fontSize: T.caption,
+    marginBottom: 10,
+  },
+  outfitGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+    maxWidth: 640,
+    marginBottom: 12,
+  },
+  outfitCell: {
+    width: 150,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: ui.panelSoft,
+    borderWidth: 1,
+    borderColor: ui.controlBorder,
+  },
+  outfitCellEquipped: {
+    borderColor: ui.gold,
+    borderWidth: 2,
+  },
+  outfitSwatch: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginBottom: 4,
+    borderWidth: 2,
+    borderColor: 'rgba(0,0,0,0.4)',
+  },
+  outfitName: {
+    color: ui.text,
+    fontSize: T.small,
+    fontWeight: '700',
+  },
+  outfitState: {
+    color: ui.textMuted,
+    fontSize: T.caption,
   },
 
   // Back link

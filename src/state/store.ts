@@ -4,15 +4,32 @@ import type { WeatherKind } from '../scenes/Weather';
 import type { Save, SavesMap } from '../util/storage';
 import type { GameModalConfig } from '../components/HUD/GameModal';
 import { startingHeartsFor } from '../util/progression';
+import type { OutfitId } from '../util/outfits';
 
 // How many of each pickup the player is currently carrying. Counts
 // reset to zero on each segment start. The HUD's PickupBag reads
 // from here; Game.tsx's update loop writes when a pickup is grabbed
 // or used.
 export type Inventory = Record<PickupKind, number>;
-const EMPTY_INVENTORY: Inventory = { crowbar: 0, smokebomb: 0 };
+const EMPTY_INVENTORY: Inventory = { crowbar: 0, smokebomb: 0, rock: 0 };
 
 export type PlayerSkin = 'beige' | 'brown';
+
+// campaign = numbered stages with a finish line; endless = a seeded,
+// never-ending yard scored by distance; daily = endless with the
+// day's shared seed.
+export type GameMode = 'campaign' | 'endless' | 'daily';
+
+// Shown on the end-of-run banner for Endless / Daily runs, and for
+// the coins a campaign clear earned.
+export type RunSummary = {
+  mode: GameMode;
+  distanceM: number;
+  bestM: number;
+  coinsEarned: number;
+  coinsTotal: number;
+  day: string | null;
+};
 
 // End-of-segment stats reported on the win board.
 export type RunStats = {
@@ -140,6 +157,18 @@ type Store = {
   // inside swing range; the crowbar slot glows to match the in-world
   // target ring.
   crowbarInRange: boolean;
+  gameMode: GameMode;
+  // Daily run day key (YYYY-MM-DD) while gameMode === 'daily'.
+  dailyDay: string | null;
+  // Endless / Daily HUD: distance (whole metres) and current level.
+  distanceM: number;
+  endlessLevel: number;
+  runSummary: RunSummary | null;
+  playerOutfit: OutfitId;
+  setGameMode: (m: GameMode, day?: string | null) => void;
+  setDistance: (m: number, level: number) => void;
+  setRunSummary: (s: RunSummary | null) => void;
+  setPlayerOutfit: (o: OutfitId) => void;
   // Highest guard detection (0..1), coalesced for the HUD edge tint.
   dangerLevel: number;
   setDangerLevel: (v: number) => void;
@@ -227,6 +256,20 @@ export const useStore = create<Store>((set) => ({
   bestStars: {},
   inventory: { ...EMPTY_INVENTORY },
   crowbarInRange: false,
+  gameMode: 'campaign',
+  dailyDay: null,
+  distanceM: 0,
+  endlessLevel: 1,
+  runSummary: null,
+  playerOutfit: 'classic',
+  setGameMode: (m, day = null) => set({ gameMode: m, dailyDay: m === 'daily' ? day : null }),
+  setDistance: (m, level) =>
+    set((st) => {
+      const d = Math.floor(m);
+      return st.distanceM === d && st.endlessLevel === level ? st : { distanceM: d, endlessLevel: level };
+    }),
+  setRunSummary: (r) => set({ runSummary: r }),
+  setPlayerOutfit: (o) => set((st) => (st.playerOutfit === o ? st : { playerOutfit: o })),
   dangerLevel: 0,
   setDangerLevel: (v) =>
     set((st) => {
@@ -369,7 +412,8 @@ export const useStore = create<Store>((set) => ({
   setInventory: (inv) =>
     set((st) =>
       st.inventory.crowbar === inv.crowbar &&
-      st.inventory.smokebomb === inv.smokebomb
+      st.inventory.smokebomb === inv.smokebomb &&
+      st.inventory.rock === inv.rock
         ? st
         : { inventory: { ...inv } },
     ),
@@ -411,6 +455,9 @@ export const useStore = create<Store>((set) => ({
       lastStats: null,
       lastDeathCause: null,
       inventory: { ...EMPTY_INVENTORY },
+      distanceM: 0,
+      endlessLevel: 1,
+      runSummary: null,
     }),
   startRun: () =>
     set((st) => ({
@@ -428,5 +475,8 @@ export const useStore = create<Store>((set) => ({
       lastStats: null,
       lastDeathCause: null,
       inventory: { ...EMPTY_INVENTORY },
+      distanceM: 0,
+      endlessLevel: 1,
+      runSummary: null,
     })),
 }));

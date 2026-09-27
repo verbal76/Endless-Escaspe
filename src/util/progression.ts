@@ -180,3 +180,25 @@ export function forceStormyWeatherFor(stage: number): boolean {
 export function slowMoEnabledFor(stage: number): boolean {
   return safeStage(stage) < 12;
 }
+
+// --- Layout density ----------------------------------------------------
+
+// Obstacle / cover counts per chunk. Stage 1 keeps the original tuning
+// (4-7 props, 1-2 cover); density climbs gently and caps so layouts
+// stay readable - and the walkability check thins any roll that would
+// block the path.
+export type ChunkDensity = { obstacleMin: number; obstacleMax: number; coverMin: number; coverMax: number };
+export function chunkDensityFor(stage: number): ChunkDensity {
+  const s = safeStage(stage);
+  return {
+    obstacleMin: Math.min(7, 4 + Math.floor((s - 1) / 6)),
+    obstacleMax: Math.min(11, 8 + Math.floor((s - 1) / 5)),
+    coverMin: 1,
+    coverMax: Math.min(5, 3 + Math.floor((s - 1) / 8)),
+  };
+}
+
+// Risk / reward forks from stage 3: one per campaign segment.
+export function forksEnabledFor(stage: number): boolean {
+  return safeStage(stage) >= 3;
+}

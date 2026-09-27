@@ -78,6 +78,23 @@ function SmokeIcon({ tint }: { tint: string }) {
   );
 }
 
+function RockIcon({ tint }: { tint: string }) {
+  return (
+    <View style={iconStyles.box}>
+      <View style={[iconStyles.rock, { backgroundColor: tint }]} />
+    </View>
+  );
+}
+
+// Throwable rock: separate from the main column (the right edge only
+// fits two stacked slots in landscape), sitting above RUN.
+const ROCK_SLOT: Slot = {
+  kind: 'rock',
+  label: 'THROW',
+  active: 'rgba(200,190,170,0.45)',
+  border: 'rgba(230,220,200,0.85)',
+};
+
 function PickupSlot({ slot, count, highlight }: { slot: Slot; count: number; highlight: boolean }) {
   const empty = count <= 0;
   const pressed = useSharedValue(0);
@@ -85,6 +102,7 @@ function PickupSlot({ slot, count, highlight }: { slot: Slot; count: number; hig
   const fire = () => {
     if (empty) return;
     if (slot.kind === 'crowbar') input.useCrowbar = true;
+    else if (slot.kind === 'rock') input.throwRock = true;
     else input.useSmokeBomb = true;
   };
 
@@ -130,6 +148,8 @@ function PickupSlot({ slot, count, highlight }: { slot: Slot; count: number; hig
       >
         {slot.kind === 'crowbar' ? (
           <CrowbarIcon tint={empty ? 'rgba(255,255,255,0.5)' : '#f0d8a8'} />
+        ) : slot.kind === 'rock' ? (
+          <RockIcon tint={empty ? 'rgba(255,255,255,0.5)' : '#d8d2c8'} />
         ) : (
           <SmokeIcon tint={empty ? 'rgba(255,255,255,0.5)' : '#e8eef7'} />
         )}
@@ -147,6 +167,10 @@ export function PickupBag() {
   if (runState !== 'playing') return null;
 
   return (
+    <>
+    <View style={styles.rockSlot}>
+      <PickupSlot slot={ROCK_SLOT} count={inventory.rock} highlight={false} />
+    </View>
     <View style={styles.col}>
       {SLOTS.map((slot) => (
         <PickupSlot
@@ -157,10 +181,16 @@ export function PickupBag() {
         />
       ))}
     </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
+  rockSlot: {
+    position: 'absolute',
+    right: 63 + 78 + 10,
+    bottom: 230,
+  },
   col: {
     position: 'absolute',
     // Sit above the stance column. ActionButtons.tsx uses right:63,
@@ -210,6 +240,15 @@ const styles = StyleSheet.create({
 // Drawn pickup icons. Each lives in a 22x22 box; absolute children
 // position the strokes that form the silhouette.
 const iconStyles = StyleSheet.create({
+  rock: {
+    position: 'absolute',
+    top: 5,
+    left: 4,
+    width: 14,
+    height: 12,
+    borderRadius: 5,
+    transform: [{ rotate: '18deg' }],
+  },
   box: {
     width: 22,
     height: 22,

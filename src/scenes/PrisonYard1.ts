@@ -9,6 +9,7 @@ import {
 import { createModelFigure, type ModelFigure } from './ModelFigure';
 import { getGrassTexture } from '../util/textures';
 import { createNavState } from '../systems/Navigator';
+import { outfitById, type OutfitId } from '../util/outfits';
 
 // Player + guard figures are now Kenney-modelled OBJs (see
 // ModelFigure.ts) instead of the procedural blocks. Public API names
@@ -50,7 +51,9 @@ export function createPlayer(): Player {
 // uniforms.
 //   beige -> character D (yellow striped jumpsuit)
 //   brown -> character G (grey + red striped jumpsuit)
-export function createPlayerFigure(skin: 'beige' | 'brown' = 'beige'): ModelFigure {
+export function createPlayerFigure(skin: 'beige' | 'brown' = 'beige', outfit: OutfitId | null = null): ModelFigure {
+  const o = outfitById(outfit);
+  if (o) return createModelFigure(o.model, o.tint);
   return createModelFigure(skin === 'brown' ? 'g' : 'd');
 }
 
@@ -97,6 +100,8 @@ export function createGuard(cfg: GuardConfig): Guard {
 export function createGuardConfigs(
   guardCount: number,
   segLen: number,
+  zStart: number = 0,
+  firstId: number = 1,
 ): GuardConfig[] {
   const n = Math.max(1, guardCount | 0);
   const halfX = Math.max(2, PLAY_HALF_W * 0.55);
@@ -104,10 +109,10 @@ export function createGuardConfigs(
   for (let i = 0; i < n; i++) {
     // Zones evenly distributed along Z: i / n .. (i+1) / n.
     const t = (i + 0.5) / n;
-    const homeZ = segLen * (0.18 + 0.74 * t);
+    const homeZ = zStart + segLen * (0.18 + 0.74 * t);
     const sideX = i % 2 === 0 ? -halfX : halfX;
     configs.push({
-      id: i + 1,
+      id: firstId + i,
       homeX: sideX,
       homeZ,
       // Home radius shrinks slightly with more guards so they keep

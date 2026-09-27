@@ -24,6 +24,8 @@ export function Banner() {
   const stage = useStore((s) => s.stage);
   const setRunState = useStore((s) => s.setRunState);
   const lastDeathCause = useStore((s) => s.lastDeathCause);
+  const summary = useStore((s) => s.runSummary);
+  const requestRestart = useStore((s) => s.requestRestart);
   // Look up the best for whichever stage the user JUST finished:
   // setStage was already advanced in handleWin, so the just-cleared
   // stage is one less than the current.
@@ -75,7 +77,12 @@ export function Banner() {
   if (runState === 'playing' || runState === 'idle') return null;
 
   const isCleared = runState === 'cleared';
-  const title = isCleared
+  const endlessRun = !!summary && summary.mode !== 'campaign' && !isCleared;
+  const title = endlessRun
+    ? summary!.mode === 'daily'
+      ? 'DAILY RUN OVER'
+      : 'RUN OVER'
+    : isCleared
     ? 'YOU MADE IT!'
     : lastDeathCause === 'killed'
       ? 'KILLED'
@@ -102,7 +109,9 @@ export function Banner() {
           {title}
         </Text>
 
-        {isCleared ? (
+        {endlessRun ? (
+          <Text style={styles.distance}>{summary!.distanceM} m</Text>
+        ) : isCleared ? (
           <Text style={styles.stars}>
             {STAR_FILLED.repeat(stars) + STAR_EMPTY.repeat(3 - stars)}
           </Text>
@@ -125,7 +134,14 @@ export function Banner() {
           </Text>
         )}
 
-        {stats && (
+        {endlessRun ? (
+          <View style={styles.statBlock}>
+            <StatRow index={0} label={summary!.mode === 'daily' ? `Best today (${summary!.day})` : 'Best distance'} value={`${summary!.bestM} m`} />
+            <StatRow index={1} label="Coins earned" value={`+${summary!.coinsEarned}`} />
+            <StatRow index={2} label="Coins" value={String(summary!.coinsTotal)} />
+            <StatRow index={3} label="Lives used" value={String(stats?.livesUsed ?? 0)} />
+          </View>
+        ) : stats && (
           <View style={styles.statBlock}>
             <StatRow index={0} label="Times spotted" value={String(stats.timesSeen)} />
             <StatRow
@@ -139,10 +155,32 @@ export function Banner() {
               value={`${stats.runDurationS.toFixed(1)}s`}
             />
             <StatRow index={3} label="Lives used" value={String(stats.livesUsed)} />
+            {isCleared && summary ? (
+              <StatRow index={4} label="Coins earned" value={`+${summary.coinsEarned} (${summary.coinsTotal})`} />
+            ) : null}
           </View>
         )}
 
-        {isCleared ? (
+        {endlessRun ? (
+          <View style={styles.btnRow}>
+            <Pressable
+              style={({ pressed }) => [styles.btn, pressed && styles.btnDown]}
+              onPress={() => {
+                // Daily: the same seeded run again. Endless: a fresh yard.
+                if (summary!.mode === 'daily') requestRestart();
+                else resetForSegment((Math.random() * 0x7fffffff) | 0);
+              }}
+            >
+              <Text style={styles.btnLabel}>RUN AGAIN</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.btn, styles.btnDeath, pressed && styles.btnDeathDown]}
+              onPress={() => setRunState('idle')}
+            >
+              <Text style={[styles.btnLabel, styles.btnLabelDeath]}>MAIN MENU</Text>
+            </Pressable>
+          </View>
+        ) : isCleared ? (
           <Pressable
             style={({ pressed }) => [styles.btn, pressed && styles.btnDown]}
             onPress={() => resetForSegment(segmentSeed + 1)}
@@ -193,6 +231,16 @@ function StatRow({ index, label, value }: { index: number; label: string; value:
 }
 
 const styles = StyleSheet.create({
+  distance: {
+    color: ui.gold,
+    fontSize: 34,
+    fontFamily: fonts.display,
+    marginVertical: 4,
+  },
+  btnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   wrap: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

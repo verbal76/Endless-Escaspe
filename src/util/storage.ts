@@ -2,6 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Storage keys keep the original (misspelled) slug on purpose:
 // renaming them would orphan every existing save.
+import { FREE_OUTFITS, isOutfitId, type OutfitId } from './outfits';
+import { campaignReward } from './economy';
+
 const KEY_SETTINGS = 'endless-escaspe:settings:v1';
 const KEY_SAVES = 'endless-escaspe:saves:v1';
 const KEY_SAVES_BACKUP = 'endless-escaspe:saves:v1.bak';
@@ -136,13 +139,38 @@ export type Save = {
   // existed; parseSaves defaults it to [] so old saves load as
   // "nothing seen yet" without losing any other data.
   tipsSeen: string[];
+  // ---- Economy / modes (added with coins + outfits). Every field is
+  // defaulted by parseSaves so older saves migrate without loss. ----
+  coins: number;
+  // Stars already paid out in coins, per campaign stage.
+  coinStars: Record<number, number>;
+  // Run id of the last reward applied (idempotency guard).
+  lastRewardedRun: string | null;
+  outfits: OutfitId[];
+  outfit: OutfitId;
+  endlessBest: number;
+  daily: { day: string; best: number } | null;
 };
 
 export type SavesMap = Record<string, Save>;
 
 // A brand-new character save with every field at its default.
 export function newSave(name: string, skin: PlayerSkin): Save {
-  return { name, skin, stage: 1, bestStars: {}, updatedAt: Date.now(), tipsSeen: [] };
+  return {
+    name,
+    skin,
+    stage: 1,
+    bestStars: {},
+    updatedAt: Date.now(),
+    tipsSeen: [],
+    coins: 0,
+    coinStars: {},
+    lastRewardedRun: null,
+    outfits: [...FREE_OUTFITS],
+    outfit: skin === 'brown' ? 'grey' : 'classic',
+    endlessBest: 0,
+    daily: null,
+  };
 }
 
 export function saveKeyFromName(name: string): string {
@@ -157,6 +185,57 @@ function cleanStringList(v: unknown, max: number = 64): string[] {
     if (out.length >= max) break;
   }
   return out;
+}
+
+const nonNegInt = (v: unknown, fallback: number = 0) =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : fallback;
+
+// Economy fields with migration defaults. A save written before coins
+// existed (no `coins` field) is migrated once: its already-earned
+// campaign stars are converted into a starting balance at the normal
+// rates and recorded as paid in coinStars, so they can't be paid again
+// by replaying those stages; it also gets the free outfits, equipped
+// to match its old skin. Once `coins` exists the save is read as-is,
+// so re-parsing a migrated save never repeats the conversion.
+function parseEconomy(
+  v: Record<string, unknown>,
+  skin: PlayerSkin,
+  bestStars: Record<number, number>,
+): Pick<Save, 'coins' | 'coinStars' | 'lastRewardedRun' | 'outfits' | 'outfit' | 'endlessBest' | 'daily'> {
+  const migrated = typeof v.coins === 'number';
+  let coins = nonNegInt(v.coins);
+  let coinStars: Record<number, number> = {};
+  if (migrated) {
+    const raw = v.coinStars;
+    if (raw && typeof raw === 'object') {
+      for (const k of Object.keys(raw as Record<string, unknown>)) {
+        const n = Number(k);
+        const sv = (raw as Record<string, unknown>)[k];
+        if (Number.isFinite(n) && typeof sv === 'number') coinStars[n] = Math.max(0, Math.min(3, sv | 0));
+      }
+    }
+  } else {
+    // One-time conversion of pre-economy progress.
+    coinStars = { ...bestStars };
+    for (const k of Object.keys(bestStars)) coins += campaignReward(bestStars[Number(k)], 0);
+  }
+  const owned = cleanStringList(v.outfits).filter(isOutfitId) as OutfitId[];
+  for (const f of FREE_OUTFITS) if (!owned.includes(f)) owned.unshift(f);
+  const equipped = isOutfitId(v.outfit) && owned.includes(v.outfit) ? v.outfit : skin === 'brown' ? 'grey' : 'classic';
+  const dailyRaw = v.daily as { day?: unknown; best?: unknown } | null | undefined;
+  const daily =
+    dailyRaw && typeof dailyRaw.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dailyRaw.day)
+      ? { day: dailyRaw.day, best: nonNegInt(dailyRaw.best) }
+      : null;
+  return {
+    coins: Math.min(999_999, coins),
+    coinStars,
+    lastRewardedRun: typeof v.lastRewardedRun === 'string' ? v.lastRewardedRun : null,
+    outfits: owned,
+    outfit: equipped,
+    endlessBest: nonNegInt(v.endlessBest),
+    daily,
+  };
 }
 
 export function parseSaves(raw: string | null): SavesMap | null {
@@ -196,6 +275,7 @@ export function parseSaves(raw: string | null): SavesMap | null {
         updatedAt:
           typeof v.updatedAt === 'number' ? v.updatedAt : Date.now(),
         tipsSeen: cleanStringList((v as { tipsSeen?: unknown }).tipsSeen),
+        ...parseEconomy(v as Record<string, unknown>, v.skin, cleanedStars),
       };
     }
   }

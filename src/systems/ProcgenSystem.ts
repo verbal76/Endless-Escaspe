@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Chunk, Obstacle, ObstacleKind, Pickup, PickupKind } from '../types/world';
+import type { Chunk, ForkInfo, Obstacle, ObstacleKind, Pickup, PickupKind } from '../types/world';
 import { mulberry32, pick, randInt, type Rng } from '../util/rng';
 import {
   CHUNK_LEN,
@@ -226,7 +226,13 @@ function generateChunkContents(
 // so the kind-pick lands on crowbar 45% of the time and smoke bomb
 // 55%. Smoke bombs (vision blocker) are slightly more useful in the
 // general case, so weighting them up reads correctly to the player.
-const CROWBAR_PICK_THRESHOLD = 0.45;
+const CROWBAR_PICK_THRESHOLD = 0.35;
+const SMOKE_PICK_THRESHOLD = 0.75; // 35% crowbar / 40% smoke / 25% rock
+
+function rollPickupKind(rng: Rng): PickupKind {
+  const r = rng();
+  return r < CROWBAR_PICK_THRESHOLD ? 'crowbar' : r < SMOKE_PICK_THRESHOLD ? 'smokebomb' : 'rock';
+}
 
 // Pickups: roll a small count per chunk; place where they don't
 // overlap obstacles. Skip the first chunk so the player isn't
@@ -249,8 +255,7 @@ function placePickups(
   for (let i = 0; i < count; i++) {
     let placed = false;
     for (let attempt = 0; attempt < 14 && !placed; attempt++) {
-      const kind: PickupKind =
-        rng() < CROWBAR_PICK_THRESHOLD ? 'crowbar' : 'smokebomb';
+      const kind = rollPickupKind(rng);
       const x = SPAWN_X_MIN + rng() * (SPAWN_X_MAX - SPAWN_X_MIN);
       const z = startZ + 2 + rng() * (CHUNK_LEN - 4);
       // Don't drop a pickup on top of an obstacle. We treat the
@@ -315,55 +320,149 @@ export function createWalkability(spawnX: number, spawnZ: number, zMin: number, 
 // elongated props), which is exactly what PlayerController collides
 // against. Returns the chunk plus the reachability mask of the
 // successful flood so pickups can be placed on reachable ground.
+function makeObstacle(kind: ObstacleKind, x: number, z: number, rotY: number, isCover: boolean): Obstacle {
+  const halfW = kind === 'hedgerow' ? 1.3 : kind === 'cover' ? 1.0 : 0.8;
+  const halfL = kind === 'hedgerow' ? 0.35 : kind === 'cover' ? 0.5 : 0.3;
+  return {
+    id: nextObstacleId++,
+    kind,
+    x,
+    z,
+    r: Math.hypot(halfW, halfL) + 0.05,
+    halfW,
+    halfL,
+    rotY,
+    height: OBSTACLE_HEIGHT[kind],
+    isCover,
+    mesh: null,
+  };
+}
+
+// Fork layout: a wall of hedgerows down the middle for most of the
+// chunk. Danger lane: straight and open (the game puts a guard post
+// in it and it gets extra pickups). Safe lane: barriers alternately
+// jut out from the divider and from the fence, forcing a slalom that
+// roughly doubles the walking distance through the chunk.
+const FORK_WALL_START = 1.5;
+const FORK_WALL_END = CHUNK_LEN - 1.5;
+
+function forkContents(startZ: number, dangerSide: -1 | 1): { obstacles: Obstacle[]; fork: ForkInfo } {
+  const obstacles: Obstacle[] = [];
+  const piece = 2.6;
+  for (let z = startZ + FORK_WALL_START + piece / 2; z <= startZ + FORK_WALL_END - piece / 2 + 0.01; z += piece) {
+    obstacles.push(makeObstacle('hedgerow', 0, z, Math.PI / 2, false));
+  }
+  const safe = -dangerSide;
+  // Slalom gates on the safe side (x from 0 to +-9).
+  const gates: Array<[number, 'inner' | 'outer']> = [
+    [5, 'inner'],
+    [11.5, 'outer'],
+    [18, 'inner'],
+  ];
+  for (const [dz, where] of gates) {
+    const z = startZ + dz;
+    const xs = where === 'inner' ? [1.65, 4.25] : [5.95, 8.4];
+    for (const ax of xs) obstacles.push(makeObstacle('hedgerow', safe * ax, z, 0, false));
+  }
+  return {
+    obstacles,
+    fork: {
+      dangerSide,
+      startZ,
+      endZ: startZ + CHUNK_LEN,
+      postX: dangerSide * 4.6,
+      postZ: startZ + 15,
+    },
+  };
+}
+
+export type ChunkOptions = { spec?: ChunkSpec; fork?: -1 | 1 };
+
+// Try to populate a chunk so that the player can still walk from the
+// proven-reachable seeds to the chunk's far edge. Every obstacle kind
+// - cover included - is rasterised with its real footprint (OBB for
+// elongated props), which is exactly what PlayerController collides
+// against. Returns the chunk plus the reachability mask of the
+// successful flood so pickups can be placed on reachable ground.
 export function generateChunk(
   rng: Rng,
   startZ: number,
   chunkIndex: number,
   seam: readonly Obstacle[] | undefined,
   walk: Walkability,
-  spec: ChunkSpec = DEFAULT_CHUNK_SPEC,
+  opts: ChunkOptions = {},
 ): Chunk {
+  const spec = opts.spec ?? DEFAULT_CHUNK_SPEC;
   const endZ = startZ + CHUNK_LEN;
   const grid = walk.grid;
   grid.extendTo(endZ + 1);
   const endRow = grid.rowOf(endZ - 0.01);
+  const reaches = (mask: Uint8Array) => {
+    for (let c = 0; c < grid.cols; c++) if (mask[endRow * grid.cols + c]) return true;
+    return false;
+  };
   const ATTEMPTS = 8;
   for (let attempt = 0; attempt <= ATTEMPTS; attempt++) {
-    // Final attempt is deliberately empty: always walkable because
-    // the previous chunk was proven to reach this chunk's start.
-    const obstacles =
-      attempt === ATTEMPTS
-        ? []
-        : generateChunkContents(rng, startZ, spec, Math.min(0.75, attempt * 0.12), seam);
+    let obstacles: Obstacle[];
+    let fork: ForkInfo | undefined;
+    if (opts.fork && attempt < ATTEMPTS) {
+      const f = forkContents(startZ, opts.fork);
+      obstacles = f.obstacles;
+      fork = f.fork;
+    } else {
+      // Final attempt is deliberately empty: always walkable because
+      // the previous chunk was proven to reach this chunk's start.
+      obstacles =
+        attempt === ATTEMPTS
+          ? []
+          : generateChunkContents(rng, startZ, spec, Math.min(0.75, attempt * 0.12), seam);
+    }
     for (const o of obstacles) grid.addObstacle(o);
     const reach = grid.flood(walk.seeds, endRow);
-    let reachesEnd = false;
-    for (let c = 0; c < grid.cols; c++) {
-      if (reach[endRow * grid.cols + c]) {
-        reachesEnd = true;
-        break;
+    let ok = reaches(reach);
+    if (ok && fork) {
+      // Both lanes must be passable on their own: block each lane in
+      // turn and re-check.
+      for (const side of [-1, 1] as const) {
+        const plug = makeObstacle('hedgerow', side * 4.5, fork.postZ - 3, 0, false);
+        plug.halfW = 4.6;
+        plug.halfL = 0.4;
+        plug.r = Math.hypot(4.6, 0.4);
+        grid.addObstacle(plug);
+        const alone = reaches(grid.flood(walk.seeds, endRow));
+        grid.removeObstacle(plug);
+        if (!alone) ok = false;
       }
     }
-    if (!reachesEnd) {
+    if (!ok) {
       for (const o of obstacles) grid.removeObstacle(o);
+      // A fork that can't be made walkable (neighbouring props from
+      // the previous chunk) falls back to a normal chunk.
+      if (opts.fork) opts = { ...opts, fork: undefined };
       continue;
     }
-    const pickups = placePickups(rng, chunkIndex, obstacles, startZ, (x, z) => {
+    let pickups = placePickups(rng, chunkIndex, obstacles, startZ, (x, z) => {
       const col = grid.colOf(x);
       const row = grid.rowOf(z);
       return reach[row * grid.cols + col] === 1 && Math.abs(grid.colX(col) - x) < grid.cell;
     });
+    if (fork) {
+      // The danger lane's reward: two pickups on the straight path.
+      pickups = [
+        { id: nextPickupId++, kind: 'rock', x: fork.dangerSide * 4.6, z: startZ + 8, r: PICKUP_RADIUS, collected: false, mesh: null },
+        { id: nextPickupId++, kind: rollPickupKind(rng), x: fork.dangerSide * 3.2, z: startZ + 20, r: PICKUP_RADIUS, collected: false, mesh: null },
+      ];
+    }
     // Advance the proven-reachable seed row to just below the next
-    // chunk's earliest possible footprint.
+    // chunk's earliest possible footprint. Seeds must only use rows no
+    // future chunk can alter, so the flood is re-run capped at the
+    // seed row; fall back to the uncapped result if (unusually) the
+    // capped fill loses every cell.
     const seedRow = grid.rowOf(endZ - SEED_BACKOFF);
     const next: Cell[] = [];
     for (let c = 0; c < grid.cols; c++) {
       if (reach[seedRow * grid.cols + c]) next.push({ col: c, row: seedRow });
     }
-    // Seeds from this flood are only sound if the flood didn't need
-    // rows above the seed row, which future chunks may alter. Re-run
-    // it capped at the seed row; fall back to the uncapped result if
-    // (unusually) the capped fill loses every cell.
     const capped = grid.flood(walk.seeds, seedRow);
     const safe: Cell[] = [];
     for (let c = 0; c < grid.cols; c++) {
@@ -376,6 +475,7 @@ export function generateChunk(
       endZ,
       obstacles,
       pickups,
+      fork,
     };
   }
   // Unreachable: the empty attempt always succeeds.
@@ -392,6 +492,10 @@ export const NAV_INFLATE = 0.7;
 export const SPAWN_X = 0;
 export const SPAWN_Z = 1;
 export const PLAYFIELD_BACK_Z = -2;
+
+// Per-chunk plan supplied by the caller (campaign: fixed for the
+// segment; Endless: rises with distance).
+export type ChunkPlan = (chunkIndex: number) => ChunkOptions;
 
 export class ProcgenSystem {
   private chunks: Chunk[] = [];
@@ -410,7 +514,7 @@ export class ProcgenSystem {
   // no gameplay state - obstacles() / pickups() exclude them.
   private horizonChunks: number;
 
-  private spec: ChunkSpec;
+  private plan: ChunkPlan;
   private walk: Walkability;
   // Pathfinding grid for guards and dogs (gameplay obstacles only).
   readonly nav: NavGrid;
@@ -418,32 +522,74 @@ export class ProcgenSystem {
   // so the per-frame callers don't allocate fresh arrays.
   private obstacleCache: Obstacle[] = [];
   private pickupCache: Pickup[] = [];
+  // Next gameplay chunk index / start Z (streaming).
+  private nextIndex = 0;
+  private nextZ = 0;
 
   constructor(
     seed: number,
     worldRoot: THREE.Group,
     chunkCount: number = CHUNKS_AHEAD,
     horizonChunks: number = 0,
-    spec: ChunkSpec = DEFAULT_CHUNK_SPEC,
+    plan: ChunkPlan | ChunkSpec = DEFAULT_CHUNK_SPEC,
   ) {
     this.rng = mulberry32(seed);
     this.worldRoot = worldRoot;
     this.chunkCount = Math.max(1, chunkCount | 0);
     this.horizonChunks = Math.max(0, horizonChunks | 0);
-    this.spec = spec;
+    this.plan = typeof plan === 'function' ? plan : () => ({ spec: plan });
     const zMax = this.chunkCount * CHUNK_LEN + 2;
     this.walk = createWalkability(SPAWN_X, SPAWN_Z, PLAYFIELD_BACK_Z, zMax);
     this.nav = new NavGrid(NAV_CELL, NAV_INFLATE, PLAYFIELD_BACK_Z, zMax);
   }
 
   init() {
-    for (let i = 0; i < this.chunkCount; i++) {
-      this.spawnChunk(i, i * CHUNK_LEN, false);
-    }
+    for (let i = 0; i < this.chunkCount; i++) this.appendGameplayChunk();
     for (let i = 0; i < this.horizonChunks; i++) {
       const idx = this.chunkCount + i;
       this.spawnChunk(idx, idx * CHUNK_LEN, true);
     }
+    this.rebuildCaches();
+  }
+
+  private appendGameplayChunk() {
+    this.spawnChunk(this.nextIndex, this.nextZ, false);
+    this.nextIndex++;
+    this.nextZ += CHUNK_LEN;
+  }
+
+  // Endless mode: keep gameplay chunks generated through `z`.
+  // Returns the chunks added (so the caller can populate guards etc).
+  extendTo(z: number): Chunk[] {
+    const added: Chunk[] = [];
+    while (this.nextZ < z) {
+      this.appendGameplayChunk();
+      added.push(this.chunks[this.chunks.length - 1]);
+    }
+    if (added.length) this.rebuildCaches();
+    return added;
+  }
+
+  // Endless mode: free chunks that end before `z` (well behind the
+  // player) and the grid rows under them.
+  trimBefore(z: number) {
+    let removed = false;
+    while (this.chunks.length > 1 && this.chunks[0].endZ < z && !this.chunks[0].isHorizon) {
+      const c = this.chunks.shift() as Chunk;
+      this.despawnChunk(c);
+      removed = true;
+    }
+    if (!removed) return;
+    const first = this.chunks[0]?.startZ ?? z;
+    this.nav.trimBelow(first - 4);
+    // Keep the walkability grid's seed rows intact.
+    let minSeedZ = Infinity;
+    for (const sd of this.walk.seeds) minSeedZ = Math.min(minSeedZ, this.walk.grid.rowZ(sd.row));
+    const cut = Math.min(first - 4, minSeedZ - 2);
+    const before = this.walk.grid.zMin;
+    this.walk.grid.trimBelow(cut);
+    const shift = Math.round((this.walk.grid.zMin - before) / this.walk.grid.cell);
+    if (shift > 0) this.walk.seeds = this.walk.seeds.map((c) => ({ col: c.col, row: c.row - shift }));
     this.rebuildCaches();
   }
 
@@ -460,15 +606,16 @@ export class ProcgenSystem {
         ? previous.obstacles.filter((o) => o.z >= startZ - SEAM_DEPTH)
         : undefined;
     let chunk: Chunk;
+    const opts = this.plan(chunkIndex);
     if (isHorizon) {
       // Horizon chunks are scenery only (excluded from collision), so
       // they skip the walkability check and carry no pickups - their
       // meshes would tease the player toward something they can never
       // collect.
-      const obstacles = generateChunkContents(this.rng, startZ, this.spec, 0, seam);
+      const obstacles = generateChunkContents(this.rng, startZ, opts.spec ?? DEFAULT_CHUNK_SPEC, 0, seam);
       chunk = { id: nextChunkId++, startZ, endZ: startZ + CHUNK_LEN, obstacles, pickups: [], isHorizon: true };
     } else {
-      chunk = generateChunk(this.rng, startZ, chunkIndex, seam, this.walk, this.spec);
+      chunk = generateChunk(this.rng, startZ, chunkIndex, seam, this.walk, opts);
       this.nav.extendTo(chunk.endZ + 1);
       for (const o of chunk.obstacles) this.nav.addObstacle(o);
     }
@@ -524,7 +671,8 @@ export class ProcgenSystem {
     }
   }
 
-  // Fixed-length campaign segments don't recycle chunks.
+  // Campaign segments are generated up front; Endless streams via
+  // extendTo / trimBefore.
   update(_playerZ: number) {}
 
   // Gameplay queries skip horizon chunks so their decorative
@@ -538,6 +686,12 @@ export class ProcgenSystem {
 
   pickups(): readonly Pickup[] {
     return this.pickupCache;
+  }
+
+  forks(): ForkInfo[] {
+    const out: ForkInfo[] = [];
+    for (const c of this.chunks) if (c.fork && !c.isHorizon) out.push(c.fork);
+    return out;
   }
 
   endZ(): number {

@@ -97,13 +97,14 @@ export function spawnCameras(
   worldRoot: THREE.Group,
   segLen: number,
   count: number,
+  zStart: number = 0,
 ): Camera[] {
   if (count <= 0) return [];
   const out: Camera[] = [];
   const xMag = PLAY_HALF_W + 0.3;
   for (let i = 0; i < count; i++) {
     const t = (i + 0.5) / count;
-    const z = segLen * (0.18 + 0.74 * t);
+    const z = zStart + segLen * (0.18 + 0.74 * t);
     const onLeft = i % 2 === 0;
     // Cameras on the left fence look toward +X (into the yard);
     // facing is the angle whose (sin, cos) points roughly inward.

@@ -205,6 +205,8 @@ export function spawnLightTowers(
   rows: number,
   scanSpeedMul: number,
   canTrack: boolean,
+  // World Z where this stretch of yard starts (Endless sections).
+  zStart: number = 0,
 ): LightTower[] {
   const towerX = PLAY_HALF_W + 0.6;
   const towers: LightTower[] = [];
@@ -213,7 +215,7 @@ export function spawnLightTowers(
     // line and the win line so the player has breathing room at the
     // ends of the run.
     const t = (i + 0.5) / rows;
-    const rz = segLen * (0.10 + 0.80 * t);
+    const rz = zStart + segLen * (0.10 + 0.80 * t);
     const dir = i % 2 === 0 ? 1 : -1;
     towers.push(buildTower(-towerX, rz, 0.55 * scanSpeedMul * dir, worldRoot, canTrack));
     towers.push(buildTower(towerX, rz, -0.55 * scanSpeedMul * dir, worldRoot, canTrack));

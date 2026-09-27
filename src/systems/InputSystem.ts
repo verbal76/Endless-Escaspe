@@ -19,6 +19,7 @@ export type InputState = {
   // tap drives a single use even if the button stays held.
   useCrowbar: boolean;
   useSmokeBomb: boolean;
+  throwRock: boolean;
 };
 
 export const input: InputState = {
@@ -29,6 +30,7 @@ export const input: InputState = {
   viewYaw: 0,
   useCrowbar: false,
   useSmokeBomb: false,
+  throwRock: false,
 };
 
 export function resetInput() {
@@ -39,6 +41,7 @@ export function resetInput() {
   input.viewYaw = 0;
   input.useCrowbar = false;
   input.useSmokeBomb = false;
+  input.throwRock = false;
 }
 
 // Radial dead zone for the stick, as a fraction of full deflection.

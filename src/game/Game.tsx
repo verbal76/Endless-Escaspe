@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { createRenderer } from './Renderer';
 import { startLoop, type LoopHandle } from './Loop';
 import { updateCameraRig } from './CameraRig';
-import { ProcgenSystem } from '../systems/ProcgenSystem';
+import { ProcgenSystem, type ChunkPlan } from '../systems/ProcgenSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { updatePlayer } from '../systems/PlayerController';
 import { resetGuardMemory, updateGuard, hearNoiseAt, type GuardSenses } from '../systems/GuardAI';
@@ -28,7 +28,7 @@ import {
   createPlayerFigure,
   createWinLine,
 } from '../scenes/PrisonYard1';
-import { useStore, type RunStats } from '../state/store';
+import { useStore, type GameMode, type RunStats } from '../state/store';
 import type { Guard } from '../types/world';
 import { input, resetInput } from '../systems/InputSystem';
 import { animatePickup } from '../scenes/Pickup';
@@ -61,6 +61,8 @@ import {
 import { circleHit } from '../util/collision';
 import {
   aiTierFor,
+  chunkDensityFor,
+  forksEnabledFor,
   detectionDecayFor,
   detectionRateScaleFor,
   dogCountFor,
@@ -115,6 +117,7 @@ import { EventFlash } from '../components/HUD/EventFlash';
 import { Tutorial } from '../components/HUD/Tutorial';
 import { GameModal } from '../components/HUD/GameModal';
 import { Toast } from '../components/HUD/Toast';
+import { DistanceHud } from '../components/HUD/DistanceHud';
 import { EdgeVignette } from '../components/HUD/EdgeVignette';
 import {
   clearDustField,
@@ -160,7 +163,14 @@ import {
   updateGuardStateMarker,
   type GuardStateMarker,
 } from '../scenes/GuardStateMarker';
-import { applyBackdropMood, createBackdrop, setBackdropSnow, updateBackdrop } from '../scenes/Backdrop';
+import {
+  applyBackdropMood,
+  createBackdrop,
+  createTreeLine,
+  followBackdrop,
+  setBackdropSnow,
+  updateBackdrop,
+} from '../scenes/Backdrop';
 import {
   createWeather,
   noiseMultiplier,
@@ -175,11 +185,20 @@ import { applyStageLighting, getStageLighting, type StageLighting } from '../sce
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
 import { createMusic, type MusicPlayer } from '../scenes/Music';
 import { MusicIntensity } from '../util/musicIntensity';
+import {
+  THROW_HEAR_RADIUS,
+  clearRocks,
+  createRockPool,
+  launchRock,
+  throwTarget,
+  updateRocks,
+} from '../scenes/ThrownRock';
 import { TIPS, contextTip, stageStartTip, type TipId } from '../util/stageTips';
 import { createSfx, playSfx, type Sfx } from '../scenes/Sfx';
 import { writeSaves, type Save } from '../util/storage';
 import { haptics } from '../util/haptics';
 import { scoreStars, timeTargetsFor } from '../util/scoring';
+import { applyRunResult, type RunResult } from '../util/economy';
 import { RunTracker } from '../util/runStats';
 import { BossClock } from '../util/bossClock';
 import { resetNavState } from '../systems/Navigator';
@@ -238,7 +257,8 @@ export function Game() {
 
     const player = createPlayer();
     let playerSkin = useStore.getState().playerSkin;
-    let playerFigure = createPlayerFigure(playerSkin);
+    let playerOutfit = useStore.getState().playerOutfit;
+    let playerFigure = createPlayerFigure(playerSkin, playerOutfit);
     r.worldRoot.add(playerFigure.group);
 
     const playerShadow = createBlobShadow(1.1);
@@ -261,6 +281,10 @@ export function Game() {
     r.worldRoot.add(dust.root);
     const bursts = createBurstPool(4);
     r.worldRoot.add(bursts.root);
+    const rocks = createRockPool(r.worldRoot, 2);
+    // Last non-zero movement direction (throws go this way).
+    let facingX = 0;
+    let facingZ = 1;
     // Written by update(), read by render().
     let noiseRadiusNow = 0;
     let noiseLoudness = 0;
@@ -269,6 +293,8 @@ export function Game() {
     const senseOut: DetectionResult = { visual: false, heard: false };
     const guardSenses = new Map<number, GuardSenses>();
     const nextDetection = new Map<number, number>();
+    // Detection floors requested this frame by distractions.
+    const nextDetectionFloor = new Map<number, number>();
 
     const siren: SirenHandle = createSiren();
     const sfx: Sfx = createSfx();
@@ -326,11 +352,23 @@ export function Game() {
       aiming: boolean;
     };
 
+    type Section = { index: number; zStart: number; len: number; root: THREE.Group };
+
     type Scene = {
       // Parent Group for every per-segment mesh. Removing this from
       // r.worldRoot detaches the entire world in one operation; the
       // next buildScene() call constructs a fresh root.
       root: THREE.Group;
+      mode: GameMode;
+      // Endless / Daily: the world streams in sections and never ends.
+      endless: boolean;
+      seed: number;
+      sections: Section[];
+      nextSection: number;
+      nextGuardId: number;
+      // Furthest Z the player has reached (Endless distance).
+      maxZ: number;
+      ground: THREE.Mesh;
       segLen: number;
       segmentEndZ: number;
       weatherKind: WeatherKind;
@@ -362,6 +400,10 @@ export function Game() {
       reinforcements: number;
       alarmWasFull: boolean;
     };
+
+    // Guard flashlight cones are built at this length and scaled each
+    // frame to the guard's real effective range.
+    const BEAM_BASE_RANGE = 6;
 
     // Build one guard (figure, equipment, marker, laser) under `root`.
     const makeGuardEntry = (
@@ -401,28 +443,142 @@ export function Game() {
     // (guards, dogs, cameras, towers, fences, procgen, weather, etc.)
     // parented to it. Run once at GLView mount and again every time
     // the player advances stage or starts a new segment.
-    const buildScene = (stage: number, seed: number): Scene => {
+    // A stretch of yard with its own guards / dogs / lights / cameras /
+    // fences / trees. A campaign segment is ONE section; Endless and
+    // Daily runs stream a new section in ahead of the player and drop
+    // old ones behind.
+    const populateSection = (s: Scene, index: number, zStart: number, len: number, level: number) => {
+      const secRoot = new THREE.Group();
+      s.root.add(secRoot);
+      const isArena = s.isBossArena;
+      const guardCount = guardCountFor(level) + (isArena ? 3 : 0);
+      const firstGuard = s.guards.length;
+      const configs = createGuardConfigs(guardCount, len, zStart, s.nextGuardId);
+      s.nextGuardId += configs.length;
+      for (const cfg of configs) {
+        const e = makeGuardEntry(secRoot, cfg, BEAM_BASE_RANGE, false);
+        // Guard home points are laid out on a fixed pattern, so a prop
+        // can land right on one. Snap each home to the nearest cell a
+        // guard can actually stand on, otherwise the guard spawns
+        // inside the prop and can never move.
+        const cell = s.procgen.nav.nearestFree(e.guard.homeX, e.guard.homeZ, 16);
+        if (cell) {
+          const g = e.guard;
+          g.homeX = s.procgen.nav.colX(cell.col);
+          g.homeZ = s.procgen.nav.rowZ(cell.row);
+          g.x = g.homeX;
+          g.z = g.homeZ;
+          g.wanderTarget = { x: g.homeX, z: g.homeZ };
+          e.figure.group.position.set(g.x, 0, g.z);
+        }
+        s.guardEntries.push(e);
+        s.guards.push(e.guard);
+        const a = createThreatArrow();
+        secRoot.add(a.mesh);
+        s.threatArrows.push(a);
+      }
+      // Risk / reward forks in this stretch get a guard post in the
+      // danger lane (a guard that barely leaves its spot).
+      for (const f of s.procgen.forks()) {
+        if (f.startZ < zStart || f.startZ >= zStart + len) continue;
+        const e = makeGuardEntry(
+          secRoot,
+          { id: s.nextGuardId++, homeX: f.postX, homeZ: f.postZ, homeRadius: 1.5 },
+          BEAM_BASE_RANGE,
+          false,
+        );
+        e.guard.facing = -Math.PI / 2; // looking back toward the approach
+        s.guardEntries.push(e);
+        s.guards.push(e.guard);
+        const a = createThreatArrow();
+        secRoot.add(a.mesh);
+        s.threatArrows.push(a);
+      }
+      const sectionGuards = s.guards.slice(firstGuard);
+
+      // Dogs: trail a designated handler guard, smell the player at
+      // close range, detach into chase when the handler does.
+      const dogCount = dogCountFor(level) + (isArena ? 1 : 0);
+      for (let i = 0; i < dogCount && i < sectionGuards.length; i++) {
+        const handler = sectionGuards[i];
+        const d = createDog(s.nextGuardId * 100 + i, handler.id, handler.x + 1, handler.z);
+        secRoot.add(d.group);
+        s.dogs.push(d);
+        const ds = createBlobShadow(0.9);
+        secRoot.add(ds);
+        s.dogShadows.push(ds);
+      }
+
+      const towers = spawnLightTowers(
+        secRoot,
+        len,
+        lightTowerRowsFor(level),
+        lightScanSpeedMulFor(level),
+        level >= 8, // tracking from stage 8+
+        zStart,
+      );
+      s.lightTowers.push(...towers);
+      // Boss arenas force a minimum of 4 cameras even on early-stage
+      // arenas where the stage tuning wouldn't have unlocked any.
+      const camCount = isArena ? Math.max(4, cameraCountFor(level)) : cameraCountFor(level);
+      s.cameras.push(...spawnCameras(secRoot, len, camCount, zStart));
+
+      if (s.endless) {
+        spawnFences(secRoot, level, s.weatherKind, len, razorWireEnabledFor(level), len, zStart === 0 ? null : zStart);
+        secRoot.add(createTreeLine(zStart === 0 ? -10 : zStart, zStart === 0 ? len + 10 : len, s.seed + index));
+      }
+      if (s.weatherKind === 'snow') {
+        dustObstaclesWithSnow(s.procgen.obstacles().filter((o) => o.z >= zStart && o.z < zStart + len + CHUNK_LEN));
+      }
+      s.sections.push({ index, zStart, len, root: secRoot });
+    };
+
+    // Drop a section that is far behind the player (Endless).
+    const removeSection = (s: Scene, sec: Section) => {
+      const end = sec.zStart + sec.len;
+      for (let i = s.guardEntries.length - 1; i >= 0; i--) {
+        const e = s.guardEntries[i];
+        if (e.guard.homeZ >= sec.zStart && e.guard.homeZ < end && !e.reinforcement) {
+          s.guardEntries.splice(i, 1);
+          s.guards.splice(i, 1);
+          s.threatArrows.splice(i, 1);
+        }
+      }
+      for (let i = s.dogs.length - 1; i >= 0; i--) {
+        if (s.dogs[i].group.parent === sec.root) {
+          s.dogs.splice(i, 1);
+          s.dogShadows.splice(i, 1);
+        }
+      }
+      s.lightTowers = s.lightTowers.filter((t) => t.z < sec.zStart || t.z >= end);
+      s.cameras = s.cameras.filter((c) => c.z < sec.zStart || c.z >= end);
+      s.root.remove(sec.root);
+      disposeSubtree(sec.root);
+      s.sections = s.sections.filter((x) => x !== sec);
+    };
+
+    // Endless / Daily: difficulty level for a world Z.
+    const ENDLESS_SECTION_LEN = CHUNKS_AHEAD * CHUNK_LEN; // 120 m
+    const levelAtZ = (z: number) => Math.min(30, 1 + Math.floor(Math.max(0, z) / ENDLESS_SECTION_LEN));
+
+    const buildScene = (stage: number, seed: number, mode: GameMode = 'campaign'): Scene => {
       const root = new THREE.Group();
       r.worldRoot.add(root);
+      const endless = mode !== 'campaign';
 
-      // Boss-arena variant: shorter playfield, no win line, no
-      // horizon chunks, a back wall, extra guards, and a survive-
-      // Boss round trigger: every 10th stage (10, 20, 30, ...) the
-      // segment becomes a boss arena - smaller enclosed playfield
+      // Boss round trigger: every 10th campaign stage (10, 20, 30, ...)
+      // the segment becomes a boss arena - smaller enclosed playfield
       // with a survive-the-timer goal handled in the update loop.
-      // Replaces the prior dev-unlock toggle: the boss round is now
-      // a guaranteed checkpoint at every 10-stage milestone.
-      const isBossArena = stage > 0 && stage % 10 === 0;
+      const isBossArena = !endless && stage > 0 && stage % 10 === 0;
       const ARENA_CHUNKS = 2; // ~48 m enclosed arena
       const ARENA_SURVIVE_SECONDS = 60;
 
       const segLengthMul = segmentLengthMulFor(stage);
-      const chunkCount = isBossArena
-        ? ARENA_CHUNKS
-        : Math.max(
-            CHUNKS_AHEAD,
-            Math.round(CHUNKS_AHEAD * segLengthMul),
-          );
+      const chunkCount = endless
+        ? 6
+        : isBossArena
+          ? ARENA_CHUNKS
+          : Math.max(CHUNKS_AHEAD, Math.round(CHUNKS_AHEAD * segLengthMul));
       const segLen = chunkCount * CHUNK_LEN;
 
       const ground = createGround();
@@ -438,7 +594,7 @@ export function Game() {
       // a permanent late-game pressure.
       const weatherEnabledAtInit = useStore.getState().weatherEnabled;
       const rolledWeatherKind = pickWeather(seed);
-      const stormyForced = forceStormyWeatherFor(stage);
+      const stormyForced = !endless && forceStormyWeatherFor(stage);
       let weatherKind: WeatherKind = weatherEnabledAtInit ? rolledWeatherKind : 'clear';
       if (stormyForced && weatherKind === 'clear') {
         // Coin flip between rain and snow so late stages don't always
@@ -452,11 +608,10 @@ export function Game() {
         groundMat.color.setHex(0xc8d6dc);
       }
 
-      // Win line is omitted on arena stages (no end zone to cross -
-      // the goal is to survive the timer instead). The render loop
-      // skips its opacity pulse when winLineMat is null.
+      // Win line is omitted on arena stages (survive the timer) and in
+      // Endless / Daily (there is no end).
       let winLineMat: THREE.MeshBasicMaterial | null = null;
-      if (!isBossArena) {
+      if (!isBossArena && !endless) {
         const winLine = createWinLine(segLen);
         winLineMat = winLine.material as THREE.MeshBasicMaterial;
         // The win line is built opaque; flip the material to transparent
@@ -473,131 +628,101 @@ export function Game() {
         spawnChainLinkWall(root, PLAY_HALF_W * 2 + 0.6, 0, segLen);
       }
 
-      const baseVisionRange = visionRangeFor(stage);
-
-      // Arena bumps the guard count by 2 so the smaller playfield
-      // doesn't feel sparse. Capped further up by createGuardConfigs.
-      // Boss arenas amp up entity counts so the survive-the-timer
-      // round actually feels like a boss fight: +3 guards, +1 dog
-      // beyond the stage default, and a minimum 4 cameras feeding
-      // the alarm bar regardless of whether stage tuning would have
-      // unlocked them yet. Detection rates are bumped 30% inside
-      // the arena too (see the `tuning` block in update()).
-      const guardCount = guardCountFor(stage) + (isBossArena ? 3 : 0);
-      const guardEntries: GuardEntry[] = createGuardConfigs(guardCount, segLen).map((cfg) =>
-        makeGuardEntry(root, cfg, baseVisionRange, false),
-      );
-      const guards: Guard[] = guardEntries.map((e) => e.guard);
-
+      // Layout plan: density rises with the stage (campaign) or with
+      // distance (Endless); risk / reward forks from stage 3 - one per
+      // campaign segment, every ~10 chunks in Endless.
+      const forkSide: -1 | 1 = (seed & 2) === 0 ? 1 : -1;
+      const campaignForkChunk = forksEnabledFor(stage) && !isBossArena && chunkCount >= 5 ? 2 + (seed % 2) : -1;
+      const plan: ChunkPlan = endless
+        ? (i) => ({
+            spec: chunkDensityFor(levelAtZ(i * CHUNK_LEN)),
+            fork: i >= 8 && i % 10 === 8 ? ((i / 10) % 2 === 0 ? forkSide : (-forkSide as -1 | 1)) : undefined,
+          })
+        : (i) => ({ spec: chunkDensityFor(stage), fork: i === campaignForkChunk ? forkSide : undefined });
       // Horizon chunks render past the gameplay end so the path
-      // visually continues toward the mountains - a chained "next
-      // segment" view that sells the endless-escape framing without
-      // affecting collision, detection, or the win check (those all
-      // ignore isHorizon chunks). Arenas skip them entirely so the
-      // back wall reads as a real wall instead of teasing more yard.
-      const HORIZON_CHUNKS = isBossArena ? 0 : 6;
-      const procgen = new ProcgenSystem(seed, root, chunkCount, HORIZON_CHUNKS);
+      // visually continues toward the mountains; arenas skip them so
+      // the back wall reads as a real wall, and Endless has no end.
+      const HORIZON_CHUNKS = isBossArena || endless ? 0 : 6;
+      const procgen = new ProcgenSystem(seed, root, chunkCount, HORIZON_CHUNKS, plan);
       procgen.init();
 
-      // Guard home points are laid out on a fixed pattern, so a prop
-      // can land right on one. Snap each home to the nearest cell a
-      // guard can actually stand on, otherwise the guard spawns inside
-      // the prop and can never move.
-      for (const e of guardEntries) {
-        const g = e.guard;
-        const cell = procgen.nav.nearestFree(g.homeX, g.homeZ, 16);
-        if (cell) {
-          g.homeX = procgen.nav.colX(cell.col);
-          g.homeZ = procgen.nav.rowZ(cell.row);
-          g.x = g.homeX;
-          g.z = g.homeZ;
-          g.wanderTarget = { x: g.homeX, z: g.homeZ };
-          e.figure.group.position.set(g.x, 0, g.z);
-        }
-      }
-
-      // Snow weather: dust the top of every obstacle with a thin
-      // white cap so the world reads as blanketed.
-      if (weatherKind === 'snow') {
-        dustObstaclesWithSnow(procgen.obstacles());
-      }
-
       const razorWire = razorWireEnabledFor(stage);
-      // Visual fence length = gameplay segment + horizon chunks +
-      // small lead-in. Lets the fence keep going past the win line
-      // so the eye doesn't see the path terminate.
-      const fenceVisualLen = segLen + HORIZON_CHUNKS * CHUNK_LEN + 4;
-      spawnFences(root, stage, weatherKind, segLen, razorWire, fenceVisualLen);
-      const lightTowers: LightTower[] = spawnLightTowers(
+      const baseVisionRange = visionRangeFor(endless ? 1 : stage);
+      const scene: Scene = {
         root,
+        mode,
+        endless,
+        seed,
         segLen,
-        lightTowerRowsFor(stage),
-        lightScanSpeedMulFor(stage),
-        stage >= 8, // tracking from stage 8+
-      );
-
-      // Dogs: trail a designated handler guard, smell the player at
-      // close range, detach into chase when the handler does. One per
-      // entry in dogCountFor; we pair them with the first N guards.
-      const dogs: Dog[] = [];
-      const dogShadows: THREE.Mesh[] = [];
-      const dogCount = dogCountFor(stage) + (isBossArena ? 1 : 0);
-      for (let i = 0; i < dogCount && i < guards.length; i++) {
-        const handler = guards[i];
-        const d = createDog(i + 1, handler.id, handler.x + 1, handler.z);
-        root.add(d.group);
-        dogs.push(d);
-        const ds = createBlobShadow(0.9);
-        root.add(ds);
-        dogShadows.push(ds);
-      }
-
-      // Boss arenas force a minimum of 4 cameras even on early-stage
-      // arenas where the stage tuning wouldn't have unlocked any.
-      const baseCameraCount = cameraCountFor(stage);
-      const cameraCount = isBossArena
-        ? Math.max(4, baseCameraCount)
-        : baseCameraCount;
-      const cameras: Camera[] = spawnCameras(root, segLen, cameraCount);
-
-      // Boss stage: pump up the lead guard's effective vision so the
-      // segment reads as a tougher fight without changing procgen.
-      // The bonus is multiplied into baseVisionRange at detection time.
-      const bossStage = isBossStage(stage);
-      const bossGuardId = bossStage && guards.length > 0 ? guards[0].id : -1;
-
-      const threatArrows: ThreatArrow[] = guards.map(() => {
-        const a = createThreatArrow();
-        root.add(a.mesh);
-        return a;
-      });
-
-      return {
-        root,
-        segLen,
-        segmentEndZ: segLen,
+        segmentEndZ: endless ? procgen.endZ() - 2 : segLen,
         weatherKind,
         weatherEnabledAtInit,
         weather,
+        ground,
         groundMat,
         winLineMat,
         baseVisionRange,
         razorWire,
-        guardEntries,
-        guards,
+        guardEntries: [],
+        guards: [],
         procgen,
-        lightTowers,
-        dogs,
-        dogShadows,
-        cameras,
-        threatArrows,
-        bossStage,
-        bossGuardId,
+        lightTowers: [],
+        dogs: [],
+        dogShadows: [],
+        cameras: [],
+        threatArrows: [],
+        bossStage: false,
+        bossGuardId: -1,
         isBossArena,
         bossSurviveSeconds: ARENA_SURVIVE_SECONDS,
         reinforcements: 0,
         alarmWasFull: false,
+        sections: [],
+        nextSection: 0,
+        nextGuardId: 1,
+        maxZ: 0,
       };
+
+      if (endless) {
+        // First two sections now; the rest stream in as the player
+        // advances (see streamEndless).
+        for (let k = 0; k < 2; k++) {
+          procgen.extendTo((k + 1) * ENDLESS_SECTION_LEN + CHUNK_LEN);
+          populateSection(scene, k, k * ENDLESS_SECTION_LEN, ENDLESS_SECTION_LEN, levelAtZ(k * ENDLESS_SECTION_LEN));
+          scene.nextSection = k + 1;
+        }
+        scene.segmentEndZ = procgen.endZ() - 2;
+      } else {
+        populateSection(scene, 0, 0, segLen, stage);
+        scene.nextSection = 1;
+        // Visual fence length = gameplay segment + horizon chunks +
+        // small lead-in, so the fence keeps going past the win line.
+        spawnFences(root, stage, weatherKind, segLen, razorWire, segLen + HORIZON_CHUNKS * CHUNK_LEN + 4);
+        root.add(createTreeLine(-10, segLen + HORIZON_CHUNKS * CHUNK_LEN + 40, seed));
+        // Boss stage: the lead guard sees ~50% further (every 5th stage).
+        if (isBossStage(stage) && scene.guards.length > 0) {
+          scene.bossStage = true;
+          scene.bossGuardId = scene.guards[0].id;
+        }
+      }
+      return scene;
+    };
+
+    // Endless: generate ahead, populate new sections, drop old ones.
+    const streamEndless = () => {
+      const s = scene;
+      const need = player.z + 2 * ENDLESS_SECTION_LEN;
+      while (s.nextSection * ENDLESS_SECTION_LEN < need) {
+        const k = s.nextSection;
+        s.procgen.extendTo((k + 1) * ENDLESS_SECTION_LEN + CHUNK_LEN);
+        populateSection(s, k, k * ENDLESS_SECTION_LEN, ENDLESS_SECTION_LEN, levelAtZ(k * ENDLESS_SECTION_LEN));
+        s.nextSection = k + 1;
+      }
+      s.segmentEndZ = s.procgen.endZ() - 2;
+      for (const sec of [...s.sections]) {
+        if (sec.zStart + sec.len < player.z - 45) removeSection(s, sec);
+      }
+      s.procgen.trimBefore(player.z - 50);
     };
 
     // ---- Initial scene ----------------------------------------------
@@ -606,7 +731,7 @@ export function Game() {
     // tier, slow-mo gate) are re-evaluated each frame because they're
     // cheap.
     const initialStage = useStore.getState().stage;
-    let scene: Scene = buildScene(initialStage, useStore.getState().segmentSeed);
+    let scene: Scene = buildScene(initialStage, useStore.getState().segmentSeed, useStore.getState().gameMode);
 
     // One lighting mood per stage (day / afternoon / dusk / night /
     // deep night; see Lighting.ts). Applied once per (re)build - the
@@ -637,10 +762,11 @@ export function Game() {
     // player advances stage or starts a new segment via the banner.
     // Caller must run resetSegment() afterwards to re-zero player +
     // accumulator state against the freshly built guards / dogs.
-    const rebuildScene = (stage: number, seed: number) => {
-      logDebug('log', 'rebuildScene', { stage, seed });
+    const rebuildScene = (stage: number, seed: number, mode: GameMode) => {
+      logDebug('log', 'rebuildScene', { stage, seed, mode });
       tearDownScene(scene);
-      scene = buildScene(stage, seed);
+      scene = buildScene(stage, seed, mode);
+      if (!scene.endless) backdrop.group.position.z = 0;
       lighting = applyStageLighting(r, stage);
       applyBackdropMood(backdrop, lighting);
       setBackdropSnow(backdrop, scene.weatherKind === 'snow');
@@ -656,6 +782,7 @@ export function Game() {
     const dogSmellByHandler = new Map<number, number>();
     let lastSegmentSeed = useStore.getState().segmentSeed;
     let lastStage = useStore.getState().stage;
+    let lastMode: GameMode = useStore.getState().gameMode;
     let lastRestartCounter = useStore.getState().restartCounter;
     // Tracks the last observed runState so we can detect a fresh
     // transition into 'playing' (e.g. tapping START on a new save
@@ -725,13 +852,13 @@ export function Game() {
       const wantZ = Math.min(scene.segmentEndZ - 2, player.z + 22);
       const cell = nav.nearestFree(side * (PLAY_HALF_W - 1.5), wantZ, 20);
       if (!cell) return false;
-      const id = scene.guards.reduce((m, g) => Math.max(m, g.id), 0) + 1;
+      const id = scene.nextGuardId++;
       const x = nav.colX(cell.col);
       const z = nav.rowZ(cell.row);
       const entry = makeGuardEntry(
         scene.root,
         { id, homeX: x, homeZ: z, homeRadius: 6 },
-        scene.baseVisionRange,
+        BEAM_BASE_RANGE,
         true,
       );
       scene.guardEntries.push(entry);
@@ -775,7 +902,8 @@ export function Game() {
       if (stageTipDelay >= 0) {
         stageTipDelay -= dt;
         if (stageTipDelay < 0) {
-          queueTip(stageStartTip(useStore.getState().stage, seenTips()));
+          if (scene.endless) queueTip(contextTip(scene.mode === 'daily' ? 'daily' : 'endless', seenTips()));
+          else queueTip(stageStartTip(useStore.getState().stage, seenTips()));
           if (scene.cameras.length > 0) queueTip(contextTip('cameras', seenTips()));
         }
       }
@@ -789,6 +917,8 @@ export function Game() {
     };
 
     const resetSegment = () => {
+      clearRocks(rocks);
+      runId = `run-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
       tipQueue.length = 0;
       stageTipDelay = 1.2;
       clearDustField(dust);
@@ -885,6 +1015,11 @@ export function Game() {
     // through the same calc.
     const grantStartingHearts = (stage: number) => {
       const st = useStore.getState();
+      // Endless / Daily: a fixed 3-heart run, no campaign boss perk.
+      if (st.gameMode !== 'campaign') {
+        st.setHearts(startingHeartsFor(1));
+        return;
+      }
       const bonus = st.perkRemainingStages > 0 ? 1 : 0;
       st.setHearts(startingHeartsFor(stage) + bonus);
       st.decayBossPerk();
@@ -925,18 +1060,18 @@ export function Game() {
       const st = useStore.getState();
       if (remaining <= 0) {
         haptics.caught();
-        // Boss-round failure isn't a run-ender: the user wants the
-        // arena to be a checkpoint that doesn't gate progression.
-        // Advance to the next stage with a fresh hearts pool and
-        // load the next segment instead of rolling the death banner.
-        // Boss perk is NOT granted on failure - only a clear earns
-        // the +1 heart buffer (handled in handleWin).
+        // Boss-round failure: the round must be retried - losing
+        // never advances the stage. Fresh hearts, same arena, timer
+        // re-armed (resetSegment via the restart path). No boss perk:
+        // only a clear earns that.
         if (scene.isBossArena) {
-          const nextStage = st.stage + 1;
-          st.setStage(nextStage);
-          grantStartingHearts(nextStage);
           st.setLastStats(null);
-          st.resetForSegment(st.segmentSeed + 1);
+          st.requestRestart();
+          st.showToast('Boss round failed - try again. Survive the timer to advance.', 'warn');
+          return;
+        }
+        if (scene.endless) {
+          finishEndlessRun();
           return;
         }
         // Non-boss run-ending death: clear the boss perk so the
@@ -1015,6 +1150,48 @@ export function Game() {
       st.setRunning(false);
     };
 
+    // Pay out a finished run to the active save (idempotent per run id)
+    // and persist.
+    let runId = `run-${Date.now()}`;
+    const payRun = (result: RunResult): { earned: number; total: number; save: Save | null } => {
+      const st = useStore.getState();
+      const key = st.activeSaveName;
+      const save = key ? st.saves[key] : null;
+      if (!key || !save) return { earned: 0, total: 0, save: null };
+      const { save: updated, earned } = applyRunResult(save, result);
+      if (updated !== save) {
+        st.upsertSave(updated);
+        writeSaves({ ...useStore.getState().saves, [key]: updated });
+      }
+      return { earned, total: updated.coins, save: updated };
+    };
+
+    const finishEndlessRun = () => {
+      const st = useStore.getState();
+      const distanceM = Math.floor(scene.maxZ);
+      const day = st.gameMode === 'daily' ? st.dailyDay : null;
+      const paid = payRun(
+        st.gameMode === 'daily' && day
+          ? { kind: 'daily', runId, distanceM, day }
+          : { kind: 'endless', runId, distanceM },
+      );
+      const best = paid.save
+        ? st.gameMode === 'daily'
+          ? paid.save.daily?.best ?? distanceM
+          : paid.save.endlessBest
+        : distanceM;
+      st.setRunSummary({
+        mode: st.gameMode,
+        distanceM,
+        bestM: best,
+        coinsEarned: paid.earned,
+        coinsTotal: paid.total,
+        day,
+      });
+      st.setLastStats({ ...tracker.snapshot(), stars: 0 });
+      st.setRunState('caught');
+    };
+
     const handleWin = () => {
       const st = useStore.getState();
       const justClearedStage = st.stage;
@@ -1025,6 +1202,15 @@ export function Game() {
         timeTargetsFor(scene.segLen, scene.isBossArena ? scene.bossSurviveSeconds : null),
       );
       st.setLastStats({ ...stats, stars });
+      const paid = payRun({ kind: 'campaign', runId, stage: justClearedStage, stars });
+      st.setRunSummary({
+        mode: 'campaign',
+        distanceM: 0,
+        bestM: 0,
+        coinsEarned: paid.earned,
+        coinsTotal: paid.total,
+        day: null,
+      });
       // Mirror the new high (if any) into the in-memory bestStars
       // map so the post-run banner shows the right number.
       st.recordSegmentStars(justClearedStage, stars);
@@ -1089,21 +1275,25 @@ export function Game() {
       // just back to spawn.
       if (
         st.segmentSeed !== lastSegmentSeed ||
-        st.stage !== lastStage
+        st.stage !== lastStage ||
+        st.gameMode !== lastMode
       ) {
         lastSegmentSeed = st.segmentSeed;
         lastStage = st.stage;
-        rebuildScene(st.stage, st.segmentSeed);
+        lastMode = st.gameMode;
+        rebuildScene(st.stage, st.segmentSeed, st.gameMode);
         resetSegment();
+        // Every Endless / Daily (re)start is a fresh 3-heart run.
+        if (scene.endless) grantStartingHearts(st.stage);
         // Boss-round popup: every 10th stage (10, 20, 30, ...) is
         // an arena. Pause the world and pop a "BOSS ROUND" modal
         // before the survive-the-timer countdown starts so the
         // player isn't dropped into a fight cold.
-        if (st.stage > 0 && st.stage % 10 === 0) {
+        if (st.gameMode === 'campaign' && st.stage > 0 && st.stage % 10 === 0) {
           st.setPaused(true);
           st.setGameModal({
             title: 'BOSS ROUND',
-            body: `Stage ${st.stage} is a boss arena. Survive 60 seconds inside the enclosed yard. Get caught and you advance to stage ${st.stage + 1} anyway - this round can't gate your run.`,
+            body: `Stage ${st.stage} is a boss arena. Survive 60 seconds inside the enclosed yard. Lose all your hearts and you retry the round - you only advance by surviving it.`,
             actions: [
               {
                 label: 'START',
@@ -1120,10 +1310,11 @@ export function Game() {
       // Skin change (typically from a save load on the start screen):
       // detach the existing player figure and rebuild it with the
       // new skin so the in-world avatar matches the picker / save.
-      if (st.playerSkin !== playerSkin) {
+      if (st.playerSkin !== playerSkin || st.playerOutfit !== playerOutfit) {
         playerSkin = st.playerSkin;
+        playerOutfit = st.playerOutfit;
         r.worldRoot.remove(playerFigure.group);
-        playerFigure = createPlayerFigure(playerSkin);
+        playerFigure = createPlayerFigure(playerSkin, playerOutfit);
         r.worldRoot.add(playerFigure.group);
       }
       if (st.restartCounter !== lastRestartCounter) {
@@ -1134,6 +1325,9 @@ export function Game() {
         grantStartingHearts(st.stage);
         st.setLastStats(null);
         st.setRunState('playing');
+        // Endless / Daily streamed and trimmed the world as the player
+        // went; a restart starts the run over from a fresh build.
+        if (scene.endless) rebuildScene(st.stage, st.segmentSeed, st.gameMode);
         resetSegment();
       }
       // Fresh transition into gameplay (typically from the start
@@ -1147,6 +1341,7 @@ export function Game() {
         if (
           st.segmentSeed === lastSegmentSeed &&
           st.stage === lastStage &&
+          st.gameMode === lastMode &&
           st.restartCounter === lastRestartCounter
         ) {
           resetSegment();
@@ -1212,7 +1407,14 @@ export function Game() {
 
       tracker.tickTime(dt);
       tickTips(dt);
+      for (const f of scene.procgen.forks()) {
+        if (player.z > f.startZ - 12 && player.z < f.startZ) queueTip(contextTip('fork', seenTips()));
+      }
       animTime += dt;
+      // Difficulty level driving every stage-based knob this frame:
+      // the campaign stage, or in Endless / Daily the level reached at
+      // the player's distance.
+      const stageNow = scene.endless ? levelAtZ(player.z) : st.stage;
       if (shakeRemaining > 0) {
         shakeRemaining = Math.max(0, shakeRemaining - dt);
       }
@@ -1222,7 +1424,7 @@ export function Game() {
       // the player has a frame's grace to break LOS. Disabled past
       // the slow-mo tier so it doesn't carry late-stage runs.
       let timeScale = 1;
-      if (slowMoEnabledFor(st.stage)) {
+      if (slowMoEnabledFor(stageNow)) {
         let closeCall = false;
         const detmap = st.detection;
         for (const g of scene.guards) {
@@ -1243,7 +1445,12 @@ export function Game() {
       updateBackdrop(backdrop, effDt);
       updateWeather(scene.weather, effDt, player.x, player.z);
 
-      const staminaActive = staminaEnabledFor(st.stage);
+      if (scene.endless) {
+        streamEndless();
+        if (player.z > scene.maxZ) scene.maxZ = player.z;
+        st.setDistance(scene.maxZ, levelAtZ(player.z));
+      }
+      const staminaActive = staminaEnabledFor(stageNow);
       updatePlayer(player, scene.procgen.obstacles(), effDt, scene.segmentEndZ, staminaActive);
       const nearCover = isNearCover(player, scene.procgen.obstacles());
       if (player.stance !== st.stance) st.setStance(player.stance);
@@ -1321,6 +1528,34 @@ export function Game() {
           if (hit) playSfx(sfx, 'crowbar_hit', st.masterVolume);
         }
       }
+      if (Math.hypot(player.vx, player.vz) > 0.3) {
+        facingX = player.vx;
+        facingZ = player.vz;
+      }
+      if (input.throwRock) {
+        input.throwRock = false;
+        if (st.consumePickup('rock')) {
+          const target = throwTarget(player.x, player.z, facingX, facingZ);
+          launchRock(rocks, player.x, player.z, target.x, target.z);
+          playSfx(sfx, 'throw', st.masterVolume);
+          haptics.pickupUse();
+        }
+      }
+      // Landed rocks make noise: every guard in earshot goes to look
+      // at the landing spot (not at the player), and leashed dogs
+      // nearby lose interest in the player for a moment.
+      updateRocks(rocks, effDt, (lx, lz) => {
+        const vol = Math.max(0.3, 1 - Math.hypot(lx - player.x, lz - player.z) / 25);
+        playSfx(sfx, 'throw_land', st.masterVolume, vol);
+        for (const g of scene.guards) {
+          if (g.stunTimer > 0 || g.state === 'chase') continue;
+          if (Math.hypot(g.x - lx, g.z - lz) > THROW_HEAR_RADIUS) continue;
+          hearNoiseAt(g, lx, lz);
+          const cur = st.detection[g.id] ?? 0;
+          // Enough to investigate, never enough to chase.
+          if (cur < 0.42) nextDetectionFloor.set(g.id, 0.42);
+        }
+      });
       if (input.useSmokeBomb) {
         input.useSmokeBomb = false;
         if (st.consumePickup('smokebomb')) {
@@ -1410,18 +1645,19 @@ export function Game() {
       const weatherNoise = scene.weatherEnabledAtInit
         ? noiseMultiplier(scene.weather.kind)
         : 1.0;
-      const litBonus = lightVisionBonusFor(st.stage);
+      const litBonus = lightVisionBonusFor(stageNow);
       // Night moods shorten guard sight in the dark, but a player
       // standing in a floodlight is fully visible whatever the hour -
       // so after dark the lights are what give you away.
+      const baseRange = scene.endless ? visionRangeFor(stageNow) : scene.baseVisionRange;
       const effectiveVisionRange = (lit
-        ? scene.baseVisionRange * (1 + litBonus)
-        : scene.baseVisionRange * lighting.visionMul) * weatherVision;
+        ? baseRange * (1 + litBonus)
+        : baseRange * lighting.visionMul) * weatherVision;
 
       const litRateBase = lit
         ? player.isCrouched
-          ? floodlightCrouchedRateFor(st.stage)
-          : floodlightStandingRateFor(st.stage)
+          ? floodlightCrouchedRateFor(stageNow)
+          : floodlightStandingRateFor(stageNow)
         : 0;
       const litAdd = litRateBase * effDt;
 
@@ -1433,12 +1669,12 @@ export function Game() {
       // the open yard.
       const bossMul = scene.isBossArena ? 1.3 : 1.0;
       const tuning = {
-        rateScale: detectionRateScaleFor(st.stage) * bossMul,
-        decay: detectionDecayFor(st.stage) / bossMul,
-        noiseRangeWalkSq: noiseRangeWalkSqFor(st.stage),
-        noiseRangeCrouchSq: noiseRangeCrouchSqFor(st.stage),
+        rateScale: detectionRateScaleFor(stageNow) * bossMul,
+        decay: detectionDecayFor(stageNow) / bossMul,
+        noiseRangeWalkSq: noiseRangeWalkSqFor(stageNow),
+        noiseRangeCrouchSq: noiseRangeCrouchSqFor(stageNow),
       };
-      const aiTier = aiTierFor(st.stage);
+      const aiTier = aiTierFor(stageNow);
 
       // Camera alarm bar: cameras feed a separate yard-alarm pool
       // that, when full, escalates every guard. Update first so the
@@ -1487,7 +1723,7 @@ export function Game() {
       });
       for (const entry of scene.guardEntries) {
         const g = entry.guard;
-        const prev = st.detection[g.id] ?? 0;
+        const prev = Math.max(st.detection[g.id] ?? 0, nextDetectionFloor.get(g.id) ?? 0);
         // Boss guard sees ~50% further than the rest at boss stages.
         const guardRange =
           g.id === scene.bossGuardId
@@ -1542,6 +1778,7 @@ export function Game() {
       }
 
       st.setDetections(nextDetection);
+      nextDetectionFloor.clear();
       // Pass 2: run guard AI. This
       // ordering lets us implement the AI tier-3 broadcast: if any
       // guard has hit chase, point the nearest other non-chase
@@ -1706,7 +1943,7 @@ export function Game() {
           handleWin();
           return;
         }
-      } else if (player.z >= scene.segmentEndZ) {
+      } else if (!scene.endless && player.z >= scene.segmentEndZ) {
         handleWin();
         return;
       }
@@ -1816,7 +2053,7 @@ export function Game() {
           entry.equipment.beam.visible = true;
           // Cone length tracks the guard's real effective range (lit,
           // weather, alarm, boss guard) instead of the stage base.
-          entry.equipment.beam.scale.setScalar(entry.range / scene.baseVisionRange);
+          entry.equipment.beam.scale.setScalar(entry.range / BEAM_BASE_RANGE);
         } else {
           entry.equipment.beam.visible = false;
         }
@@ -1873,6 +2110,13 @@ export function Game() {
         );
       }
 
+      if (scene.endless) {
+        // The ground tile repeats every 4 m, so snapping the plane in
+        // 4 m steps keeps the pattern fixed in the world while the
+        // plane follows the player indefinitely.
+        scene.ground.position.z = 400 + Math.round(player.z / 4) * 4;
+        followBackdrop(backdrop, player.z);
+      }
       updateCameraRig(r.camera, player, 1 / 60);
       // Catch shake: small sin-driven offset on top of the rig pose,
       // scaled by the remaining fraction of SHAKE_DURATION so the
@@ -1904,6 +2148,7 @@ export function Game() {
       <StaminaBar />
       <AlarmBar />
       <BossTimer />
+      <DistanceHud />
       <EventFlash />
       <CatchFlash />
       <Banner />

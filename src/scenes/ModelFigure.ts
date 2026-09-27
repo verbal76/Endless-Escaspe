@@ -172,9 +172,11 @@ function buildLimb(
 }
 
 // One material per character model, shared by every figure using it.
-const FIGURE_MATS: Partial<Record<ModelKind, THREE.MeshLambertMaterial>> = {};
+const FIGURE_MATS: Record<string, THREE.MeshLambertMaterial> = {};
 
-export function createModelFigure(kind: ModelKind): ModelFigure {
+// `tint` multiplies the model texture (cosmetic outfits); null keeps
+// the original colours. One material per (model, tint).
+export function createModelFigure(kind: ModelKind, tint: number | null = null): ModelFigure {
   const template = parseTemplate(kind);
   const palette = PALETTES[kind];
 
@@ -184,9 +186,10 @@ export function createModelFigure(kind: ModelKind): ModelFigure {
   // recognisably. One material is shared across every limb because
   // the OBJ's UVs map all body parts onto a single texture sheet.
   const tex = getCharacterTexture(kind);
+  const matKey = tint === null ? kind : `${kind}:${tint.toString(16)}`;
   const sharedMat =
-    FIGURE_MATS[kind] ??
-    (FIGURE_MATS[kind] = markShared(tex
+    FIGURE_MATS[matKey] ??
+    (FIGURE_MATS[matKey] = markShared(tex
     ? new THREE.MeshLambertMaterial({
         map: tex,
         // Bump emissive map slightly so the figure stays legible
@@ -201,6 +204,10 @@ export function createModelFigure(kind: ModelKind): ModelFigure {
         emissive: palette.body,
         emissiveIntensity: 0.08,
       })));
+  if (tint !== null) {
+    sharedMat.color.setHex(tint);
+    sharedMat.emissive.setHex(tint);
+  }
   const bodyMat = sharedMat;
   const headMat = sharedMat;
 

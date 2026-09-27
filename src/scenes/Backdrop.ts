@@ -223,33 +223,6 @@ export function createBackdrop(): Backdrop {
   }
 
   // Tree line on each side of the playfield.
-  // Tree lines: 336 pines drawn as instances - one InstancedMesh per
-  // model variant and material group (a handful of draw calls instead
-  // of ~670 separate meshes, each of which used to carry its own
-  // cloned geometry).
-  const treeMats: Record<'treePineTallA' | 'treePineTallADetailed', THREE.Matrix4[]> = {
-    treePineTallA: [],
-    treePineTallADetailed: [],
-  };
-  const q = new THREE.Quaternion();
-  const up = new THREE.Vector3(0, 1, 0);
-  const pos = new THREE.Vector3();
-  const scl = new THREE.Vector3();
-  for (let i = 0; i < TREE_COUNT_PER_SIDE; i++) {
-    const z = (i / (TREE_COUNT_PER_SIDE - 1)) * (segLen + 40) + (rng() - 0.5) * 4;
-    for (const sign of [-1, 1]) {
-      const xJitter = rng() * (TREE_LINE_FAR - TREE_LINE_OUTER);
-      const variant = rng() < 0.5 ? 'treePineTallA' : 'treePineTallADetailed';
-      const s = 3.5 * (0.85 + rng() * 0.5);
-      pos.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
-      q.setFromAxisAngle(up, rng() * Math.PI * 2);
-      scl.set(s, s, s);
-      treeMats[variant].push(new THREE.Matrix4().compose(pos, q, scl));
-    }
-  }
-  root.add(createKitPropInstances('treePineTallA', treeMats.treePineTallA));
-  root.add(createKitPropInstances('treePineTallADetailed', treeMats.treePineTallADetailed));
-
   const clouds: Cloud[] = [];
   for (let i = 0; i < CLOUD_COUNT; i++) {
     const c = buildCloudMesh(rng);
@@ -298,6 +271,47 @@ export function applyBackdropMood(_b: Backdrop, light: StageLighting) {
   CLOUD_MAT.opacity = 0.55 - 0.25 * k;
   BIRD_MAT.color.setHex(0x111114).lerp(sky, k * 0.5);
   BIRD_MAT.opacity = 0.85 - 0.35 * k;
+}
+
+// Tree lines along both fences for one stretch of yard, drawn as
+// instances (one InstancedMesh per pine variant / material group).
+// Built per campaign segment or per Endless section, so the forest
+// always reaches as far as the yard does.
+const TREES_PER_METRE = TREE_COUNT_PER_SIDE / (segLen + 40);
+
+export function createTreeLine(zStart: number, length: number, seed: number): THREE.Group {
+  const rng = mulberry(seed ^ 0x51f15e);
+  const count = Math.max(2, Math.round(length * TREES_PER_METRE));
+  const mats: Record<'treePineTallA' | 'treePineTallADetailed', THREE.Matrix4[]> = {
+    treePineTallA: [],
+    treePineTallADetailed: [],
+  };
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  for (let i = 0; i < count; i++) {
+    const z = zStart + (i / (count - 1)) * length + (rng() - 0.5) * 4;
+    for (const sign of [-1, 1]) {
+      const xJitter = rng() * (TREE_LINE_FAR - TREE_LINE_OUTER);
+      const variant = rng() < 0.5 ? 'treePineTallA' : 'treePineTallADetailed';
+      const sc = 3.5 * (0.85 + rng() * 0.5);
+      pos.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
+      q.setFromAxisAngle(up, rng() * Math.PI * 2);
+      scl.set(sc, sc, sc);
+      mats[variant].push(new THREE.Matrix4().compose(pos, q, scl));
+    }
+  }
+  const g = new THREE.Group();
+  g.add(createKitPropInstances('treePineTallA', mats.treePineTallA));
+  g.add(createKitPropInstances('treePineTallADetailed', mats.treePineTallADetailed));
+  return g;
+}
+
+// Endless: keep the far scenery (mountains, clouds, birds) at a fixed
+// distance ahead as the player travels.
+export function followBackdrop(b: Backdrop, playerZ: number) {
+  b.group.position.z = playerZ;
 }
 
 export function setBackdropSnow(_b: Backdrop, _on: boolean) {

@@ -196,7 +196,8 @@ export function updateWeather(w: Weather, dt: number, centerX: number, centerZ: 
       w.lightningFlash = 1;
       w.lightningTimer = 5 + Math.random() * 8;
       w.lightning.position.x = (Math.random() - 0.5) * 200;
-      w.lightning.position.z = CHUNK_LEN * CHUNKS_AHEAD * (0.3 + Math.random() * 0.5);
+      // Strike somewhere ahead of the player (works for Endless too).
+      w.lightning.position.z = centerZ + 40 + Math.random() * 90;
     }
     if (w.lightningFlash > 0) {
       w.lightningFlash = Math.max(0, w.lightningFlash - dt * 2);

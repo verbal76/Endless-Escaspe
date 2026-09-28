@@ -21,8 +21,10 @@ const last = (tag) => {
 const release = last('[release]');
 const textures = last('[textures]');
 const audit = last('[render-audit]');
+const font = last('[font]');
 console.log('release:', JSON.stringify(release));
 console.log('texture files:', JSON.stringify(textures));
+console.log('display font:', JSON.stringify(font));
 console.log('render audit:', JSON.stringify(audit, null, 1));
 
 const problems = [];
@@ -30,6 +32,8 @@ if (!release) problems.push('no [release] line: the app did not boot this code')
 // An OTA carries its commit; the embedded bundle of the APK this job
 // just built from the commit under test reports none.
 else if (release.source === 'ota' && release.gitSha !== want) problems.push(`app ran ${release.gitSha} (${release.line}), expected ${want}`);
+if (!font) problems.push('no [font] line');
+else if (font.state !== 'loaded') problems.push(`display font not loaded: ${font.error ?? font.state}`);
 if (!audit) problems.push('no [render-audit] line: no scene was rendered');
 else if (audit.unparsed) problems.push('[render-audit] line was truncated by logcat');
 else {
@@ -45,4 +49,4 @@ if (problems.length) {
   console.error('RENDER CHECK FAILED\n' + problems.map((p) => `- ${p}`).join('\n'));
   process.exit(1);
 }
-console.log('RENDER CHECK OK: player, guards, vehicles, props and ground are drawn with GPU-verified textures');
+console.log('RENDER CHECK OK: player, guards, vehicles, props and ground are drawn with GPU-verified textures; display font loaded');

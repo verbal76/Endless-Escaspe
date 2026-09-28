@@ -4,6 +4,7 @@ import { formatDetailRows } from '../../util/releaseInfo';
 import { checkForNewUpdate, getReleaseInfo, reloadIntoUpdate } from '../../util/releaseRuntime';
 import { getTextureStatus } from '../../util/textures';
 import { formatTextureRow } from '../../util/textureSource';
+import { formatFontRow, getFontStatus } from '../../ui/fonts';
 import { formatAuditRows, getRenderAudit } from '../../util/renderAudit';
 import { color as ui, type as T } from '../../ui/theme';
 
@@ -15,6 +16,7 @@ export function BuildInfo() {
   const rows = [
     ...formatDetailRows(info),
     formatTextureRow(getTextureStatus()),
+    formatFontRow(getFontStatus()),
     ...formatAuditRows(getRenderAudit()),
   ];
   const [expanded, setExpanded] = useState<string | null>(null);

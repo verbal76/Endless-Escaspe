@@ -10,7 +10,7 @@ import { loadSaves, loadSettings } from './src/util/storage';
 import { getTextureStatus, preloadAllTextures } from './src/util/textures';
 import { getReleaseInfo } from './src/util/releaseRuntime';
 import { formatMenuLine } from './src/util/releaseInfo';
-import { loadDisplayFont } from './src/ui/fonts';
+import { getFontStatus, loadDisplayFont } from './src/ui/fonts';
 
 export default function App() {
   // Gate the Game (and its onContextCreate, where figures + vehicles
@@ -52,6 +52,7 @@ export default function App() {
         `[release] ${JSON.stringify({ line: formatMenuLine(info), source: info.source, updateId: info.updateId, gitSha: info.gitSha, otaSequence: info.otaSequence })}`,
       );
       console.log(`[textures] ${JSON.stringify(getTextureStatus())}`);
+      console.log(`[font] ${JSON.stringify(getFontStatus())}`);
       setTexturesReady(true);
     });
   }, []);

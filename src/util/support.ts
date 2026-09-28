@@ -4,6 +4,7 @@ import { getReleaseInfo } from './releaseRuntime';
 import { formatDetailRows, formatMenuLine } from './releaseInfo';
 import { getTextureStatus } from './textures';
 import { formatTextureRow } from './textureSource';
+import { formatFontRow, getFontStatus } from '../ui/fonts';
 import { formatAuditRows, getRenderAudit } from './renderAudit';
 
 // Pre-fill mailto: links for bug reports + feature requests so the
@@ -21,6 +22,7 @@ function buildInfoMultiline(): string {
   const rows = [
     ...formatDetailRows(info),
     formatTextureRow(getTextureStatus()),
+    formatFontRow(getFontStatus()),
     ...formatAuditRows(getRenderAudit()),
   ].map((r) => `${r.label}: ${r.full ?? r.value}`);
   return [formatMenuLine(info), ...rows, `OS: ${Platform.OS} ${Platform.Version}`].join('\n');

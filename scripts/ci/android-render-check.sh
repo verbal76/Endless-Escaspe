@@ -31,7 +31,7 @@ for f in "$OUT/logcat-launch1.txt" "$OUT/logcat-launch2.txt"; do
   grep -A 30 "FATAL EXCEPTION" "$f" | cut -c1-300 | head -40 || true
 done
 echo "--- app log lines (launch 1) ---"
-grep -E "\[release\]|\[textures\]|\[render-audit\]|FATAL EXCEPTION|ReactNativeJS.*(Error|Warn)" "$OUT/logcat-launch1.txt" | cut -c1-2500 || true
+grep -E "\[release\]|\[textures\]|\[font\]|\[render-audit\]|FATAL EXCEPTION|ReactNativeJS.*(Error|Warn)" "$OUT/logcat-launch1.txt" | cut -c1-2500 || true
 echo "--- app log lines (launch 2) ---"
-grep -E "\[release\]|\[textures\]|\[render-audit\]|FATAL EXCEPTION|ReactNativeJS.*(Error|Warn)" "$OUT/logcat-launch2.txt" | cut -c1-2500 || true
+grep -E "\[release\]|\[textures\]|\[font\]|\[render-audit\]|FATAL EXCEPTION|ReactNativeJS.*(Error|Warn)" "$OUT/logcat-launch2.txt" | cut -c1-2500 || true
 node scripts/ci/check-render-audit.mjs "$OUT/logcat-launch2.txt"

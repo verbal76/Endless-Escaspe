@@ -17,6 +17,7 @@ const STUBS = {
   '@react-native-async-storage/async-storage': 'async-storage.mjs',
   '@react-native/assets-registry/registry': 'assets-registry.mjs',
   'expo-modules-core': 'expo-modules-core.mjs',
+  'expo-font': 'expo-font.mjs',
 };
 
 export async function resolve(specifier, context, next) {

@@ -35,3 +35,29 @@ grep -E "\[release\]|\[textures\]|\[font\]|\[render-audit\]|FATAL EXCEPTION|Reac
 echo "--- app log lines (launch 2) ---"
 grep -E "\[release\]|\[textures\]|\[font\]|\[render-audit\]|FATAL EXCEPTION|ReactNativeJS.*(Error|Warn)" "$OUT/logcat-launch2.txt" | cut -c1-2500 || true
 node scripts/ci/check-render-audit.mjs "$OUT/logcat-launch2.txt"
+status=$?
+
+# Lifecycle: send the app to the background and bring it back; it must
+# resume (same process, no crash) rather than die or restart.
+echo "--- background / foreground ---"
+pid_before=$(adb shell pidof "$PKG" | tr -d '\r')
+adb logcat -c
+adb shell input keyevent KEYCODE_HOME
+sleep 8
+launch
+sleep 15
+adb exec-out screencap -p > "$OUT/resumed.png"
+adb logcat -d > "$OUT/logcat-resume.txt"
+pid_after=$(adb shell pidof "$PKG" | tr -d '\r')
+echo "pid before: $pid_before  after: $pid_after"
+if grep -q "FATAL EXCEPTION" "$OUT/logcat-resume.txt"; then
+  grep -A 20 "FATAL EXCEPTION" "$OUT/logcat-resume.txt" | cut -c1-300 | head -25
+  echo "LIFECYCLE CHECK FAILED: crash after background / foreground"
+  status=1
+elif [ -z "$pid_after" ] || [ "$pid_before" != "$pid_after" ]; then
+  echo "LIFECYCLE CHECK FAILED: the app did not resume in the same process"
+  status=1
+else
+  echo "LIFECYCLE CHECK OK: resumed in the same process without errors"
+fi
+exit $status

@@ -112,13 +112,17 @@ export function checkTexture(key: string, flipY: boolean, read: (pts: Array<[num
   if (!probe) return { key, status: 'no-probe' };
   const expectRows = probe.points.map(([x, y]) => [x, flipY ? probe.height - 1 - y : y] as [number, number]);
   const otherRows = probe.points.map(([x, y]) => [x, flipY ? y : probe.height - 1 - y] as [number, number]);
-  const got = read([...expectRows, ...otherRows]);
-  if (got === 'incomplete') return { key, status: 'incomplete' };
-  const n = probe.points.length;
   const want = probe.points;
-  const matches = (off: number) => want.every((p, i) => close(got[off + i], p[2], p[3], p[4], p[5]));
-  if (matches(0)) return { key, status: 'ok' };
-  if (matches(n)) return { key, status: 'upside-down' };
+  const matches = (px: Uint8Array[]) => want.every((p, i) => close(px[i], p[2], p[3], p[4], p[5]));
+  // Read the expected orientation first; the flipped read (to report
+  // "upside-down") only happens when that fails. Each texel is a
+  // blocking GPU round trip on expo-gl, so the common path stays small.
+  const got = read(expectRows);
+  if (got === 'incomplete') return { key, status: 'incomplete' };
+  if (matches(got)) return { key, status: 'ok' };
+  const flipped = read(otherRows);
+  if (flipped !== 'incomplete' && matches(flipped)) return { key, status: 'upside-down' };
+  const n = want.length;
   const blank = got.slice(0, n).every((px) => px[0] === 0 && px[1] === 0 && px[2] === 0 && px[3] === 0);
   if (blank) return { key, status: 'blank' };
   const first = got[0];

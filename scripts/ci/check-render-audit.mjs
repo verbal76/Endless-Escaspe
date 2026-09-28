@@ -27,7 +27,9 @@ console.log('render audit:', JSON.stringify(audit, null, 1));
 
 const problems = [];
 if (!release) problems.push('no [release] line: the app did not boot this code');
-else if (release.gitSha !== want) problems.push(`app ran ${release.gitSha} (${release.line}), expected ${want}`);
+// An OTA carries its commit; the embedded bundle of the APK this job
+// just built from the commit under test reports none.
+else if (release.source === 'ota' && release.gitSha !== want) problems.push(`app ran ${release.gitSha} (${release.line}), expected ${want}`);
 if (!audit) problems.push('no [render-audit] line: no scene was rendered');
 else if (audit.unparsed) problems.push('[render-audit] line was truncated by logcat');
 else {

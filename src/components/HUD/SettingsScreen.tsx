@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
+  AppState,
+  BackHandler,
   Linking,
   Modal,
   Pressable,
@@ -114,6 +116,7 @@ export function SettingsScreen() {
   const setMusicVolume = useStore((s) => s.setMusicVolume);
   const weatherEnabled = useStore((s) => s.weatherEnabled);
   const setWeatherEnabled = useStore((s) => s.setWeatherEnabled);
+  const segmentWeatherEnabled = useStore((s) => s.segmentWeatherEnabled);
 
   const persistSettings = () => {
     const st = useStore.getState();
@@ -134,6 +137,30 @@ export function SettingsScreen() {
     persistSettings();
   };
   const onResume = close;
+
+  // Leaving the app mid-run (home, app switch, screen off) or the
+  // Android back gesture - easy to trigger from the left-edge joystick
+  // zone - pauses the run with the pause panel open, instead of the
+  // run carrying on live the moment the player comes back.
+  useEffect(() => {
+    const shouldPause = () => {
+      const st = useStore.getState();
+      return st.runState === 'playing' && !st.paused;
+    };
+    const appSub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active' && shouldPause()) openPanel();
+    });
+    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!shouldPause()) return false;
+      openPanel();
+      return true;
+    });
+    return () => {
+      appSub.remove();
+      backSub.remove();
+    };
+    // openPanel only uses stable setters.
+  }, []);
   const onRestart = () => {
     setOpen(false);
     requestRestart();
@@ -268,6 +295,9 @@ export function SettingsScreen() {
                       {weatherEnabled
                         ? 'Rain / snow active'
                         : 'Off (AI senses boosted)'}
+                      {/* Fixed per segment (no toggling mid-stage to dodge
+                          a storm): say when a change is still pending. */}
+                      {weatherEnabled !== segmentWeatherEnabled ? ' - from the next stage' : ''}
                     </Text>
                   </View>
                   <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />

@@ -149,6 +149,7 @@ export function Tutorial() {
     // only patch the field we care about here - no risk of clobbering
     // a stale volume / weather value the user changed mid-tutorial.
     saveSettings({ tutorialSeen: true });
+    useStore.getState().setTutorialSeen(true);
   };
 
   // Reset state on (re-)mount of the tutorial. showTutorial flipping

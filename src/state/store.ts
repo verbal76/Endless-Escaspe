@@ -74,6 +74,9 @@ type Store = {
   // Per-segment weather. Picked at segment init by Game.tsx via
   // pickWeather(seed); HUD subscribes if it ever needs to surface it.
   weather: WeatherKind;
+  // The weather setting the current segment was built with (the toggle
+  // applies from the next segment).
+  segmentWeatherEnabled: boolean;
   // Toggle: when false, every segment is forced to clear weather and
   // the AI gets a sense boost so the player doesn't get an easier
   // game by disabling effects. Persisted via AsyncStorage.
@@ -82,6 +85,8 @@ type Store = {
   // launch and from the start-screen "How to play" button; flips
   // back to false when the cutscene finishes or the player skips.
   showTutorial: boolean;
+  // Persisted: the intro tutorial was watched or skipped once already.
+  tutorialSeen: boolean;
   // Branded confirm / alert modal config. Any component can set
   // this to show a popup; the GameModal mounted in Game.tsx renders
   // it. The action onPress handlers are responsible for clearing
@@ -100,12 +105,11 @@ type Store = {
   // whole seconds); 0 outside an arena. The HUD's BossTimer
   // subscribes to render the on-screen clock.
   bossTimeRemaining: number;
-  // Master audio volume 0..1, applied on top of the siren's
-  // detection-driven volume curve. Persisted via AsyncStorage.
+  // Master audio volume 0..1 (the pause panel's "Volume"): scales
+  // SFX, the siren and the music. Persisted via AsyncStorage.
   masterVolume: number;
-  // Music volume slider 0..1. Independent of masterVolume so the
-  // player can mute the soundtrack without losing SFX (or vice
-  // versa). Persisted via AsyncStorage.
+  // Music slider 0..1, applied on top of masterVolume, so the player
+  // can mute the soundtrack while keeping SFX. Persisted.
   musicVolume: number;
   // Boss-perk reward. Beating a boss arena (surviving the timer
   // without dying) sets perkRemainingStages to PERK_DURATION_STAGES;
@@ -194,9 +198,11 @@ type Store = {
   setLastDeathCause: (c: 'arrested' | 'killed' | null) => void;
   bumpCatchCounter: () => void;
   setWeather: (w: WeatherKind) => void;
+  setSegmentWeatherEnabled: (v: boolean) => void;
   setBestStars: (b: Record<number, number>) => void;
   setWeatherEnabled: (b: boolean) => void;
   setShowTutorial: (b: boolean) => void;
+  setTutorialSeen: (b: boolean) => void;
   setGameModal: (m: GameModalConfig | null) => void;
   setBossModeUnlocked: (b: boolean) => void;
   setBossModeEnabled: (b: boolean) => void;
@@ -223,6 +229,8 @@ type Store = {
   startRun: () => void;
 };
 
+let toastSeq = 0;
+
 export const useStore = create<Store>((set) => ({
   runState: 'idle',
   hearts: 3,
@@ -236,8 +244,10 @@ export const useStore = create<Store>((set) => ({
   paused: false,
   restartCounter: 0,
   weather: 'clear',
+  segmentWeatherEnabled: true,
   weatherEnabled: true,
   showTutorial: false,
+  tutorialSeen: false,
   gameModal: null,
   bossModeUnlocked: false,
   bossModeEnabled: false,
@@ -279,8 +289,9 @@ export const useStore = create<Store>((set) => ({
   toast: null,
   setCrowbarInRange: (b) =>
     set((st) => (st.crowbarInRange === b ? st : { crowbarInRange: b })),
-  showToast: (text, tone = 'info') =>
-    set((st) => ({ toast: { id: (st.toast?.id ?? 0) + 1, text, tone } })),
+  // Ids never repeat (the previous "last id + 1" restarted at 1 after a
+  // toast cleared), so a toast can be tracked by id.
+  showToast: (text, tone = 'info') => set({ toast: { id: ++toastSeq, text, tone } }),
   clearToast: () => set((st) => (st.toast === null ? st : { toast: null })),
   setRunState: (s) => set({ runState: s }),
   setHearts: (n) => set({ hearts: n }),
@@ -331,8 +342,10 @@ export const useStore = create<Store>((set) => ({
   bumpCatchCounter: () =>
     set((st) => ({ catchCounter: st.catchCounter + 1 })),
   setWeather: (w) => set((st) => (st.weather === w ? st : { weather: w })),
+  setSegmentWeatherEnabled: (v) => set((st) => (st.segmentWeatherEnabled === v ? st : { segmentWeatherEnabled: v })),
   setWeatherEnabled: (b) =>
     set((st) => (st.weatherEnabled === b ? st : { weatherEnabled: b })),
+  setTutorialSeen: (b) => set({ tutorialSeen: b }),
   setShowTutorial: (b) =>
     set((st) => (st.showTutorial === b ? st : { showTutorial: b })),
   setGameModal: (m) => set({ gameModal: m }),

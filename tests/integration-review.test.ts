@@ -60,3 +60,16 @@ test('crouching beside a low wall (0.6 m) counts as near cover, like the sight c
   const lowWall = { kind: 'lowWall', x: 1.2, z: 10, r: 0.6, height: 0.6 } as unknown as Parameters<typeof isNearCover>[1][number];
   assert.equal(isNearCover(p, [lowWall]), true);
 });
+
+test('fence wire colour follows the lighting mood, not a fixed stage cut-off', async () => {
+  const { fenceColorFor } = await import('../src/scenes/Fence');
+  const { getStageLighting } = await import('../src/scenes/Lighting');
+  const BLACK = 0x111114;
+  for (let stage = 1; stage <= 20; stage++) {
+    const mood = getStageLighting(stage).mood;
+    const bright = mood === 'day' || mood === 'afternoon';
+    assert.equal(fenceColorFor(stage, 'clear') === BLACK, bright, `stage ${stage} (${mood})`);
+  }
+  assert.equal(fenceColorFor(6, 'clear'), BLACK); // afternoon: was light grey
+  assert.equal(fenceColorFor(1, 'snow'), BLACK);
+});

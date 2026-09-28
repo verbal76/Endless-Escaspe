@@ -29,6 +29,12 @@ const TONE_BORDER = {
 export function Toast() {
   const toast = useStore((s) => s.toast);
   const runState = useStore((s) => s.runState);
+  // Stay clear of the other top-centre HUD: the boss SURVIVE timer
+  // (y 64-120) and, in Endless / Daily, the distance readout plus the
+  // camera-alarm bar beneath it (y 10-92).
+  const bossTimer = useStore((s) => s.bossTimeRemaining > 0);
+  const endless = useStore((s) => s.gameMode !== 'campaign');
+  const top = bossTimer ? 126 : endless ? 98 : 64;
   const o = useSharedValue(0);
   const y = useSharedValue(-10);
 
@@ -57,7 +63,7 @@ export function Toast() {
       pointerEvents="none"
       style={[
         styles.box,
-        { backgroundColor: TONE_BG[toast.tone], borderColor: TONE_BORDER[toast.tone] },
+        { top, backgroundColor: TONE_BG[toast.tone], borderColor: TONE_BORDER[toast.tone] },
         style,
       ]}
     >

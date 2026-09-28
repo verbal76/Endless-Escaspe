@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -18,6 +19,12 @@ const SKULL = '💀';
 
 export function Banner() {
   const runState = useStore((s) => s.runState);
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const cardMaxHeight = windowHeight - Math.max(insets.top, 8) - Math.max(insets.bottom, 8) - 12;
+  // Short landscape phones (< 400 dp tall): tighter spacing so the
+  // whole card, button included, fits without scrolling.
+  const compact = windowHeight < 400;
   const resetForSegment = useStore((s) => s.resetForSegment);
   const segmentSeed = useStore((s) => s.segmentSeed);
   const stats = useStore((s) => s.lastStats);
@@ -102,30 +109,35 @@ export function Banner() {
         style={[
           styles.card,
           isCleared ? styles.cardCleared : styles.cardCaught,
+          // Never taller than the visible screen: on 360 dp-tall phones
+          // the full stats card (~370 dp) clipped top and bottom; it
+          // now scrolls inside instead.
+          { maxHeight: cardMaxHeight },
           cardStyle,
         ]}
       >
-        <Text style={[styles.title, isCleared ? styles.titleCleared : styles.titleCaught]}>
+        <ScrollView style={styles.cardScroll} contentContainerStyle={styles.cardContent} bounces={false}>
+        <Text style={[styles.title, isCleared ? styles.titleCleared : styles.titleCaught, compact && styles.titleCompact]}>
           {title}
         </Text>
 
         {endlessRun ? (
           <Text style={styles.distance}>{summary!.distanceM} m</Text>
         ) : isCleared ? (
-          <Text style={styles.stars}>
+          <Text style={[styles.stars, compact && styles.starsCompact]}>
             {STAR_FILLED.repeat(stars) + STAR_EMPTY.repeat(3 - stars)}
           </Text>
         ) : (
           // Death panel mirrors the win panel: same card width, same
           // entry animation, same stats block - just skulls in place
           // of stars and a red-themed border + button.
-          <Text style={styles.skulls}>
+          <Text style={[styles.skulls, compact && styles.starsCompact]}>
             {SKULL.repeat(skullCount)}
           </Text>
         )}
 
         {isCleared && (
-          <Text style={styles.bestLine}>
+          <Text style={[styles.bestLine, compact && styles.bestLineCompact]}>
             Stage {justClearedStage} best:{' '}
             {bestForJustClearedStage > 0
               ? STAR_FILLED.repeat(bestForJustClearedStage) +
@@ -135,28 +147,28 @@ export function Banner() {
         )}
 
         {endlessRun ? (
-          <View style={styles.statBlock}>
-            <StatRow index={0} label={summary!.mode === 'daily' ? `Best today (${summary!.day})` : 'Best distance'} value={`${summary!.bestM} m`} />
-            <StatRow index={1} label="Coins earned" value={`+${summary!.coinsEarned}`} />
-            <StatRow index={2} label="Coins" value={String(summary!.coinsTotal)} />
-            <StatRow index={3} label="Lives used" value={String(stats?.livesUsed ?? 0)} />
+          <View style={[styles.statBlock, compact && styles.statBlockCompact]}>
+            <StatRow compact={compact} index={0} label={summary!.mode === 'daily' ? `Best today (${summary!.day})` : 'Best distance'} value={`${summary!.bestM} m`} />
+            <StatRow compact={compact} index={1} label="Coins earned" value={`+${summary!.coinsEarned}`} />
+            <StatRow compact={compact} index={2} label="Coins" value={String(summary!.coinsTotal)} />
+            <StatRow compact={compact} index={3} label="Lives used" value={String(stats?.livesUsed ?? 0)} />
           </View>
         ) : stats && (
-          <View style={styles.statBlock}>
-            <StatRow index={0} label="Times spotted" value={String(stats.timesSeen)} />
-            <StatRow
+          <View style={[styles.statBlock, compact && styles.statBlockCompact]}>
+            <StatRow compact={compact} index={0} label="Times spotted" value={String(stats.timesSeen)} />
+            <StatRow compact={compact}
               index={1}
               label="Time detected"
               value={`${stats.timeDetected.toFixed(1)}s`}
             />
-            <StatRow
+            <StatRow compact={compact}
               index={2}
               label="Run time"
               value={`${stats.runDurationS.toFixed(1)}s`}
             />
-            <StatRow index={3} label="Lives used" value={String(stats.livesUsed)} />
+            <StatRow compact={compact} index={3} label="Lives used" value={String(stats.livesUsed)} />
             {isCleared && summary ? (
-              <StatRow index={4} label="Coins earned" value={`+${summary.coinsEarned} (${summary.coinsTotal})`} />
+              <StatRow compact={compact} index={4} label="Coins earned" value={`+${summary.coinsEarned} (${summary.coinsTotal})`} />
             ) : null}
           </View>
         )}
@@ -164,7 +176,7 @@ export function Banner() {
         {endlessRun ? (
           <View style={styles.btnRow}>
             <Pressable
-              style={({ pressed }) => [styles.btn, pressed && styles.btnDown]}
+              style={({ pressed }) => [styles.btn, compact && styles.btnCompact, pressed && styles.btnDown]}
               onPress={() => {
                 // Daily: the same seeded run again. Endless: a fresh yard.
                 if (summary!.mode === 'daily') requestRestart();
@@ -174,7 +186,7 @@ export function Banner() {
               <Text style={styles.btnLabel}>RUN AGAIN</Text>
             </Pressable>
             <Pressable
-              style={({ pressed }) => [styles.btn, styles.btnDeath, pressed && styles.btnDeathDown]}
+              style={({ pressed }) => [styles.btn, compact && styles.btnCompact, styles.btnDeath, pressed && styles.btnDeathDown]}
               onPress={() => setRunState('idle')}
             >
               <Text style={[styles.btnLabel, styles.btnLabelDeath]}>MAIN MENU</Text>
@@ -182,7 +194,7 @@ export function Banner() {
           </View>
         ) : isCleared ? (
           <Pressable
-            style={({ pressed }) => [styles.btn, pressed && styles.btnDown]}
+            style={({ pressed }) => [styles.btn, compact && styles.btnCompact, pressed && styles.btnDown]}
             onPress={() => resetForSegment(segmentSeed + 1)}
           >
             <Text style={styles.btnLabel}>NEXT SEGMENT</Text>
@@ -193,12 +205,13 @@ export function Banner() {
           // dwell on the death summary the same way they dwell on a
           // win.
           <Pressable
-            style={({ pressed }) => [styles.btn, styles.btnDeath, pressed && styles.btnDeathDown]}
+            style={({ pressed }) => [styles.btn, compact && styles.btnCompact, styles.btnDeath, pressed && styles.btnDeathDown]}
             onPress={() => setRunState('idle')}
           >
             <Text style={[styles.btnLabel, styles.btnLabelDeath]}>MAIN MENU</Text>
           </Pressable>
         )}
+        </ScrollView>
       </Animated.View>
     </View>
   );
@@ -209,7 +222,7 @@ export function Banner() {
 // numbers landing at once. The card-entry animation finishes around
 // 320ms; the first row starts ~280ms in and each subsequent row
 // follows 70ms later.
-function StatRow({ index, label, value }: { index: number; label: string; value: string }) {
+function StatRow({ index, label, value, compact = false }: { index: number; label: string; value: string; compact?: boolean }) {
   const t = useSharedValue(0);
   useEffect(() => {
     t.value = 0;
@@ -223,7 +236,7 @@ function StatRow({ index, label, value }: { index: number; label: string; value:
     transform: [{ translateY: (1 - t.value) * 6 }],
   }));
   return (
-    <Animated.View style={[styles.statRow, style]}>
+    <Animated.View style={[styles.statRow, compact && styles.statRowCompact, style]}>
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
     </Animated.View>
@@ -250,9 +263,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(20, 24, 32, 0.92)',
     borderRadius: 18,
     borderWidth: 2,
-    padding: 22,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
     minWidth: 320,
+  },
+  cardScroll: {
+    flexGrow: 0,
+  },
+  cardContent: {
     alignItems: 'center',
+    paddingVertical: 10,
   },
   cardCleared: {
     borderColor: 'rgba(255, 209, 74, 0.55)',
@@ -296,6 +316,12 @@ const styles = StyleSheet.create({
     width: 260,
     marginBottom: 18,
   },
+  titleCompact: { marginBottom: 4 },
+  starsCompact: { fontSize: 30, marginBottom: 0 },
+  bestLineCompact: { marginBottom: 6 },
+  statBlockCompact: { marginBottom: 10 },
+  statRowCompact: { paddingVertical: 2 },
+  btnCompact: { paddingVertical: 10 },
   statRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

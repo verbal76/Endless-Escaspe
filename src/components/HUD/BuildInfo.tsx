@@ -26,7 +26,11 @@ export function BuildInfo() {
   const onCheck = async () => {
     if (ready) {
       setStatus('Restarting into the new update...');
-      await reloadIntoUpdate();
+      try {
+        await reloadIntoUpdate();
+      } catch (e) {
+        setStatus(`Restart failed: ${e instanceof Error ? e.message : String(e)}. Close and reopen the app to apply it.`);
+      }
       return;
     }
     setStatus('Checking...');
@@ -36,7 +40,7 @@ export function BuildInfo() {
     else if (r.kind === 'error') setStatus(`Update check failed: ${r.message}`);
     else {
       setReady(true);
-      setStatus('New update downloaded. Tap again to restart into it.');
+      setStatus('New update downloaded. Tap again to restart into it (a run in progress ends).');
     }
   };
 

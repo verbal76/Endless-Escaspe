@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { WeatherKind } from './Weather';
 import { PLAYER_X_LIMIT, PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
+import { getStageLighting } from './Lighting';
 
 // Chain-link fence running the full segment length on both X edges.
 // Visualised as a textured, alpha-tested diamond-mesh panel with a
@@ -31,15 +32,15 @@ const RAZOR_MAT = markShared(
   }),
 );
 
-// Pick fence wire colour from the current scene mood. Bright snow
-// or daylight stages (1-2) get a black wire that pops against the
-// pale surroundings. Rain or dim/night stages (3+) get a light grey
-// wire that pops against the dark surroundings.
-export function fenceColorFor(stage: number, weather: WeatherKind): number {
+// Pick fence wire colour from the scene mood: a black wire pops
+// against bright snow or a day / afternoon sky, a light grey wire
+// against rain or a dusk / night sky. `moodStage` is the stage whose
+// lighting mood is shown (Lighting.ts), so the wire always matches it.
+export function fenceColorFor(moodStage: number, weather: WeatherKind): number {
   if (weather === 'snow') return 0x111114; // black against snow
   if (weather === 'rain') return 0xc8d0d6; // light grey against rain
-  // Clear weather: pick by stage darkness. Stages 1-2 = day; 3+ = dim.
-  return stage <= 2 ? 0x111114 : 0xc8d0d6;
+  const mood = getStageLighting(moodStage).mood;
+  return mood === 'day' || mood === 'afternoon' ? 0x111114 : 0xc8d0d6;
 }
 
 // Chain-link texture: a diamond wire lattice generated in code (no

@@ -4,6 +4,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import Animated, {
@@ -17,6 +18,7 @@ import { useStore, type PlayerSkin } from '../../state/store';
 import {
   newSave,
   saveKeyFromName,
+  saveSettings,
   writeSaves,
   type Save,
   type SavesMap,
@@ -36,7 +38,7 @@ const TITLE = 'ENDLESS ESCAPE';
 // on its index, so the wave reads as a left-to-right ripple
 // instead of every letter moving in unison.
 
-function BouncingLetter({ char, index }: { char: string; index: number }) {
+function BouncingLetter({ char, index, fontSize }: { char: string; index: number; fontSize: number }) {
   const t = useSharedValue(0);
 
   useEffect(() => {
@@ -63,20 +65,30 @@ function BouncingLetter({ char, index }: { char: string; index: number }) {
   });
 
   return (
-    <Animated.Text style={[styles.titleLetter, style]}>{char}</Animated.Text>
+    <Animated.Text style={[styles.titleLetter, { fontSize }, style]}>{char}</Animated.Text>
   );
 }
 
+// The full title measures ~660 dp at the hero size (Black Ops One
+// advances + letter margins + the word gap); narrower screens scale it
+// down instead of breaking a word across lines. Letters are grouped per
+// word, so a wrap on a very narrow screen can only fall between words.
+const TITLE_WIDTH_AT_HERO = 660;
+
 function TitleRow() {
+  const { width } = useWindowDimensions();
+  const fontSize = Math.max(34, Math.min(T.hero, Math.floor(((width - 48) * T.hero) / TITLE_WIDTH_AT_HERO)));
+  let index = 0;
   return (
     <View style={styles.titleRow}>
-      {TITLE.split('').map((c, i) =>
-        c === ' ' ? (
-          <View key={i} style={styles.titleSpace} />
-        ) : (
-          <BouncingLetter key={i} char={c} index={i} />
-        ),
-      )}
+      {TITLE.split(' ').map((word, w) => (
+        <View key={w} style={[styles.titleWord, w > 0 && { marginLeft: Math.round((16 * fontSize) / T.hero) }]}>
+          {word.split('').map((c) => {
+            const i = index++;
+            return <BouncingLetter key={i} char={c} index={i} fontSize={fontSize} />;
+          })}
+        </View>
+      ))}
     </View>
   );
 }
@@ -309,8 +321,11 @@ export function StartScreen() {
     const next: SavesMap = useStore.getState().saves;
     writeSaves(next);
     // Don't drop straight into gameplay - offer the intro cutscene
-    // first so first-time players get a quick demo of the rules.
-    setMode('tutorialPrompt');
+    // first so first-time players get a quick demo of the rules. Once
+    // it has been watched (or skipped) it isn't offered again; "How to
+    // play" on the start screen still replays it.
+    if (useStore.getState().tutorialSeen) startRun();
+    else setMode('tutorialPrompt');
   };
 
   // Load the active save, optionally jumping into a specific stage
@@ -560,11 +575,15 @@ export function StartScreen() {
         <TitleRow />
         <Text style={styles.tagline}>Quick demo?</Text>
         <Text style={styles.promptBody}>
-          Show you the basics in 14 seconds, or jump straight in?
+          Show you the basics in about 30 seconds, or jump straight in?
         </Text>
         <View style={styles.nameBtnRow}>
           <Pressable
-            onPress={() => startRun()}
+            onPress={() => {
+              saveSettings({ tutorialSeen: true });
+              useStore.getState().setTutorialSeen(true);
+              startRun();
+            }}
             style={({ pressed }) => [
               styles.bigBtn,
               styles.bigBtnSecondary,
@@ -838,8 +857,8 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 3, height: 3 },
     textShadowRadius: 2,
   },
-  titleSpace: {
-    width: 16,
+  titleWord: {
+    flexDirection: 'row',
   },
   releaseLine: {
     position: 'absolute',

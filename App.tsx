@@ -38,6 +38,7 @@ export default function App() {
       useStore.getState().setMasterVolume(s.masterVolume);
       useStore.getState().setMusicVolume(s.musicVolume);
       useStore.getState().setWeatherEnabled(s.weatherEnabled);
+      useStore.getState().setTutorialSeen(s.tutorialSeen);
       useStore.getState().setBossModeUnlocked(s.bossModeUnlocked);
       useStore.getState().setBossModeEnabled(s.bossModeEnabled);
     });

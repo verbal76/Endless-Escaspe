@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as Application from 'expo-application';
+import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { resolveReleaseInfo, type ReleaseInfo } from './releaseInfo';
 
@@ -24,6 +25,7 @@ export function getReleaseInfo(): ReleaseInfo {
       manifest: Updates.manifest,
       isEmergencyLaunch: Updates.isEmergencyLaunch,
       emergencyReason: Updates.emergencyLaunchReason,
+      embeddedAppConfig: Constants.expoConfig,
     });
   } catch {
     info = resolveReleaseInfo({

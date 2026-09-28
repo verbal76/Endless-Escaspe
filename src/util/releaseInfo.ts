@@ -30,6 +30,10 @@ export type ReleaseSources = {
   // downloaded update failed to launch.
   isEmergencyLaunch?: boolean;
   emergencyReason?: string | null;
+  // The app config baked into the APK (expo-constants' expoConfig).
+  // An embedded launch's update manifest carries no `extra`, so the
+  // build's release metadata (source commit) comes from here.
+  embeddedAppConfig?: unknown;
 };
 
 export type ReleaseInfo = {
@@ -101,7 +105,6 @@ export function parseSequence(v: unknown): number | null {
 }
 
 export function resolveReleaseInfo(src: ReleaseSources): ReleaseInfo {
-  const release = readReleaseExtra(src.manifest);
   // A downloaded update always has an ID; "enabled but no ID" (e.g.
   // the web shim) must not be reported as an OTA.
   const updateId = nonEmptyString(src.updateId);
@@ -112,6 +115,9 @@ export function resolveReleaseInfo(src: ReleaseSources): ReleaseInfo {
       : updateId
         ? 'ota'
         : 'disabled';
+  const release =
+    readReleaseExtra(src.manifest) ??
+    (source === 'embedded' ? readReleaseExtra({ expoConfig: src.embeddedAppConfig }) : null);
   return {
     appVersion: nonEmptyString(src.appVersion),
     buildNumber: nonEmptyString(src.buildNumber),
@@ -145,7 +151,9 @@ export function formatMenuLine(info: ReleaseInfo): string {
   if (info.source === 'ota') {
     parts.push(info.otaSequence !== null ? `OTA ${formatOtaSequence(info.otaSequence)}` : `OTA ${shortId(info.updateId) ?? UNAVAILABLE.toLowerCase()}`);
   } else if (info.source === 'embedded') {
-    parts.push('Embedded');
+    // An emergency launch fell back to the APK's bundle because a
+    // downloaded update failed to start - flag it where it's seen.
+    parts.push(info.emergency ? 'Embedded (update failed)' : 'Embedded');
   } else {
     parts.push('Updates off');
   }
@@ -181,7 +189,9 @@ export function formatDetailRows(info: ReleaseInfo): InfoRow[] {
           ? info.otaSequence !== null
             ? formatOtaSequence(info.otaSequence)
             : UNAVAILABLE
-          : 'None (embedded bundle)',
+          : info.source === 'embedded'
+            ? 'None (embedded bundle)'
+            : 'Not applicable (updates off)',
     },
     { label: 'Update ID', value: shortId(info.updateId, 13) ?? UNAVAILABLE, full: info.updateId ?? undefined },
     { label: 'Source commit', value: shortId(info.gitSha, 10) ?? UNAVAILABLE, full: info.gitSha ?? undefined },

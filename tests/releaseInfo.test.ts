@@ -171,3 +171,26 @@ test('app.config.js stamps CI metadata and is a no-op locally', () => {
     process.env = saved;
   }
 });
+
+test('embedded launch: source commit comes from the APK app config; OTA manifests still win for OTAs', () => {
+  const embedded = resolveReleaseInfo({
+    ...base,
+    isEmbeddedLaunch: true,
+    manifest: { id: 'x', commitTime: 1, assets: [] },
+    embeddedAppConfig: { extra: { release: { gitSha: SHA } } },
+  });
+  assert.equal(embedded.gitSha, SHA.toLowerCase());
+  const ota = resolveReleaseInfo({
+    ...base,
+    manifest: otaManifest({ gitSha: SHA, otaSequence: 7 }),
+    embeddedAppConfig: { extra: { release: { gitSha: 'b'.repeat(40) } } },
+  });
+  assert.equal(ota.gitSha, SHA.toLowerCase());
+});
+
+test('menu line flags an emergency fallback; dev builds are not labelled as embedded', () => {
+  const em = resolveReleaseInfo({ ...base, isEmbeddedLaunch: true, manifest: null, isEmergencyLaunch: true, emergencyReason: 'boom' });
+  assert.equal(formatMenuLine(em), 'v0.2.0 • Build 9 • Embedded (update failed)');
+  const dev = resolveReleaseInfo({ ...base, updatesEnabled: false, manifest: null });
+  assert.equal(formatDetailRows(dev).find((r) => r.label === 'OTA sequence')?.value, 'Not applicable (updates off)');
+});

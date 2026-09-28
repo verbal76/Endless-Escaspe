@@ -15,13 +15,16 @@ import { useStore } from '../../state/store';
 // the player gets a single, unambiguous threat reading regardless of
 // how many guards are on the field.
 export function AlarmOverlay() {
+  // Quantised to 0.1 steps: the raw max changes every frame while any
+  // meter moves, which re-rendered this view and restarted the pulse
+  // 60 times a second (so it never visibly pulsed).
   const v = useStore((s) => {
     let max = 0;
     for (const k in s.detection) {
       const x = s.detection[k];
       if (x > max) max = x;
     }
-    return max;
+    return Math.round(max * 10) / 10;
   });
   const pulse = useSharedValue(0);
 

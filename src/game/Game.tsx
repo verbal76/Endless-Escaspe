@@ -311,7 +311,10 @@ export function Game() {
     // returning player gets the slider-saved level instead of the
     // default. The store-subscription below keeps the live track
     // synced with the slider while the panel is open.
-    const music: MusicPlayer = createMusic(useStore.getState().musicVolume);
+    // Music level = master Volume x Music slider (the pause panel's
+    // "Volume" is the master control for everything).
+    const musicLevel = (st: { masterVolume: number; musicVolume: number }) => st.masterVolume * st.musicVolume;
+    const music: MusicPlayer = createMusic(musicLevel(useStore.getState()));
     // Danger -> music mix (calm / alert / chase with hysteresis).
     const musicIntensity = new MusicIntensity();
     // Live-update the music volume whenever the slider moves. The
@@ -319,7 +322,7 @@ export function Game() {
     // is alive for the whole GLView lifetime, which matches the app's
     // lifetime in this codebase.
     void useStore.subscribe((st, prev) => {
-      if (st.musicVolume !== prev.musicVolume) music.setVolume(st.musicVolume);
+      if (st.musicVolume !== prev.musicVolume || st.masterVolume !== prev.masterVolume) music.setVolume(musicLevel(st));
     });
     const projectiles = new ProjectileSystem(r.worldRoot);
 
@@ -539,7 +542,7 @@ export function Game() {
       s.cameras.push(...spawnCameras(secRoot, len, camCount, zStart));
 
       if (s.endless) {
-        spawnFences(secRoot, level, s.weatherKind, len, razorWireEnabledFor(level), len, zStart === 0 ? null : zStart);
+        spawnFences(secRoot, moodStageFor(level, s.mode), s.weatherKind, len, razorWireEnabledFor(level), len, zStart === 0 ? null : zStart);
         secRoot.add(createTreeLine(zStart === 0 ? -10 : zStart, zStart === 0 ? len + 10 : len, s.seed + index));
       }
       if (s.weatherKind === 'snow') {
@@ -648,6 +651,7 @@ export function Game() {
         weatherKind = (seed & 1) === 0 ? 'rain' : 'snow';
       }
       useStore.getState().setWeather(weatherKind);
+      useStore.getState().setSegmentWeatherEnabled(weatherEnabledAtInit);
       const weather: Weather = createWeather(weatherKind, 0, 1);
       root.add(weather.group);
       if (weatherKind === 'snow') {
@@ -745,7 +749,7 @@ export function Game() {
         scene.nextSection = 1;
         // Visual fence length = gameplay segment + horizon chunks +
         // small lead-in, so the fence keeps going past the win line.
-        spawnFences(root, stage, weatherKind, segLen, razorWire, segLen + HORIZON_CHUNKS * CHUNK_LEN + 4);
+        spawnFences(root, moodStageFor(stage, mode), weatherKind, segLen, razorWire, segLen + HORIZON_CHUNKS * CHUNK_LEN + 4);
         root.add(createTreeLine(-10, segLen + HORIZON_CHUNKS * CHUNK_LEN + 40, seed));
         // Boss stage: the lead guard sees ~50% further (every 5th stage).
         if (isBossStage(stage) && scene.guards.length > 0) {
@@ -936,8 +940,14 @@ export function Game() {
       const save = st.activeSaveName ? st.saves[st.activeSaveName] : null;
       return save ? [...save.tipsSeen, ...sessionSeen] : [...sessionSeen];
     };
+    // A tip counts as seen only once it has been on screen for
+    // TIP_READ_S of actual play. One that is replaced by another toast,
+    // cut off by a catch / run end, or expires behind the pause panel
+    // goes back in the queue instead of being lost for this save.
+    const TIP_READ_S = 2;
+    let showingTip: { id: TipId; toastId: number; shown: number } | null = null;
     const queueTip = (id: TipId | null) => {
-      if (!id || tipQueue.includes(id) || seenTips().includes(id)) return;
+      if (!id || tipQueue.includes(id) || showingTip?.id === id || seenTips().includes(id)) return;
       tipQueue.push(id);
     };
     const markTipSeen = (id: TipId) => {
@@ -959,12 +969,27 @@ export function Game() {
           if (scene.cameras.length > 0) queueTip(contextTip('cameras', seenTips()));
         }
       }
+      if (showingTip) {
+        const toast = useStore.getState().toast;
+        if (toast && toast.id === showingTip.toastId) {
+          showingTip.shown += dt;
+          if (showingTip.shown >= TIP_READ_S) {
+            markTipSeen(showingTip.id);
+            showingTip = null;
+          }
+        } else {
+          tipQueue.unshift(showingTip.id);
+          showingTip = null;
+          tipCooldown = Math.max(tipCooldown, 2);
+        }
+      }
       tipCooldown = Math.max(0, tipCooldown - dt);
-      if (tipCooldown > 0 || tipQueue.length === 0) return;
+      if (tipCooldown > 0 || tipQueue.length === 0 || showingTip) return;
       const id = tipQueue.shift() as TipId;
       if (seenTips().includes(id)) return;
       useStore.getState().showToast(TIPS[id], 'tip');
-      markTipSeen(id);
+      const shown = useStore.getState().toast;
+      if (shown) showingTip = { id, toastId: shown.id, shown: 0 };
       tipCooldown = 4;
     };
 
@@ -972,6 +997,7 @@ export function Game() {
       clearRocks(rocks);
       runId = `run-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
       tipQueue.length = 0;
+      showingTip = null;
       stageTipDelay = 1.2;
       clearDustField(dust);
       useStore.getState().setDangerLevel(0);
@@ -1483,6 +1509,10 @@ export function Game() {
             player.x = 0;
             player.z = 1;
           }
+          // Keep the menu backdrop alive: falling rain / snow, drifting
+          // clouds and birds (they froze in mid-air before).
+          updateBackdrop(backdrop, dt);
+          updateWeather(scene.weather, dt, player.x, player.z);
         }
         return;
       }

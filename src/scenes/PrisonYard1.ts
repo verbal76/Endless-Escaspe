@@ -86,6 +86,7 @@ export function createGuard(cfg: GuardConfig): Guard {
     lastSeen: null,
     lastHeard: null,
     sinceSeen: 999,
+    sinceHeard: 999,
     hearTimer: 0,
     lookTimer: 0,
     lookBase: 0,

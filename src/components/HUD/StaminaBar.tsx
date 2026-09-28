@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import { useStore } from '../../state/store';
+import { selectRuleLevel, useStore } from '../../state/store';
 import { staminaEnabledFor } from '../../util/progression';
 
 // Bottom-left stamina bar. Only visible at stages where stamina
@@ -8,7 +8,7 @@ import { staminaEnabledFor } from '../../util/progression';
 // (Game.tsx mirrors player.stamina onto store.stamina each frame).
 export function StaminaBar() {
   const stamina = useStore((s) => s.stamina);
-  const stage = useStore((s) => s.stage);
+  const stage = useStore(selectRuleLevel);
   const runState = useStore((s) => s.runState);
   if (!staminaEnabledFor(stage)) return null;
   if (runState !== 'playing') return null;

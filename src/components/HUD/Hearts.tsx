@@ -68,6 +68,7 @@ function HeartSlot({ alive }: { alive: boolean }) {
 export function Hearts() {
   const hearts = useStore((s) => s.hearts);
   const stage = useStore((s) => s.stage);
+  const campaign = useStore((s) => s.gameMode === 'campaign');
   const runState = useStore((s) => s.runState);
   // Boss-perk active: +1 heart for the next perkRemainingStages
   // stages. The HUD renders an extra slot so the bonus heart is
@@ -78,8 +79,11 @@ export function Hearts() {
   // Late stages start the player with fewer hearts; only render
   // that many slots so the HUD doesn't lie about how much margin
   // is left.
-  const baseMax = startingHeartsFor(stage);
-  const max = baseMax + (perkRemainingStages > 0 ? 1 : 0);
+  // Endless / Daily runs always start with stage-1 hearts and no boss
+  // perk. Never show fewer slots than hearts actually held (a perk
+  // heart granted on the last perk stage outlives the counter).
+  const baseMax = startingHeartsFor(campaign ? stage : 1);
+  const max = Math.max(hearts, baseMax + (campaign && perkRemainingStages > 0 ? 1 : 0));
   // Hidden between runs (idle / cleared / caught) so the start
   // screen doesn't carry a stale heart count over the title art.
   if (runState !== 'playing') return null;
@@ -97,7 +101,7 @@ export function Hearts() {
           <HeartSlot key={i} alive={i < hearts} />
         ))}
       </View>
-      {perkRemainingStages > 0 && (
+      {campaign && perkRemainingStages > 0 && (
         <Text style={styles.perkTag}>
           BOSS PERK · {perkRemainingStages}
         </Text>

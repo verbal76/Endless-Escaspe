@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useStore } from '../../state/store';
+import { selectRuleLevel, useStore } from '../../state/store';
 import { cameraCountFor } from '../../scenes/Camera';
 import { type as T } from '../../ui/theme';
 
@@ -23,7 +23,7 @@ import { type as T } from '../../ui/theme';
 
 export function AlarmBar() {
   const alarmLevel = useStore((s) => s.alarmLevel);
-  const stage = useStore((s) => s.stage);
+  const stage = useStore(selectRuleLevel);
   const runState = useStore((s) => s.runState);
   const insets = useSafeAreaInsets();
 

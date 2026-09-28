@@ -213,6 +213,10 @@ import { resetNavState } from '../systems/Navigator';
 // chase past a chokepoint but not so long it's a free pass.
 const CROWBAR_RANGE = 3.0;
 const CROWBAR_RANGE_SQ = CROWBAR_RANGE * CROWBAR_RANGE;
+// Dogs are scared from a little further than a guard can be stunned;
+// the target ring / button highlight use the same reach.
+const CROWBAR_DOG_REACH = CROWBAR_RANGE + 0.5;
+const CROWBAR_DOG_REACH_SQ = CROWBAR_DOG_REACH * CROWBAR_DOG_REACH;
 const CROWBAR_STUN_DURATION = 4.0;
 
 // Stun the nearest non-stunned guard within CROWBAR_RANGE of (px, pz).
@@ -353,6 +357,9 @@ export function Game() {
       range: number;
       // Summoned by a full camera alarm (removed on restart).
       reinforcement: boolean;
+      // Endless: index of the streamed section that spawned this guard
+      // (null for campaign guards and reinforcements).
+      section: number | null;
       // Was this guard winding up a shot last frame (aim-click cue)?
       aiming: boolean;
     };
@@ -439,6 +446,7 @@ export function Game() {
         laser,
         range: baseVisionRange,
         reinforcement,
+        section: null,
         aiming: false,
       };
     };
@@ -462,6 +470,7 @@ export function Game() {
       s.nextGuardId += configs.length;
       for (const cfg of configs) {
         const e = makeGuardEntry(secRoot, cfg, BEAM_BASE_RANGE, false);
+        if (s.endless) e.section = index;
         // Guard home points are laid out on a fixed pattern, so a prop
         // can land right on one. Snap each home to the nearest cell a
         // guard can actually stand on, otherwise the guard spawns
@@ -493,6 +502,7 @@ export function Game() {
           false,
         );
         e.guard.facing = -Math.PI / 2; // looking back toward the approach
+        if (s.endless) e.section = index;
         s.guardEntries.push(e);
         s.guards.push(e.guard);
         const a = createThreatArrow();
@@ -539,15 +549,42 @@ export function Game() {
     };
 
     // Drop a section that is far behind the player (Endless).
+    // Remove one guard (logic + meshes) and zero its detection so no
+    // stale meter keeps the HUD alarm lit.
+    const dropGuardAt = (s: Scene, i: number) => {
+      const e = s.guardEntries[i];
+      const arrow = s.threatArrows[i];
+      for (const o of [e.figure.group, e.laser.mesh, e.shadow, arrow?.mesh]) {
+        if (!o) continue;
+        o.parent?.remove(o);
+        disposeSubtree(o);
+      }
+      s.guardEntries.splice(i, 1);
+      s.guards.splice(i, 1);
+      s.threatArrows.splice(i, 1);
+      if (e.reinforcement) s.reinforcements = Math.max(0, s.reinforcements - 1);
+      useStore.getState().setDetection(e.guard.id, 0);
+    };
+
+    // A section is still in play while any of its guards is alerted /
+    // investigating / chasing or any of its dogs is chasing: dropping
+    // it then would make them vanish mid-pursuit.
+    const sectionBusy = (s: Scene, sec: Section): boolean => {
+      for (const e of s.guardEntries) {
+        if (e.section === sec.index && e.guard.state !== 'wander' && e.guard.state !== 'return') return true;
+      }
+      for (const d of s.dogs) {
+        if (d.group.parent === sec.root && d.state === 'chase') return true;
+      }
+      return false;
+    };
+
     const removeSection = (s: Scene, sec: Section) => {
-      const end = sec.zStart + sec.len;
+      // Guards belong to the section that spawned them (their home can
+      // be snapped a few metres outside its Z range, so membership is
+      // recorded rather than inferred from homeZ).
       for (let i = s.guardEntries.length - 1; i >= 0; i--) {
-        const e = s.guardEntries[i];
-        if (e.guard.homeZ >= sec.zStart && e.guard.homeZ < end && !e.reinforcement) {
-          s.guardEntries.splice(i, 1);
-          s.guards.splice(i, 1);
-          s.threatArrows.splice(i, 1);
-        }
+        if (s.guardEntries[i].section === sec.index) dropGuardAt(s, i);
       }
       for (let i = s.dogs.length - 1; i >= 0; i--) {
         if (s.dogs[i].group.parent === sec.root) {
@@ -555,6 +592,7 @@ export function Game() {
           s.dogShadows.splice(i, 1);
         }
       }
+      const end = sec.zStart + sec.len;
       s.lightTowers = s.lightTowers.filter((t) => t.z < sec.zStart || t.z >= end);
       s.cameras = s.cameras.filter((c) => c.z < sec.zStart || c.z >= end);
       s.root.remove(sec.root);
@@ -564,6 +602,9 @@ export function Game() {
 
     // Endless / Daily: difficulty level for a world Z.
     const ENDLESS_SECTION_LEN = CHUNKS_AHEAD * CHUNK_LEN; // 120 m
+    // Endless / Daily keep one daylight mood (stage 1), independent of
+    // the player's campaign progress.
+    const moodStageFor = (stage: number, mode: GameMode) => (mode === 'campaign' ? stage : 1);
     const levelAtZ = (z: number) => Math.min(30, 1 + Math.floor(Math.max(0, z) / ENDLESS_SECTION_LEN));
 
     const buildScene = (stage: number, seed: number, mode: GameMode = 'campaign'): Scene => {
@@ -641,7 +682,7 @@ export function Game() {
       const plan: ChunkPlan = endless
         ? (i) => ({
             spec: chunkDensityFor(levelAtZ(i * CHUNK_LEN)),
-            fork: i >= 8 && i % 10 === 8 ? ((i / 10) % 2 === 0 ? forkSide : (-forkSide as -1 | 1)) : undefined,
+            fork: i % 10 === 8 && forksEnabledFor(levelAtZ(i * CHUNK_LEN)) ? (Math.floor(i / 10) % 2 === 0 ? forkSide : (-forkSide as -1 | 1)) : undefined,
           })
         : (i) => ({ spec: chunkDensityFor(stage), fork: i === campaignForkChunk ? forkSide : undefined });
       // Horizon chunks render past the gameplay end so the path
@@ -651,7 +692,9 @@ export function Game() {
       const procgen = new ProcgenSystem(seed, root, chunkCount, HORIZON_CHUNKS, plan);
       procgen.init();
 
-      const razorWire = razorWireEnabledFor(stage);
+      // Endless / Daily: the campaign stage must not leak into the run
+      // (a Daily is the same yard and rules for everyone).
+      const razorWire = razorWireEnabledFor(endless ? 1 : stage);
       const baseVisionRange = visionRangeFor(endless ? 1 : stage);
       const scene: Scene = {
         root,
@@ -724,10 +767,21 @@ export function Game() {
         s.nextSection = k + 1;
       }
       s.segmentEndZ = s.procgen.endZ() - 2;
+      // Drop sections well behind the player once nothing in them is
+      // still after the player (or unconditionally once they are very
+      // far behind), and trim the level behind the oldest section kept.
       for (const sec of [...s.sections]) {
-        if (sec.zStart + sec.len < player.z - 45) removeSection(s, sec);
+        const behind = player.z - (sec.zStart + sec.len);
+        if (behind > 45 && (behind > 160 || !sectionBusy(s, sec))) removeSection(s, sec);
       }
-      s.procgen.trimBefore(player.z - 50);
+      // Camera-alarm reinforcements left far behind: remove them so
+      // the per-run cap doesn't run out for the rest of an endless run.
+      for (let i = s.guardEntries.length - 1; i >= 0; i--) {
+        const e = s.guardEntries[i];
+        if (e.reinforcement && e.guard.z < player.z - 60 && e.guard.state !== 'chase') dropGuardAt(s, i);
+      }
+      const keepFrom = s.sections.length > 0 ? Math.min(player.z - 50, s.sections[0].zStart) : player.z - 50;
+      s.procgen.trimBefore(keepFrom);
     };
 
     // ---- Initial scene ----------------------------------------------
@@ -743,7 +797,7 @@ export function Game() {
     // One lighting mood per stage (day / afternoon / dusk / night /
     // deep night; see Lighting.ts). Applied once per (re)build - the
     // mood never changes during a stage.
-    let lighting: StageLighting = applyStageLighting(r, initialStage);
+    let lighting: StageLighting = applyStageLighting(r, moodStageFor(initialStage, useStore.getState().gameMode));
     applyBackdropMood(backdrop, lighting);
     setBackdropSnow(backdrop, scene.weatherKind === 'snow');
     useStore
@@ -775,7 +829,7 @@ export function Game() {
       tearDownScene(scene);
       scene = buildScene(stage, seed, mode);
       if (!scene.endless) backdrop.group.position.z = 0;
-      lighting = applyStageLighting(r, stage);
+      lighting = applyStageLighting(r, moodStageFor(stage, mode));
       applyBackdropMood(backdrop, lighting);
       setBackdropSnow(backdrop, scene.weatherKind === 'snow');
       // The boss countdown is re-armed by resetSegment(), which every
@@ -832,20 +886,7 @@ export function Game() {
     const removeReinforcements = () => {
       if (scene.reinforcements === 0) return;
       for (let i = scene.guardEntries.length - 1; i >= 0; i--) {
-        const e = scene.guardEntries[i];
-        if (!e.reinforcement) continue;
-        scene.root.remove(e.figure.group);
-        scene.root.remove(e.laser.mesh);
-        scene.root.remove(e.shadow);
-        disposeSubtree(e.figure.group);
-        disposeSubtree(e.laser.mesh);
-        const arrow = scene.threatArrows[i];
-        scene.root.remove(arrow.mesh);
-        disposeSubtree(arrow.mesh);
-        scene.guardEntries.splice(i, 1);
-        scene.guards.splice(i, 1);
-        scene.threatArrows.splice(i, 1);
-        useStore.getState().setDetection(e.guard.id, 0);
+        if (scene.guardEntries[i].reinforcement) dropGuardAt(scene, i);
       }
       scene.reinforcements = 0;
     };
@@ -875,7 +916,10 @@ export function Game() {
       scene.root.add(arrow.mesh);
       scene.threatArrows.push(arrow);
       hearNoiseAt(entry.guard, sightX, sightZ);
-      useStore.getState().setDetection(id, 0.45);
+      // Seed the meter through the per-frame floor: the detection pass
+      // reads the frame's store snapshot, so a direct store write here
+      // would be overwritten with ~0 at the end of this frame.
+      nextDetectionFloor.set(id, 0.45);
       scene.reinforcements++;
       return true;
     };
@@ -1021,6 +1065,9 @@ export function Game() {
     // stages), then decay the perk counter. Centralised so every
     // fresh-stage path (boss auto-advance, win, restart) routes
     // through the same calc.
+    let bossIntroPending = false;
+    let perkChargedStage = -1;
+    let perkBonusThisStage = 0;
     const grantStartingHearts = (stage: number) => {
       const st = useStore.getState();
       // Endless / Daily: a fixed 3-heart run, no campaign boss perk.
@@ -1028,9 +1075,15 @@ export function Game() {
         st.setHearts(startingHeartsFor(1));
         return;
       }
-      const bonus = st.perkRemainingStages > 0 ? 1 : 0;
-      st.setHearts(startingHeartsFor(stage) + bonus);
-      st.decayBossPerk();
+      // The perk is charged once per stage entered: a restart or a
+      // failed-boss retry of the same stage gets the same bonus as the
+      // first attempt instead of decaying it again.
+      if (stage !== perkChargedStage) {
+        perkChargedStage = stage;
+        perkBonusThisStage = st.perkRemainingStages > 0 ? 1 : 0;
+        if (perkBonusThisStage) st.decayBossPerk();
+      }
+      st.setHearts(startingHeartsFor(stage) + perkBonusThisStage);
     };
 
     // Hit-stop: on a catch the world freezes for HIT_STOP_S (camera
@@ -1064,6 +1117,18 @@ export function Game() {
       hitStopRemaining = HIT_STOP_S;
     };
 
+    const ENDLESS_RESPAWN_BACK = 20;
+    // How far behind their furthest point a player may walk back in
+    // Endless (sections are dropped 45 m behind, the level 50 m).
+    const ENDLESS_BACKTRACK = 30;
+    const respawnPoint = (): { x: number; z: number } => {
+      if (!scene.endless) return { x: 0, z: 1 };
+      const z = Math.max(scene.procgen.startZ() + 3, scene.maxZ - ENDLESS_BACKTRACK + 2, player.z - ENDLESS_RESPAWN_BACK);
+      const nav = scene.procgen.nav;
+      const cell = nav.nearestFree(0, z, 16);
+      return cell ? { x: nav.colX(cell.col), z: nav.rowZ(cell.row) } : { x: 0, z };
+    };
+
     const resolveCatch = (remaining: number) => {
       const st = useStore.getState();
       if (remaining <= 0) {
@@ -1085,6 +1150,8 @@ export function Game() {
         // Non-boss run-ending death: clear the boss perk so the
         // next run starts clean.
         st.clearBossPerk();
+        perkChargedStage = -1;
+        perkBonusThisStage = 0;
         // Final death (non-boss): mirror handleWin's stats build so
         // the death banner can render the same post-run summary the
         // win banner uses.
@@ -1096,8 +1163,12 @@ export function Game() {
       haptics.heartLost();
       // Soft restart inside the segment - keep run stats so the
       // end-of-segment board reflects all attempts in this run.
-      player.x = 0;
-      player.z = 1;
+      // Campaign: back to the start line. Endless / Daily: the world
+      // behind the player has been streamed out, so respawn a short
+      // way back from the catch on ground that still exists.
+      const spawn = respawnPoint();
+      player.x = spawn.x;
+      player.z = spawn.z;
       player.isHidden = false;
       player.stance = 'walk';
       player.stamina = 1;
@@ -1293,27 +1364,11 @@ export function Game() {
         resetSegment();
         // Every Endless / Daily (re)start is a fresh 3-heart run.
         if (scene.endless) grantStartingHearts(st.stage);
-        // Boss-round popup: every 10th stage (10, 20, 30, ...) is
-        // an arena. Pause the world and pop a "BOSS ROUND" modal
-        // before the survive-the-timer countdown starts so the
-        // player isn't dropped into a fight cold.
-        if (st.gameMode === 'campaign' && st.stage > 0 && st.stage % 10 === 0) {
-          st.setPaused(true);
-          st.setGameModal({
-            title: 'BOSS ROUND',
-            body: `Stage ${st.stage} is a boss arena. Survive 60 seconds inside the enclosed yard. Lose all your hearts and you retry the round - you only advance by surviving it.`,
-            actions: [
-              {
-                label: 'START',
-                variant: 'primary',
-                onPress: () => {
-                  useStore.getState().setGameModal(null);
-                  useStore.getState().setPaused(false);
-                },
-              },
-            ],
-          });
-        }
+        // Boss-round popup: every 10th stage (10, 20, 30, ...) is an
+        // arena. Shown once, when the arena actually starts (below) -
+        // not here, where a rebuild can happen while the stage-cleared
+        // banner is still up and again on NEXT SEGMENT.
+        bossIntroPending = st.gameMode === 'campaign' && scene.isBossArena;
       }
       // Skin change (typically from a save load on the start screen):
       // detach the existing player figure and rebuild it with the
@@ -1347,16 +1402,47 @@ export function Game() {
       // begins. Skip if a rebuild already ran above (resetSegment
       // would just be called twice).
       if (st.runState === 'playing' && lastRunState !== 'playing') {
+        // A run started from the menu is a new run: the boss-perk
+        // charge bookkeeping starts over with it.
+        if (lastRunState === 'idle') {
+          perkChargedStage = -1;
+          perkBonusThisStage = 0;
+        }
         if (
           st.segmentSeed === lastSegmentSeed &&
           st.stage === lastStage &&
           st.gameMode === lastMode &&
           st.restartCounter === lastRestartCounter
         ) {
+          // Endless / Daily streamed and trimmed the previous world
+          // (and its distance): every new run needs a fresh build and
+          // fresh hearts, even when the seed is unchanged - e.g.
+          // starting today's Daily again from the menu.
+          if (scene.endless) rebuildScene(st.stage, st.segmentSeed, st.gameMode);
           resetSegment();
+          if (scene.endless) grantStartingHearts(st.stage);
         }
       }
       lastRunState = st.runState;
+
+      if (bossIntroPending && st.runState === 'playing' && !st.gameModal) {
+        bossIntroPending = false;
+        st.setPaused(true);
+        st.setGameModal({
+          title: 'BOSS ROUND',
+          body: `Stage ${st.stage} is a boss arena. Survive 60 seconds inside the enclosed yard. Lose all your hearts and you retry the round - you only advance by surviving it.`,
+          actions: [
+            {
+              label: 'START',
+              variant: 'primary',
+              onPress: () => {
+                useStore.getState().setGameModal(null);
+                useStore.getState().setPaused(false);
+              },
+            },
+          ],
+        });
+      }
 
       if (st.runState !== 'playing' || st.paused) {
         projectiles.clear();
@@ -1461,6 +1547,12 @@ export function Game() {
       }
       const staminaActive = staminaEnabledFor(stageNow);
       updatePlayer(player, scene.procgen.obstacles(), effDt, scene.segmentEndZ, staminaActive);
+      // Endless / Daily: the world behind the player is streamed out;
+      // don't let them walk back into the stripped stretch.
+      if (scene.endless) {
+        const back = Math.max(scene.procgen.startZ() + 2, scene.maxZ - ENDLESS_BACKTRACK);
+        if (player.z < back) player.z = back;
+      }
       const nearCover = isNearCover(player, scene.procgen.obstacles());
       if (player.stance !== st.stance) st.setStance(player.stance);
       st.setStamina(player.stamina);
@@ -1470,7 +1562,9 @@ export function Game() {
 
       // Razor wire: touching the fence at razor-wire stages costs
       // a heart and resets the player to spawn. Treat it as a catch.
-      if (scene.razorWire && isTouchingFence(player.x)) {
+      // Endless: wire is drawn per section by level; match that.
+      const wireLive = scene.endless ? razorWireEnabledFor(levelAtZ(player.z)) : scene.razorWire;
+      if (wireLive && isTouchingFence(player.x)) {
         handleCatch();
         return;
       }
@@ -1524,7 +1618,7 @@ export function Game() {
           let hit = applyCrowbarStun(player.x, player.z, scene.guards);
           // The swing also scares off any dog within reach.
           for (const d of scene.dogs) {
-            if (scareDog(d, player.x, player.z, CROWBAR_RANGE + 0.5)) hit = true;
+            if (scareDog(d, player.x, player.z, CROWBAR_DOG_REACH)) hit = true;
           }
           const arc = createSwingArc(player.x, player.z, CROWBAR_RANGE);
           r.worldRoot.add(arc.mesh);
@@ -1551,8 +1645,8 @@ export function Game() {
         }
       }
       // Landed rocks make noise: every guard in earshot goes to look
-      // at the landing spot (not at the player), and leashed dogs
-      // nearby lose interest in the player for a moment.
+      // at the landing spot (not at the player). Leashed dogs follow
+      // their handler, so they go along.
       updateRocks(rocks, effDt, (lx, lz) => {
         const vol = Math.max(0.3, 1 - Math.hypot(lx - player.x, lz - player.z) / 25);
         playSfx(sfx, 'throw_land', st.masterVolume, vol);
@@ -1862,7 +1956,7 @@ export function Game() {
         for (const d of scene.dogs) {
           if (d.state === 'flee') continue;
           const dSq = (d.x - player.x) ** 2 + (d.z - player.z) ** 2;
-          if (dSq <= best) {
+          if (dSq <= CROWBAR_DOG_REACH_SQ && (crowbarTarget === null || dSq < best)) {
             best = dSq;
             crowbarTarget = d;
           }

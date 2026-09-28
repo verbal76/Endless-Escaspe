@@ -158,9 +158,12 @@ function setState(g: Guard, next: Guard['state'], target?: { x: number; z: numbe
 }
 
 // Where the guard believes the player is: the live position while in
-// sight, otherwise the last sighting, otherwise the last (fuzzy)
-// noise fix.
-function belief(g: Guard): { x: number; z: number } | null {
+// sight, otherwise the NEWER of the last sighting and the last noise
+// fix. (Always preferring an old sighting made a guard that had once
+// seen the player ignore every later rock, noise or radio call-out and
+// walk back to that old spot.)
+export function belief(g: Guard): { x: number; z: number } | null {
+  if (g.lastSeen && g.lastHeard) return g.sinceHeard < g.sinceSeen ? g.lastHeard : g.lastSeen;
   return g.lastSeen ?? g.lastHeard;
 }
 
@@ -169,6 +172,7 @@ function belief(g: Guard): { x: number; z: number } | null {
 export function hearNoiseAt(g: Guard, x: number, z: number) {
   if (g.stunTimer > 0) return;
   g.lastHeard = { x, z };
+  g.sinceHeard = 0;
   g.hearTimer = HEAR_REFRESH_S;
   if (g.state !== 'chase') {
     g.investigationTarget = { x, z };
@@ -183,6 +187,7 @@ export function resetGuardMemory(g: Guard) {
   g.lastSeen = null;
   g.lastHeard = null;
   g.sinceSeen = 999;
+  g.sinceHeard = 999;
   g.hearTimer = 0;
   g.lookTimer = 0;
   g.aimTimer = 0;
@@ -212,6 +217,7 @@ export function updateGuard(
   g.wanderTimer += dt;
   g.fireCooldown = Math.max(0, g.fireCooldown - dt);
   g.hearTimer = Math.max(0, g.hearTimer - dt);
+  g.sinceHeard += dt;
 
   // ---- Perception memory -------------------------------------------
   const wasSeeing = g.sinceSeen === 0;
@@ -232,6 +238,7 @@ export function updateGuard(
       const err = d * HEAR_ERROR_FRAC;
       const a = Math.random() * Math.PI * 2;
       g.lastHeard = { x: p.x + Math.cos(a) * err * Math.random(), z: p.z + Math.sin(a) * err * Math.random() };
+      g.sinceHeard = 0;
       g.hearTimer = HEAR_REFRESH_S;
     }
   }

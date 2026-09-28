@@ -179,6 +179,9 @@ export type Guard = {
   lastSeen: { x: number; z: number } | null;
   lastHeard: { x: number; z: number } | null;
   sinceSeen: number;
+  // Seconds since lastHeard was set (a noise fix or a heard event such
+  // as a rock landing); belief uses whichever memory is newer.
+  sinceHeard: number;
   hearTimer: number;
   // Tier-2 look-and-scan after losing sight.
   lookTimer: number;

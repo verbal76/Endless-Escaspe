@@ -1,5 +1,6 @@
 import type { Obstacle, Player } from '../types/world';
 import { dist2Sq } from '../util/math';
+import { COVER_HEIGHT_CROUCHED } from './DetectionSystem';
 
 const NEAR_COVER_SQ = 2.5 * 2.5;
 
@@ -11,7 +12,9 @@ const NEAR_COVER_SQ = 2.5 * 2.5;
 export function isNearCover(p: Player, obstacles: readonly Obstacle[]): boolean {
   if (!p.isCrouched) return false;
   for (const o of obstacles) {
-    if (o.height < 1.0) continue;
+    // Same threshold that blocks a crouched player's sight line, so a
+    // low wall that really hides you also shows the tucked-in pose.
+    if (o.height < COVER_HEIGHT_CROUCHED) continue;
     if (dist2Sq(p.x, p.z, o.x, o.z) <= NEAR_COVER_SQ + o.r * o.r) return true;
   }
   return false;

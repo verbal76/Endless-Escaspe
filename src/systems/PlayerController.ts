@@ -64,7 +64,10 @@ export function updatePlayer(
   // before the enabled tier always see a full pool.
   if (!staminaEnabled) {
     p.stamina = 1;
-  } else if (p.isRunning) {
+  } else if (p.isRunning && (input.axisX !== 0 || input.axisY !== 0)) {
+    // Only an actual sprint drains: RUN left toggled on while standing
+    // still (e.g. hiding) must not empty the pool and lock out the
+    // sprint the player will need to get away.
     p.stamina = Math.max(0, p.stamina - STAMINA_DRAIN_PER_S * dt);
     if (p.stamina <= 0) {
       p.exhausted = true;

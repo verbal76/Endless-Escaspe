@@ -439,6 +439,10 @@ export const useStore = create<Store>((set) => ({
     set((st) => ({
       restartCounter: st.restartCounter + 1,
       paused: false,
+      // Guard ids are reused when the world is rebuilt; stale meters
+      // would keep the alarm edge lit and seed the new guards.
+      detection: {},
+      alarmLevel: 0,
       lastStats: null,
       lastDeathCause: null,
     })),
@@ -480,3 +484,10 @@ export const useStore = create<Store>((set) => ({
       runSummary: null,
     })),
 }));
+
+// Level the difficulty rules use: the campaign stage, or in Endless /
+// Daily the distance-driven level. HUD pieces that depend on the rules
+// (hearts, stamina, camera alarm) must read this, not `stage`, which in
+// Endless / Daily still holds the player's campaign progress.
+export const selectRuleLevel = (s: { gameMode: GameMode; stage: number; endlessLevel: number }): number =>
+  s.gameMode === 'campaign' ? s.stage : s.endlessLevel;

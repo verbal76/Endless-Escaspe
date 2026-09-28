@@ -558,6 +558,12 @@ export class ProcgenSystem {
     this.nextZ += CHUNK_LEN;
   }
 
+  // Start of the oldest chunk still generated (Endless trims behind the
+  // player, so this is the earliest ground that still exists).
+  startZ(): number {
+    return this.chunks[0]?.startZ ?? 0;
+  }
+
   // Endless mode: keep gameplay chunks generated through `z`.
   // Returns the chunks added (so the caller can populate guards etc).
   extendTo(z: number): Chunk[] {

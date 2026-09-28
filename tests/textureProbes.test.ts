@@ -1,11 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { renderProbesModule, TEXTURE_FILES } from '../scripts/gen-texture-probes.mjs';
+import { renderDataModule, renderProbesModule, TEXTURE_FILES } from '../scripts/gen-texture-probes.mjs';
 
 test('textureProbes.ts matches the PNGs on disk (run scripts/gen-texture-probes.mjs)', () => {
   const committed = readFileSync('src/util/textureProbes.ts', 'utf8');
   assert.equal(committed, renderProbesModule());
+  assert.equal(readFileSync('src/util/textureData.ts', 'utf8'), renderDataModule(), 'textureData.ts is stale');
 });
 
 test('probes cover every preloaded texture and pick distinct colours', () => {

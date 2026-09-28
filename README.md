@@ -70,6 +70,10 @@ src/
                        saves, daily seeds, release metadata, tips, ...
 tests/                 node:test suites (npm test)
 scripts/verify-ota.mjs post-publish OTA verification (CI)
+scripts/ci/            Android emulator render check (CI)
+scripts/gen-texture-probes.mjs
+                       regenerates util/textureData.ts + textureProbes.ts
+                       from the texture PNGs (run after changing one)
 assets/                models, textures, music, sfx, fonts (see
                        assets/LICENSES.md)
 ```
@@ -91,7 +95,11 @@ release metadata, music intensity and more.
 ## Builds and over-the-air updates
 
 Two GitHub Actions workflows ship the game. Each runs typecheck and the
-unit tests first and refuses to publish on failure.
+unit tests first and refuses to publish on failure. A third,
+`android-render-check.yml`, builds the release configuration for x86_64,
+runs it on an Android emulator and fails unless the in-app render audit
+reports every textured model drawn with its texture and the GPU texels
+matching the source PNGs.
 
 | Change | Workflow | Result |
 | --- | --- | --- |
@@ -107,11 +115,16 @@ and can be run manually.
   sideloaded. Debug builds cannot receive OTA updates.
 - Every APK sends `expo-channel-name: preview` (`app.json`
   `updates.requestHeaders`). The runtime version equals the app
-  `version` (`runtimeVersion.policy: appVersion`), currently **0.2.0**.
+  `version` (`runtimeVersion.policy: appVersion`), currently **0.2.1**.
   An update reaches an installed APK only if the runtimes match. Bump
   `version` whenever a change adds or alters native code that the JS
   relies on (a new native module, an SDK upgrade); icon, splash and
   display-name changes need a new APK but not a new runtime.
+- Keep every Expo package on the SDK's version (`npx expo install
+  --check`). A mismatched native module compiles but fails at runtime:
+  expo-audio's `expo-asset: "*"` peer dependency once pulled in SDK 55's
+  expo-asset, and every asset download on device threw
+  `NoSuchMethodError`. expo-asset is therefore pinned in `package.json`.
 - An APK runs whichever is newer: its embedded bundle or the latest
   downloaded update. An OTA published *before* an APK was built is
   ignored by that APK, so publish a fresh OTA after every APK build.
@@ -125,13 +138,21 @@ and can be run manually.
 
 ### What's running on a device
 
-The main menu shows e.g. `v0.2.0 • Build 12 • OTA 108`: the APK's
+The main menu shows e.g. `v0.2.1 • Build 13 • Embedded`: the APK's
 version and build number, plus the OTA sequence when a downloaded
 update is running (or `Embedded` when the APK's own bundle is running).
 Settings → **Build / Update Info** shows the full details: runtime,
-channel, embedded-vs-OTA, update ID, source commit, publish time and
-whether the game's textures loaded (`Textures: 11/11 loaded`; tap the
-row for the reason if any failed).
+channel, embedded-vs-OTA, update ID, source commit, publish time, and
+what is actually drawn:
+
+- **Texture files**: `11/11 resolved` (the PNGs are embedded in the JS
+  bundle and decoded in JS, `src/util/textures.ts`).
+- **Rendering**: per group (player, guards, vehicles, props, ground)
+  whether its meshes use their texture or the flat fallback colour.
+- **GPU textures**: texels read back from the GPU compared with the
+  source PNGs (`src/util/renderAudit.ts`).
+
+Tap a row for details; bug reports include the same lines.
 All values come from the running build and update metadata
 (`src/util/releaseInfo.ts`), never from hand-edited constants.
 

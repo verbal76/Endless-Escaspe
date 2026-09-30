@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
 import { createKitPropInstances } from './KitProps';
 import type { StageLighting } from './Lighting';
@@ -44,13 +45,19 @@ const TREE_LINE_FAR = PLAY_HALF_W + 24;
 // TREE_LINE_OUTER..TREE_LINE_FAR band gives them depth.
 const TREE_COUNT_PER_SIDE = 168;
 
-// Sky props
-const CLOUD_COUNT = 6;
-const CLOUD_Y = 36;
-const CLOUD_DRIFT_SPEED = 0.6; // m/s; very slow drift
+// Sky props. Both live in the thin band of sky the camera actually
+// sees (the view tilts ~25 deg down, leaving ~5 deg above the
+// horizon): the old clouds at y 36 and birds at y 22 sat 14-16 deg up
+// and were never on screen during play. Placed by distance +
+// elevation angle, kept centred on the player with the ridges.
+const CAM_Y = 7;
+const yAtElevation = (dist: number, deg: number) => CAM_Y + dist * Math.tan((deg * Math.PI) / 180);
+const CLOUD_COUNT = 7;
+const CLOUD_SPAN = 700; // clouds wrap within +-CLOUD_SPAN (x)
+const CLOUD_DRIFT_SPEED = 3; // m/s at ~450 m: a slow drift on screen
 
-const BIRD_COUNT = 7;
-const BIRD_Y = 22;
+const BIRD_COUNT = 6;
+const BIRD_SPAN = 240;
 const BIRD_SPEED_MIN = 5;
 const BIRD_SPEED_MAX = 9;
 
@@ -63,12 +70,11 @@ const DOME_MAT = new THREE.MeshBasicMaterial({
 });
 // Clouds and birds are tinted per stage mood (applyBackdropMood) so
 // they don't glow white against a night sky.
-const CLOUD_DAY = new THREE.Color(0xf2f2f7);
-const CLOUD_MAT = new THREE.MeshBasicMaterial({
-  color: 0xf2f2f7,
-  transparent: true,
-  opacity: 0.55,
-  depthWrite: false,
+const CLOUD_DAY = new THREE.Color(0xf4f6fa);
+// Low-poly puffs, lit (flat shaded) so they read as 3D shapes.
+const CLOUD_MAT = new THREE.MeshLambertMaterial({
+  color: 0xf4f6fa,
+  flatShading: true,
   fog: false,
 });
 const BIRD_MAT = new THREE.MeshBasicMaterial({
@@ -178,14 +184,21 @@ function paintFar(b: Backdrop, light: StageLighting) {
   }
 }
 
+// A cloud = 3-5 flattened icosahedron puffs merged into one mesh (one
+// draw call each).
 function buildCloudMesh(rng: () => number): THREE.Mesh {
-  const w = 18 + rng() * 22;
-  const h = 6 + rng() * 5;
-  const geo = new THREE.PlaneGeometry(w, h);
-  const m = new THREE.Mesh(geo, CLOUD_MAT);
-  // Face the camera roughly (we're looking forward and down).
-  m.rotation.x = -Math.PI / 6;
-  return m;
+  const parts: THREE.BufferGeometry[] = [];
+  const n = 3 + Math.floor(rng() * 3);
+  const len = 40 + rng() * 40;
+  for (let i = 0; i < n; i++) {
+    const r = 9 + rng() * 9;
+    const g = new THREE.IcosahedronGeometry(r, 0);
+    g.scale(1.25, 0.55, 0.8);
+    g.translate((i / Math.max(1, n - 1) - 0.5) * len, (rng() - 0.3) * 4, (rng() - 0.5) * 8);
+    parts.push(g);
+  }
+  const geo = mergeGeometries(parts) ?? parts[0];
+  return new THREE.Mesh(geo, CLOUD_MAT);
 }
 
 function buildBirdMesh(): THREE.Mesh {
@@ -251,14 +264,13 @@ export function createBackdrop(): Backdrop {
   far.add(dome, ...ridges);
   root.add(far);
 
-  // Tree line on each side of the playfield.
   const clouds: Cloud[] = [];
   for (let i = 0; i < CLOUD_COUNT; i++) {
     const c = buildCloudMesh(rng);
-    const x = BACKDROP_BOUNDS.left + rng() * (BACKDROP_BOUNDS.right - BACKDROP_BOUNDS.left);
-    const z = segLen * 0.3 + rng() * (segLen * 1.4);
-    c.position.set(x, CLOUD_Y + (rng() - 0.5) * 6, z);
-    root.add(c);
+    const dist = 380 + rng() * 180;
+    const x = -CLOUD_SPAN + ((i + rng() * 0.6) / CLOUD_COUNT) * 2 * CLOUD_SPAN;
+    c.position.set(x, yAtElevation(dist, 2.2 + rng() * 1.6), dist);
+    far.add(c);
     clouds.push({ mesh: c });
   }
 
@@ -266,11 +278,11 @@ export function createBackdrop(): Backdrop {
   const birds: Bird[] = [];
   for (let i = 0; i < BIRD_COUNT; i++) {
     const b = buildBirdMesh();
-    const x = BACKDROP_BOUNDS.left + rng() * (BACKDROP_BOUNDS.right - BACKDROP_BOUNDS.left);
-    const z = 30 + rng() * (segLen + 30);
-    b.position.set(x, BIRD_Y + rng() * 8, z);
-    b.scale.setScalar(0.9 + rng() * 0.6);
-    root.add(b);
+    const x = -BIRD_SPAN + rng() * 2 * BIRD_SPAN;
+    const z = 110 + rng() * 90;
+    b.position.set(x, yAtElevation(z, 1.2 + rng() * 2), z);
+    b.scale.setScalar(2.4 + rng() * 1.2);
+    far.add(b);
     birds.push({
       mesh: b,
       vx: BIRD_SPEED_MIN + rng() * (BIRD_SPEED_MAX - BIRD_SPEED_MIN),
@@ -298,8 +310,7 @@ export function applyBackdropMood(b: Backdrop, light: StageLighting) {
   paintFar(b, light);
   const sky = new THREE.Color(light.sky);
   const k = light.darkness;
-  CLOUD_MAT.color.copy(CLOUD_DAY).lerp(sky.clone().offsetHSL(0, 0, 0.08), k * 0.85);
-  CLOUD_MAT.opacity = 0.55 - 0.25 * k;
+  CLOUD_MAT.color.copy(CLOUD_DAY).lerp(new THREE.Color(light.horizon).offsetHSL(0, 0, 0.06), 0.25 + k * 0.6);
   BIRD_MAT.color.setHex(0x111114).lerp(sky, k * 0.5);
   BIRD_MAT.opacity = 0.85 - 0.35 * k;
 }
@@ -369,13 +380,9 @@ export function setBackdropSnow(_b: Backdrop, _on: boolean) {
 // Animate clouds and birds. Both wrap around horizontally so the
 // scene looks alive without ever depleting.
 export function updateBackdrop(b: Backdrop, dt: number) {
-  const span = b.bounds.right - b.bounds.left;
-
   for (const c of b.clouds) {
     c.mesh.position.x += CLOUD_DRIFT_SPEED * dt;
-    if (c.mesh.position.x > b.bounds.right) {
-      c.mesh.position.x -= span;
-    }
+    if (c.mesh.position.x > CLOUD_SPAN) c.mesh.position.x -= 2 * CLOUD_SPAN;
   }
 
   for (const bird of b.birds) {
@@ -383,8 +390,6 @@ export function updateBackdrop(b: Backdrop, dt: number) {
     bird.flapPhase += dt * 9;
     bird.mesh.position.y = bird.baseY + Math.sin(bird.flapPhase) * 0.35;
     bird.mesh.rotation.z = Math.sin(bird.flapPhase) * 0.18;
-    if (bird.mesh.position.x > b.bounds.right) {
-      bird.mesh.position.x -= span;
-    }
+    if (bird.mesh.position.x > BIRD_SPAN) bird.mesh.position.x -= 2 * BIRD_SPAN;
   }
 }

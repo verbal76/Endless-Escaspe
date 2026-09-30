@@ -7,7 +7,7 @@ import {
   VISION_CONE_DEG,
 } from '../util/geometry';
 import { createModelFigure, type ModelFigure } from './ModelFigure';
-import { getGrassTexture } from '../util/textures';
+import { getGrassTexture, getPropTexture } from '../util/textures';
 import { tagAuditMaterial, tagAuditRole } from '../util/renderAudit';
 import { createNavState } from '../systems/Navigator';
 import { outfitById, type OutfitId } from '../util/outfits';
@@ -215,6 +215,35 @@ export function createGround(): THREE.Mesh {
   tagAuditMaterial(mat, 'ground', 'grass');
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
+  // Worn yard floor: a translucent dirt layer between the fences, so
+  // the yard reads as a trodden prison yard rather than open field.
+  // A child of the ground, so it follows it in every mode.
+  const dirtSrc = getPropTexture('dirt');
+  if (dirtSrc) {
+    const dt = dirtSrc.clone();
+    dt.needsUpdate = true;
+    dt.wrapS = THREE.RepeatWrapping;
+    dt.wrapT = THREE.RepeatWrapping;
+    dt.repeat.set((PLAY_HALF_W * 2) / 3, 1800 / 3);
+    dt.magFilter = THREE.NearestFilter;
+    dt.minFilter = THREE.LinearMipmapLinearFilter;
+    dt.generateMipmaps = true;
+    const yard = new THREE.Mesh(
+      new THREE.PlaneGeometry(PLAY_HALF_W * 2, 1800),
+      new THREE.MeshLambertMaterial({
+        map: dt,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      }),
+    );
+    yard.name = 'yardFloor';
+    yard.renderOrder = -2;
+    m.add(yard);
+  }
   // Centred so the plane spans roughly z = -500 .. +1300, which
   // covers everything from a few metres behind the start line out
   // to the mountain row plus its depth.

@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import Animated, {
+  FadeIn,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -429,7 +430,7 @@ export function StartScreen() {
   if (mode === 'home') {
     const hasSaves = sortedSaves.length > 0;
     return (
-      <View pointerEvents="box-none" style={styles.root}>
+      <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
         <TitleRow />
         <Text style={styles.tagline}>Prison yard, no exits, all sirens.</Text>
         <View style={styles.homeBtnRow}>
@@ -468,7 +469,7 @@ export function StartScreen() {
         <Text pointerEvents="none" style={styles.releaseLine} numberOfLines={1}>
           {formatMenuLine(getReleaseInfo())}
         </Text>
-      </View>
+      </Animated.View>
     );
   }
 
@@ -507,7 +508,8 @@ export function StartScreen() {
     };
 
     return (
-      <View pointerEvents="box-none" style={styles.root}>
+      <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
+        <View pointerEvents="none" style={styles.panelBg} />
         <View style={styles.nameTopRow}>
           {pickedSkin ? (
             <View style={styles.namePreviewWrapCompact}>
@@ -558,13 +560,13 @@ export function StartScreen() {
             doneEnabled={nameDraft.trim().length > 0}
           />
         </View>
-      </View>
+      </Animated.View>
     );
   }
 
   if (mode === 'tutorialPrompt') {
     return (
-      <View pointerEvents="box-none" style={styles.root}>
+      <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
         <TitleRow />
         <Text style={styles.tagline}>Quick demo?</Text>
         <Text style={styles.promptBody}>
@@ -599,13 +601,14 @@ export function StartScreen() {
             <Text style={styles.bigBtnLabel}>SHOW ME</Text>
           </Pressable>
         </View>
-      </View>
+      </Animated.View>
     );
   }
 
   if (mode === 'continue') {
     return (
-      <View pointerEvents="box-none" style={styles.root}>
+      <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
+        <View pointerEvents="none" style={styles.panelBg} />
         <TitleRow />
         <Text style={styles.tagline}>Continue a run</Text>
         <ScrollView
@@ -650,7 +653,7 @@ export function StartScreen() {
         >
           <Text style={styles.linkLabel}>BACK</Text>
         </Pressable>
-      </View>
+      </Animated.View>
     );
   }
 
@@ -658,7 +661,8 @@ export function StartScreen() {
     const owner = profileKey ? saves[profileKey] : undefined;
     if (!owner) return null;
     return (
-      <View pointerEvents="box-none" style={styles.root}>
+      <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
+        <View pointerEvents="none" style={styles.panelBg} />
         <Text style={styles.outfitTitle}>OUTFITS</Text>
         <Text style={styles.outfitCoins}>{owner.coins} coins  ·  cosmetic only</Text>
         <View style={styles.outfitGrid}>
@@ -695,7 +699,7 @@ export function StartScreen() {
         >
           <Text style={[styles.bigBtnLabel, styles.bigBtnLabelOnDark]}>BACK</Text>
         </Pressable>
-      </View>
+      </Animated.View>
     );
   }
 
@@ -711,7 +715,8 @@ export function StartScreen() {
   for (let i = 1; i <= profile.stage; i++) boardStages.push(i);
 
   return (
-    <View pointerEvents="box-none" style={styles.root}>
+    <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
+      <View pointerEvents="none" style={styles.panelBg} />
       <View style={styles.profileHeader}>
         <View style={styles.profileFigureFrame}>
           <PrisonerFigure skin={profile.skin} size="sm" />
@@ -813,7 +818,7 @@ export function StartScreen() {
           <Text style={styles.bigBtnLabel}>PLAY STAGE {profile.stage}</Text>
         </Pressable>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -845,6 +850,20 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 14,
     flexWrap: 'wrap',
+  },
+  // Panel behind the name / continue / outfits / profile screens, so
+  // their content sits on a surface instead of floating over the 3D
+  // scene. Decorative only (absolute, no layout change).
+  panelBg: {
+    position: 'absolute',
+    top: 10,
+    bottom: 10,
+    left: '6%',
+    right: '6%',
+    backgroundColor: ui.panelSoft,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 209, 74, 0.35)',
   },
   titleWord: {
     color: ui.gold,

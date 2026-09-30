@@ -43,7 +43,9 @@ function blobMaterial(): THREE.MeshBasicMaterial {
     new THREE.MeshBasicMaterial({
       map: blobTexture(),
       transparent: true,
-      opacity: 0.5,
+      // A little stronger now textures decode as sRGB (the ground is
+      // darker than it used to render).
+      opacity: 0.58,
       depthWrite: false,
       polygonOffset: true,
       polygonOffsetFactor: -1,

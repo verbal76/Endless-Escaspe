@@ -670,6 +670,9 @@ export function Game() {
         groundMat.emissiveMap = null;
         groundMat.emissiveIntensity = 0.75 * (1 - 0.7 * dark);
         groundMat.needsUpdate = true;
+        // Snow covers the worn yard floor too.
+        const yardFloor = ground.getObjectByName('yardFloor');
+        if (yardFloor) yardFloor.visible = false;
       }
 
       // Win line is omitted on arena stages (survive the timer) and in
@@ -815,7 +818,15 @@ export function Game() {
     // One lighting mood per stage (day / afternoon / dusk / night /
     // deep night; see Lighting.ts). Applied once per (re)build - the
     // mood never changes during a stage.
+    // Rain is overcast: dim the sun and sky fill so rain reads as a
+    // mood, not just falling lines.
+    const applyWeatherLight = (s: Scene) => {
+      if (s.weatherKind !== 'rain') return;
+      r.sun.intensity *= 0.72;
+      r.hemi.intensity *= 0.85;
+    };
     let lighting: StageLighting = applyStageLighting(r, moodStageFor(initialStage, useStore.getState().gameMode, useStore.getState().segmentSeed));
+    applyWeatherLight(scene);
     applyBackdropMood(backdrop, lighting);
     setBackdropSnow(backdrop, scene.weatherKind === 'snow');
     useStore
@@ -848,6 +859,7 @@ export function Game() {
       scene = buildScene(stage, seed, mode);
       if (!scene.endless) backdrop.group.position.z = 0;
       lighting = applyStageLighting(r, moodStageFor(stage, mode, seed));
+      applyWeatherLight(scene);
       applyBackdropMood(backdrop, lighting);
       setBackdropSnow(backdrop, scene.weatherKind === 'snow');
       // The boss countdown is re-armed by resetSegment(), which every
@@ -1524,6 +1536,9 @@ export function Game() {
         // stance and then defers to the same updatePlayer that runs
         // during gameplay so the figure actually navigates around
         // obstacles instead of clipping through them.
+        // Menu: keep the title clear of falling rain / snow (the run
+        // itself still has its weather).
+        scene.weather.group.visible = st.runState !== 'idle';
         if (st.runState === 'idle' && !st.paused) {
           demoTime += dt;
           animTime += dt;
@@ -1578,6 +1593,7 @@ export function Game() {
       // the campaign stage, or in Endless / Daily the level reached at
       // the player's distance.
       const stageNow = scene.endless ? levelAtZ(player.z) : st.stage;
+      scene.weather.group.visible = true;
       if (shakeRemaining > 0) {
         shakeRemaining = Math.max(0, shakeRemaining - dt);
       }

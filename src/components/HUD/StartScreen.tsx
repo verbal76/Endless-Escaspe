@@ -33,63 +33,52 @@ import { color as ui, type as T, fonts } from '../../ui/theme';
 
 const TITLE = 'ENDLESS ESCAPE';
 
-// Per-letter bouncing/pulsating title. Each letter gets its own
-// looping translateY + scale animation with a phase offset based
-// on its index, so the wave reads as a left-to-right ripple
-// instead of every letter moving in unison.
+// Text drawn straight over the 3D scene (no panel behind it).
+const overSceneShadow = {
+  textShadowColor: 'rgba(0, 0, 0, 0.85)',
+  textShadowOffset: { width: 0, height: 1 },
+  textShadowRadius: 3,
+} as const;
 
-function BouncingLetter({ char, index, fontSize }: { char: string; index: number; fontSize: number }) {
-  const t = useSharedValue(0);
-
-  useEffect(() => {
-    t.value = 0;
-    t.value = withRepeat(
-      withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.quad) }),
-      -1,
-      true,
-    );
-  }, [t]);
-
-  const style = useAnimatedStyle(() => {
-    const phase = (t.value + index * 0.10) % 1;
-    const wave = Math.sin(phase * Math.PI * 2);
-    return {
-      transform: [
-        // Amplitude tracks the title size (-18 at fontSize 77,
-        // -14 here at fontSize 62) so the wave reads consistently
-        // regardless of how often we retune the title.
-        { translateY: -14 * wave },
-        { scale: 1 + 0.06 * wave },
-      ],
-    };
-  });
-
-  return (
-    <Animated.Text style={[styles.titleLetter, { fontSize }, style]}>{char}</Animated.Text>
-  );
-}
+// Title: one piece of text per word on a shared baseline, animated as
+// a whole - a short drop-in when the menu appears, then a slow 2%
+// breathing scale. (Each letter used to bob and scale on its own
+// phase; neighbouring stencil capitals then sat up to 28 dp apart and
+// ~12% different in size, which read as "ENDLEsS eSCAPE".)
 
 // The full title measures ~660 dp at the hero size (Black Ops One
-// advances + letter margins + the word gap); narrower screens scale it
-// down instead of breaking a word across lines. Letters are grouped per
-// word, so a wrap on a very narrow screen can only fall between words.
+// advances + the word gap); narrower screens scale it down instead of
+// breaking a word across lines, and a wrap on a very narrow screen can
+// only fall between the two words.
 const TITLE_WIDTH_AT_HERO = 660;
 
 function TitleRow() {
   const { width } = useWindowDimensions();
   const fontSize = Math.max(34, Math.min(T.hero, Math.floor(((width - 48) * T.hero) / TITLE_WIDTH_AT_HERO)));
-  let index = 0;
+  const drop = useSharedValue(0);
+  const breathe = useSharedValue(0);
+
+  useEffect(() => {
+    drop.value = withTiming(1, { duration: 450, easing: Easing.out(Easing.back(1.4)) });
+    breathe.value = withRepeat(withTiming(1, { duration: 2600, easing: Easing.inOut(Easing.quad) }), -1, true);
+  }, [drop, breathe]);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: drop.value,
+    transform: [{ translateY: (1 - drop.value) * -24 }, { scale: 1 + 0.02 * breathe.value }],
+  }));
+
   return (
-    <View style={styles.titleRow}>
+    <Animated.View style={[styles.titleRow, style]}>
       {TITLE.split(' ').map((word, w) => (
-        <View key={w} style={[styles.titleWord, w > 0 && { marginLeft: Math.round((16 * fontSize) / T.hero) }]}>
-          {word.split('').map((c) => {
-            const i = index++;
-            return <BouncingLetter key={i} char={c} index={i} fontSize={fontSize} />;
-          })}
-        </View>
+        <Text
+          key={w}
+          style={[styles.titleWord, { fontSize }, w > 0 && { marginLeft: Math.round((18 * fontSize) / T.hero) }]}
+        >
+          {word}
+        </Text>
       ))}
-    </View>
+    </Animated.View>
   );
 }
 
@@ -459,7 +448,7 @@ export function StartScreen() {
                 pressed && styles.bigBtnDown,
               ]}
             >
-              <Text style={styles.bigBtnLabel}>CONTINUE</Text>
+              <Text style={[styles.bigBtnLabel, styles.bigBtnLabelOnDark]}>CONTINUE</Text>
             </Pressable>
           ) : null}
         </View>
@@ -544,7 +533,7 @@ export function StartScreen() {
               pressed && styles.bigBtnDown,
             ]}
           >
-            <Text style={styles.bigBtnLabelCompact}>BACK</Text>
+            <Text style={[styles.bigBtnLabelCompact, styles.bigBtnLabelOnDark]}>BACK</Text>
           </Pressable>
           <Pressable
             onPress={onConfirmName}
@@ -590,7 +579,7 @@ export function StartScreen() {
               pressed && styles.bigBtnDown,
             ]}
           >
-            <Text style={styles.bigBtnLabel}>SKIP</Text>
+            <Text style={[styles.bigBtnLabel, styles.bigBtnLabelOnDark]}>SKIP</Text>
           </Pressable>
           <Pressable
             onPress={() => {
@@ -700,7 +689,7 @@ export function StartScreen() {
           onPress={() => setMode('profile')}
           style={({ pressed }) => [styles.bigBtn, styles.bigBtnSecondary, pressed && styles.bigBtnDown]}
         >
-          <Text style={styles.bigBtnLabel}>BACK</Text>
+          <Text style={[styles.bigBtnLabel, styles.bigBtnLabelOnDark]}>BACK</Text>
         </Pressable>
       </View>
     );
@@ -804,7 +793,7 @@ export function StartScreen() {
             pressed && styles.bigBtnDown,
           ]}
         >
-          <Text style={styles.bigBtnLabel}>BACK</Text>
+          <Text style={[styles.bigBtnLabel, styles.bigBtnLabelOnDark]}>BACK</Text>
         </Pressable>
         <Pressable
           onPress={() => beginRunForSave(profile)}
@@ -835,6 +824,9 @@ function totalStars(s: Save): number {
 const styles = StyleSheet.create({
   root: {
     ...StyleSheet.absoluteFillObject,
+    // Dims the live 3D menu scene so the title, tagline and buttons
+    // don't compete with fences, props and the patrol car behind them.
+    backgroundColor: 'rgba(8, 10, 14, 0.32)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 16,
@@ -847,18 +839,14 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     flexWrap: 'wrap',
   },
-  titleLetter: {
+  titleWord: {
     color: ui.gold,
     fontSize: T.hero,
     fontFamily: fonts.display,
-    letterSpacing: 1.8,
-    marginHorizontal: 2,
+    letterSpacing: 4,
     textShadowColor: '#1a1206',
     textShadowOffset: { width: 3, height: 3 },
     textShadowRadius: 2,
-  },
-  titleWord: {
-    flexDirection: 'row',
   },
   releaseLine: {
     position: 'absolute',
@@ -873,14 +861,16 @@ const styles = StyleSheet.create({
     textShadowRadius: 2,
   },
   tagline: {
-    color: 'rgba(255,255,255,0.85)',
+    color: ui.text,
     fontSize: T.body,
     fontWeight: '700',
     letterSpacing: 1.5,
     marginBottom: 14,
+    ...overSceneShadow,
   },
   promptBody: {
-    color: ui.textMuted,
+    ...overSceneShadow,
+    color: ui.textBody,
     fontSize: T.caption,
     textAlign: 'center',
     paddingHorizontal: 32,
@@ -906,9 +896,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 209, 74, 0.92)',
     borderColor: 'rgba(255, 230, 140, 1)',
   },
+  // Solid dark fill + light-blue rim + white label: readable over any
+  // scene (the old 20% translucent pill with dark ink was ~2:1).
   bigBtnSecondary: {
-    backgroundColor: 'rgba(120, 200, 255, 0.20)',
-    borderColor: 'rgba(140, 220, 255, 0.65)',
+    backgroundColor: '#1f2733',
+    borderColor: ui.info,
+  },
+  bigBtnLabelOnDark: {
+    color: ui.text,
   },
   bigBtnDown: {
     opacity: 0.75,
@@ -1086,11 +1081,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   taglineCompact: {
-    color: ui.textMuted,
+    color: ui.textBody,
     fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 1.5,
     marginBottom: 2,
+    ...overSceneShadow,
   },
   namePreviewWrapCompact: {
     marginBottom: 8,
@@ -1391,9 +1387,10 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   linkLabel: {
-    color: ui.textMuted,
+    color: ui.textBody,
     fontSize: T.small,
     fontWeight: '700',
     letterSpacing: 1.5,
+    ...overSceneShadow,
   },
 });

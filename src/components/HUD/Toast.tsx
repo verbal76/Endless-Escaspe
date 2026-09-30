@@ -8,6 +8,7 @@ import Animated, {
   withSequence,
   withTiming,
 } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { type as T } from '../../ui/theme';
 
@@ -36,7 +37,11 @@ export function Toast() {
   // camera-alarm bar beneath it (y 10-92).
   const bossTimer = useStore((s) => s.bossTimeRemaining > 0);
   const endless = useStore((s) => s.gameMode !== 'campaign');
-  const top = bossTimer ? 126 : endless ? 98 : 64;
+  // Follow the safe-area inset like the bars above it do (the camera
+  // alarm bar sits at max(32, inset + 16) and is ~30 dp tall).
+  const insets = useSafeAreaInsets();
+  const base = bossTimer ? 126 : endless ? 98 : 64;
+  const top = Math.max(base, insets.top + base - 12);
   const o = useSharedValue(0);
   const y = useSharedValue(-10);
 

@@ -25,7 +25,7 @@ import { composeBugReportUrl, composeFeatureRequestUrl } from '../../util/suppor
 import { BuildInfo } from './BuildInfo';
 import { HowToPlay } from './HowToPlay';
 import { CARD_BORDER, CARD_PADDING, PANEL_MARGIN, pausePanelHeights } from '../../ui/pauseLayout';
-import { color as ui, type as T, fonts } from '../../ui/theme';
+import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts } from '../../ui/theme';
 import { SETTINGS_GEAR } from '../../ui/iconData';
 
 const SLIDER_TRACK_W = 220;
@@ -266,7 +266,7 @@ export function SettingsScreen() {
                   style={({ pressed }) => [styles.bigBtn, styles.btnResume, pressed && styles.btnPressed]}
                   onPress={onResume}
                 >
-                  <Text style={styles.bigLabel}>RESUME</Text>
+                  <Text style={[styles.bigLabel, buttonLabel('primary')]}>RESUME</Text>
                 </Pressable>
                 <Pressable
                   style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
@@ -443,25 +443,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
   },
-  btnResume: {
-    backgroundColor: 'rgba(80, 200, 120, 0.25)',
-    borderColor: 'rgba(120, 240, 160, 0.65)',
-  },
-  btnRestart: {
-    backgroundColor: 'rgba(120, 200, 255, 0.20)',
-    borderColor: 'rgba(140, 220, 255, 0.65)',
-  },
-  btnLoad: {
-    backgroundColor: 'rgba(180, 140, 255, 0.20)',
-    borderColor: 'rgba(200, 170, 255, 0.65)',
-  },
-  btnMain: {
-    backgroundColor: 'rgba(255, 209, 74, 0.20)',
-    borderColor: 'rgba(255, 209, 74, 0.55)',
-  },
-  btnPressed: {
-    opacity: 0.7,
-  },
+  // Shared button system (theme.ts): one primary action, the rest
+  // secondary, leaving the run in danger red. (Was four translucent
+  // buttons in four unrelated colours.)
+  btnResume: buttonFill('primary'),
+  btnRestart: buttonFill('secondary'),
+  btnLoad: buttonFill('secondary'),
+  btnMain: buttonFill('danger'),
+  btnPressed: buttonPressed,
   bigLabel: {
     color: '#fff',
     fontSize: T.label,

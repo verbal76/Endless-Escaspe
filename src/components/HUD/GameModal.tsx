@@ -7,7 +7,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
-import { color as ui, type as T, fonts } from '../../ui/theme';
+import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts } from '../../ui/theme';
 
 // Branded confirm / alert modal matching the dark UI of the rest of
 // the game. Replaces every Alert.alert call so OS-style popup
@@ -154,33 +154,17 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
   },
-  btnPrimary: {
-    backgroundColor: 'rgba(255, 209, 74, 0.92)',
-    borderColor: 'rgba(255, 230, 140, 1)',
-  },
-  btnDanger: {
-    backgroundColor: 'rgba(255, 70, 70, 0.85)',
-    borderColor: 'rgba(255, 110, 110, 0.9)',
-  },
-  btnCancel: {
-    backgroundColor: 'rgba(80, 90, 110, 0.55)',
-    borderColor: 'rgba(160, 170, 190, 0.55)',
-  },
-  btnPressed: {
-    opacity: 0.7,
-  },
+  // Shared button system (theme.ts).
+  btnPrimary: buttonFill('primary'),
+  btnDanger: buttonFill('danger'),
+  btnCancel: buttonFill('secondary'),
+  btnPressed: buttonPressed,
   btnLabel: {
     fontWeight: '900',
     letterSpacing: 1.5,
     fontSize: T.small,
   },
-  btnLabelPrimary: {
-    color: ui.onGold,
-  },
-  btnLabelDanger: {
-    color: '#fff',
-  },
-  btnLabelCancel: {
-    color: 'rgba(255,255,255,0.85)',
-  },
+  btnLabelPrimary: buttonLabel('primary'),
+  btnLabelDanger: buttonLabel('danger'),
+  btnLabelCancel: buttonLabel('secondary'),
 });

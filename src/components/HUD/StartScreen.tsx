@@ -29,7 +29,7 @@ import { formatMenuLine } from '../../util/releaseInfo';
 import { OUTFITS, type OutfitId } from '../../util/outfits';
 import { equipOutfit, purchaseOutfit } from '../../util/economy';
 import { dailySeed, utcDayKey } from '../../util/daily';
-import { color as ui, type as T, fonts } from '../../ui/theme';
+import { buttonFill, color as ui, type as T, fonts } from '../../ui/theme';
 
 const TITLE = 'ENDLESS ESCAPE';
 
@@ -421,6 +421,10 @@ export function StartScreen() {
   };
 
   // ---- Render ----
+
+  // The intro tutorial covers the screen: draw nothing underneath it
+  // (the title used to ghost through the tutorial's backdrop).
+  if (showTutorial) return null;
 
   if (mode === 'home') {
     const hasSaves = sortedSaves.length > 0;
@@ -895,16 +899,10 @@ const styles = StyleSheet.create({
     minWidth: 140,
     alignItems: 'center',
   },
-  bigBtnPrimary: {
-    backgroundColor: 'rgba(255, 209, 74, 0.92)',
-    borderColor: 'rgba(255, 230, 140, 1)',
-  },
+  bigBtnPrimary: buttonFill('primary'),
   // Solid dark fill + light-blue rim + white label: readable over any
   // scene (the old 20% translucent pill with dark ink was ~2:1).
-  bigBtnSecondary: {
-    backgroundColor: '#1f2733',
-    borderColor: ui.info,
-  },
+  bigBtnSecondary: buttonFill('secondary'),
   bigBtnLabelOnDark: {
     color: ui.text,
   },

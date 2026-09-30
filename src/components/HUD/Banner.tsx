@@ -11,13 +11,13 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
-import { color as ui, type as T, fonts } from '../../ui/theme';
+import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts } from '../../ui/theme';
 
 import { STAT_DETECTED_3, STAT_TIMES_3 } from '../../util/scoring';
+import { SkullIcon } from '../../ui/icons';
 
 const STAR_FILLED = '★';
 const STAR_EMPTY = '☆';
-const SKULL = '💀';
 
 export function Banner() {
   const runState = useStore((s) => s.runState);
@@ -133,9 +133,11 @@ export function Banner() {
           // Death panel mirrors the win panel: same card width, same
           // entry animation, same stats block - just skulls in place
           // of stars and a red-themed border + button.
-          <Text style={[styles.skulls, compact && styles.starsCompact]}>
-            {SKULL.repeat(skullCount)}
-          </Text>
+          <View style={[styles.skullRow, compact && styles.skullRowCompact]}>
+            {Array.from({ length: skullCount }).map((_, i) => (
+              <SkullIcon key={i} size={compact ? 26 : 34} color={ui.danger} />
+            ))}
+          </View>
         )}
 
         {isCleared && (
@@ -320,11 +322,14 @@ const styles = StyleSheet.create({
     letterSpacing: 6,
     marginBottom: 4,
   },
-  skulls: {
-    color: ui.danger,
-    fontSize: T.display,
-    letterSpacing: 6,
+  skullRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
     marginBottom: 14,
+  },
+  skullRowCompact: {
+    marginBottom: 6,
   },
   bestLine: {
     color: ui.textMuted,
@@ -362,30 +367,27 @@ const styles = StyleSheet.create({
     color: ui.gold,
     fontWeight: '600',
   },
+  // Shared button system (theme.ts): advance = primary, leave = danger.
   btn: {
     paddingHorizontal: 32,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderRadius: 32,
-    backgroundColor: 'rgba(255, 209, 74, 0.85)',
+    borderWidth: 2,
+    ...buttonFill('primary'),
   },
-  btnDown: {
-    backgroundColor: 'rgba(255, 209, 74, 0.95)',
-  },
+  btnDown: buttonPressed,
   btnLabel: {
-    color: '#1b1b1b',
-    fontWeight: '800',
-    letterSpacing: 1,
+    ...buttonLabel('primary'),
+    letterSpacing: 1.4,
     fontSize: T.label,
   },
   // Death panel button: red theme to match the cardCaught border so
   // the call-to-action reads as a "leave" rather than an "advance".
-  btnDeath: {
-    backgroundColor: 'rgba(255, 80, 80, 0.85)',
-  },
-  btnDeathDown: {
-    backgroundColor: 'rgba(220, 50, 50, 0.95)',
-  },
+  btnDeath: buttonFill('danger'),
+  btnDeathDown: buttonPressed,
   btnLabelDeath: {
-    color: '#1b1b1b',
+    ...buttonLabel('danger'),
+    fontFamily: undefined,
+    fontWeight: '900',
   },
 });

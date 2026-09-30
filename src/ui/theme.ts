@@ -62,6 +62,35 @@ export const hud = {
   cyanRing: '#8fd3ff',
 } as const;
 
+// One button system for menus, cards and dialogs. Screens keep their
+// own sizes; these set fill, rim and label so every button of a kind
+// looks the same everywhere:
+//   primary   - the one main action (gold, dark ink, display font)
+//   secondary - other actions (solid dark, light-blue rim, white)
+//   danger    - leaving / destructive (solid red, white)
+//   ghost     - low-emphasis (outline only)
+export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
+
+export const button: Record<ButtonVariant, { fill: string; rim: string; label: string }> = {
+  primary: { fill: '#ffd14a', rim: '#ffe68c', label: '#1b1206' },
+  secondary: { fill: '#1f2733', rim: '#8fd3ff', label: '#ffffff' },
+  danger: { fill: '#c93636', rim: '#ff5a5a', label: '#ffffff' },
+  ghost: { fill: 'rgba(20, 24, 32, 0.4)', rim: 'rgba(255, 255, 255, 0.45)', label: '#ffffff' },
+};
+
+export function buttonFill(v: ButtonVariant) {
+  return { backgroundColor: button[v].fill, borderColor: button[v].rim };
+}
+
+export function buttonLabel(v: ButtonVariant) {
+  return v === 'primary'
+    ? { color: button[v].label, fontFamily: 'BlackOpsOne', fontWeight: 'normal' as const }
+    : { color: button[v].label };
+}
+
+// Shared pressed feedback.
+export const buttonPressed = { opacity: 0.85, transform: [{ scale: 0.97 }] };
+
 // Type scale (dp). Nothing the player must read goes below `caption`.
 export const type = {
   caption: 12,

@@ -54,25 +54,29 @@ export function AlarmOverlay() {
 
   // pointerEvents="none" so the overlay never eats joystick / button taps.
   return (
-    <Animated.View pointerEvents="none" style={[styles.outer, style]}>
-      <View style={styles.inner} />
+    <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, style]}>
+      {FEATHER.map((alpha, i) => (
+        <View
+          key={i}
+          style={[
+            styles.ring,
+            { top: i * RING_W, left: i * RING_W, right: i * RING_W, bottom: i * RING_W, borderColor: `rgba(255, 42, 42, ${alpha})` },
+          ]}
+        />
+      ))}
     </Animated.View>
   );
 }
 
+// Feathered red edge: thin nested rings fading toward the centre read
+// as a soft glow (the old 14 px + 30 px hard borders looked like a
+// debug rectangle).
+const RING_W = 5;
+const FEATHER = [0.85, 0.6, 0.42, 0.3, 0.2, 0.13, 0.08, 0.04];
+
 const styles = StyleSheet.create({
-  outer: {
+  ring: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderWidth: 14,
-    borderColor: '#ff2a2a',
-  },
-  inner: {
-    flex: 1,
-    borderWidth: 30,
-    borderColor: 'rgba(255, 80, 60, 0.35)',
+    borderWidth: RING_W,
   },
 });

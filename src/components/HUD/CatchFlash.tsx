@@ -8,6 +8,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
+import { SkullIcon } from '../../ui/icons';
 import { color as ui, type as T, fonts } from '../../ui/theme';
 
 // Catch notification: a red badge that pops centred on the screen
@@ -57,7 +58,7 @@ export function CatchFlash() {
   return (
     <Animated.View pointerEvents="none" style={[styles.wrap, wrapStyle]}>
       <View style={styles.badge}>
-        {isArrested ? <Handcuffs /> : <Text style={styles.skull}>💀</Text>}
+        {isArrested ? <Handcuffs /> : <SkullIcon size={64} />}
       </View>
       <Text style={styles.label}>{label}</Text>
     </Animated.View>
@@ -126,12 +127,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginHorizontal: -2, // overlap rings slightly so the bar reads
                           // as joined to them rather than floating.
-  },
-  skull: {
-    fontSize: 76,
-    color: '#fff',
-    textShadowColor: 'rgba(0,0,0,0.55)',
-    textShadowRadius: 6,
   },
   label: {
     marginTop: 22,

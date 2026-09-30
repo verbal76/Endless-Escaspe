@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -67,12 +67,12 @@ export function LookButtons() {
     <>
       <GestureDetector gesture={left.gesture}>
         <Animated.View style={[styles.left, left.style]}>
-          <Text style={styles.glyph}>‹</Text>
+          <View style={[styles.chevron, styles.chevronLeft]} />
         </Animated.View>
       </GestureDetector>
       <GestureDetector gesture={right.gesture}>
         <Animated.View style={[styles.right, right.style]}>
-          <Text style={styles.glyph}>›</Text>
+          <View style={[styles.chevron, styles.chevronRight]} />
         </Animated.View>
       </GestureDetector>
     </>
@@ -101,12 +101,21 @@ const styles = StyleSheet.create({
     ...baseBtn,
     right: 63 + 78 + 14,
   },
-  glyph: {
-    color: hud.label,
-    ...hud.textShadow,
-    fontSize: 30,
-    fontWeight: '900',
-    lineHeight: 32,
-    marginTop: -4,
+  // Drawn chevron (two sides of a small square, rotated): the same on
+  // every phone, unlike the ‹ › font glyphs it replaces.
+  chevron: {
+    width: 12,
+    height: 12,
+    borderColor: hud.label,
+    borderLeftWidth: 3,
+    borderBottomWidth: 3,
+  },
+  chevronLeft: {
+    marginLeft: 5,
+    transform: [{ rotate: '45deg' }],
+  },
+  chevronRight: {
+    marginRight: 5,
+    transform: [{ rotate: '-135deg' }],
   },
 });

@@ -12,10 +12,70 @@ import { useStore } from '../../state/store';
 import { startingHeartsFor } from '../../util/progression';
 import { color as ui, type as T } from '../../ui/theme';
 
-const FILLED_GLYPH = '♥';
-const EMPTY_GLYPH = '♡';
 const FILLED_COLOR = ui.danger;
-const EMPTY_COLOR = 'rgba(255,255,255,0.3)';
+const EMPTY_COLOR = 'rgba(255,255,255,0.28)';
+const OUTLINE = 'rgba(0,0,0,0.65)';
+
+// Heart drawn from Views (a square turned 45 deg plus two circles for
+// the lobes), so it looks the same on every phone - the ♥ / ♡ font
+// glyphs varied by device font. A slightly larger dark copy behind it
+// is the outline.
+function HeartShape({ size, color }: { size: number; color: string }) {
+  const sq = size * 0.62;
+  const lobe = sq;
+  return (
+    <View style={{ width: size, height: size }}>
+      <View
+        style={{
+          position: 'absolute',
+          width: sq,
+          height: sq,
+          left: (size - sq) / 2,
+          top: size * 0.3,
+          backgroundColor: color,
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: lobe,
+          height: lobe,
+          borderRadius: lobe / 2,
+          left: size / 2 - lobe * 0.9,
+          top: size * 0.08,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: lobe,
+          height: lobe,
+          borderRadius: lobe / 2,
+          left: size / 2 - lobe * 0.1,
+          top: size * 0.08,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
+function OutlinedHeart({ color }: { color: string }) {
+  return (
+    <View style={styles.heartBox}>
+      <View style={styles.heartOutline}>
+        <HeartShape size={HEART + 4} color={OUTLINE} />
+      </View>
+      <View style={styles.heartFill}>
+        <HeartShape size={HEART} color={color} />
+      </View>
+    </View>
+  );
+}
+
+const HEART = 22;
 
 // Single heart slot. Animates between filled and empty: when its
 // `alive` flips from true to false, it briefly pulses to ~140% scale
@@ -43,7 +103,7 @@ function HeartSlot({ alive }: { alive: boolean }) {
     }
   }, [alive, scale, fill]);
 
-  // Cross-fade two glyphs so we never pop characters mid-frame.
+  // Cross-fade the filled and empty hearts.
   const filledStyle = useAnimatedStyle(() => ({
     opacity: fill.value,
     transform: [{ scale: scale.value }],
@@ -55,12 +115,12 @@ function HeartSlot({ alive }: { alive: boolean }) {
 
   return (
     <View style={styles.slot}>
-      <Animated.Text style={[styles.heart, styles.filled, filledStyle]}>
-        {FILLED_GLYPH}
-      </Animated.Text>
-      <Animated.Text style={[styles.heart, styles.empty, emptyStyle]}>
-        {EMPTY_GLYPH}
-      </Animated.Text>
+      <Animated.View style={[styles.heart, filledStyle]}>
+        <OutlinedHeart color={FILLED_COLOR} />
+      </Animated.View>
+      <Animated.View style={[styles.heart, emptyStyle]}>
+        <OutlinedHeart color={EMPTY_COLOR} />
+      </Animated.View>
     </View>
   );
 }
@@ -142,22 +202,26 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   heart: {
-    fontSize: 28,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowRadius: 3,
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
     bottom: 0,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    includeFontPadding: false,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  filled: {
-    color: FILLED_COLOR,
+  heartBox: {
+    width: HEART + 4,
+    height: HEART + 4,
   },
-  empty: {
-    color: EMPTY_COLOR,
+  heartOutline: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
+  heartFill: {
+    position: 'absolute',
+    left: 2,
+    top: 2,
   },
 });

@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import {
   formatDetailRows,
+  formatInfoLines,
   formatMenuLine,
+  formatVitalsText,
   parseSequence,
   parseSha,
   readReleaseExtra,
@@ -193,4 +195,36 @@ test('menu line flags an emergency fallback; dev builds are not labelled as embe
   assert.equal(formatMenuLine(em), 'v0.2.0 • Build 9 • Embedded (update failed)');
   const dev = resolveReleaseInfo({ ...base, updatesEnabled: false, manifest: null });
   assert.equal(formatDetailRows(dev).find((r) => r.label === 'OTA sequence')?.value, 'Not applicable (updates off)');
+});
+
+test('vitals text carries every row with full values, the menu line, OS and capture time', () => {
+  const rows = [
+    { label: 'Version', value: '0.2.1' },
+    { label: 'Update ID', value: '01a0e6dd-f903', full: '01a0e6dd-f903-77b6-9454-1966f48759d5' },
+    { label: 'Texture files', value: '11/11 resolved', full: 'a: ok\nb: ok' },
+  ];
+  const text = formatVitalsText('v0.2.1 • Build 13 • OTA 115', rows, 'android 34', new Date('2026-09-30T01:02:03.456Z'));
+  assert.equal(
+    text,
+    [
+      'Endless Escape - Build / Update Info',
+      'Captured: 2026-09-30 01:02:03 UTC',
+      '',
+      'v0.2.1 • Build 13 • OTA 115',
+      'Version: 0.2.1',
+      'Update ID: 01a0e6dd-f903-77b6-9454-1966f48759d5',
+      'Texture files: 11/11 resolved',
+      '  a: ok',
+      '  b: ok',
+      'OS: android 34',
+    ].join('\n'),
+  );
+  // Bug reports use the same lines without the header; a details block
+  // shared by two rows (Rendering / GPU textures) is written once.
+  assert.deepEqual(formatInfoLines('m', rows.slice(0, 1), 'x'), ['m', 'Version: 0.2.1', 'OS: x']);
+  const shared = 'player: ok\nground: ok';
+  assert.deepEqual(
+    formatInfoLines('m', [{ label: 'Rendering', value: 'OK', full: shared }, { label: 'GPU textures', value: '2/2 match', full: shared }], 'x'),
+    ['m', 'Rendering: OK', '  player: ok', '  ground: ok', 'GPU textures: 2/2 match', 'OS: x'],
+  );
 });

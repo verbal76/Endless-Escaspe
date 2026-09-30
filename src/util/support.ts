@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { formatEntry, getEntries, getPreviousRun } from './debug';
 import { getReleaseInfo } from './releaseRuntime';
-import { formatDetailRows, formatMenuLine } from './releaseInfo';
+import { formatDetailRows, formatInfoLines, formatMenuLine, formatVitalsText, type InfoRow } from './releaseInfo';
 import { getTextureStatus } from './textures';
 import { formatTextureRow } from './textureSource';
 import { formatFontRow, getFontStatus } from '../ui/fonts';
@@ -17,15 +17,25 @@ import { formatAuditRows, getRenderAudit } from './renderAudit';
 
 export const SUPPORT_EMAIL = 'hotatticgames@gmail.com';
 
-function buildInfoMultiline(): string {
-  const info = getReleaseInfo();
-  const rows = [
-    ...formatDetailRows(info),
+function infoRows(): InfoRow[] {
+  return [
+    ...formatDetailRows(getReleaseInfo()),
     formatTextureRow(getTextureStatus()),
     formatFontRow(getFontStatus()),
     ...formatAuditRows(getRenderAudit()),
-  ].map((r) => `${r.label}: ${r.full ?? r.value}`);
-  return [formatMenuLine(info), ...rows, `OS: ${Platform.OS} ${Platform.Version}`].join('\n');
+  ];
+}
+
+const osLabel = () => `${Platform.OS} ${Platform.Version}`;
+
+function buildInfoMultiline(): string {
+  return formatInfoLines(formatMenuLine(getReleaseInfo()), infoRows(), osLabel()).join('\n');
+}
+
+// Everything in Build / Update Info as text, for the COPY / SHARE INFO
+// button (Android share sheet: Copy, or send to any app).
+export function composeVitalsText(): string {
+  return formatVitalsText(formatMenuLine(getReleaseInfo()), infoRows(), osLabel(), new Date());
 }
 
 export function composeBugReportUrl(): string {

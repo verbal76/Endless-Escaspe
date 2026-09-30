@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { formatDetailRows } from '../../util/releaseInfo';
 import { checkForNewUpdate, getReleaseInfo, reloadIntoUpdate } from '../../util/releaseRuntime';
 import { getTextureStatus } from '../../util/textures';
 import { formatTextureRow } from '../../util/textureSource';
 import { formatFontRow, getFontStatus } from '../../ui/fonts';
 import { formatAuditRows, getRenderAudit } from '../../util/renderAudit';
+import { composeVitalsText } from '../../util/support';
 import { color as ui, type as T } from '../../ui/theme';
 
 // Build / Update Info: everything needed to tell exactly which code
 // is running. Tap a row with a shortened value (update ID, commit) to
-// show it in full.
+// show it in full. COPY / SHARE INFO hands all of it, as text, to the
+// Android share sheet (Copy, or send it to any app).
 export function BuildInfo() {
   const info = getReleaseInfo();
   const rows = [
@@ -44,6 +46,14 @@ export function BuildInfo() {
     }
   };
 
+  const onShare = async () => {
+    try {
+      await Share.share({ message: composeVitalsText(), title: 'Endless Escape - Build / Update Info' });
+    } catch (e) {
+      setStatus(`Share failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+
   return (
     <View style={styles.block}>
       {rows.map((row) => {
@@ -64,14 +74,23 @@ export function BuildInfo() {
           </Pressable>
         );
       })}
-      {info.source !== 'disabled' ? (
+      <View style={styles.btnRow}>
+        {info.source !== 'disabled' ? (
+          <Pressable
+            onPress={onCheck}
+            style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+          >
+            <Text style={styles.btnLabel}>{ready ? 'RESTART INTO UPDATE' : 'CHECK FOR UPDATE'}</Text>
+          </Pressable>
+        ) : null}
         <Pressable
-          onPress={onCheck}
+          accessibilityLabel="Copy or share build and update info"
+          onPress={onShare}
           style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
         >
-          <Text style={styles.btnLabel}>{ready ? 'RESTART INTO UPDATE' : 'CHECK FOR UPDATE'}</Text>
+          <Text style={styles.btnLabel}>COPY / SHARE INFO</Text>
         </Pressable>
-      ) : null}
+      </View>
       {status ? <Text style={styles.status}>{status}</Text> : null}
     </View>
   );
@@ -92,6 +111,12 @@ const styles = StyleSheet.create({
     fontFamily: 'monospace',
     marginTop: 1,
     flexWrap: 'wrap',
+  },
+  // Wraps onto a second line when the column is too narrow for both.
+  btnRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: 10,
   },
   btn: {
     marginTop: 10,

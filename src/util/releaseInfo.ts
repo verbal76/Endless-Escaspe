@@ -203,3 +203,39 @@ export function formatDetailRows(info: ReleaseInfo): InfoRow[] {
     },
   ];
 }
+
+// Plain-text form of Build / Update Info: the menu line, one
+// "Label: value" line per row and the OS. Single-line full values
+// (whole update id / commit) replace the shortened ones; multi-line
+// details follow their summary line, indented, and a details block
+// shared by several rows is written once. Used by bug reports and by
+// the "COPY / SHARE INFO" button.
+export function formatInfoLines(menuLine: string, rows: InfoRow[], os: string): string[] {
+  const out = [menuLine];
+  const written = new Set<string>();
+  for (const r of rows) {
+    if (!r.full || r.full === r.value) {
+      out.push(`${r.label}: ${r.value}`);
+    } else if (!r.full.includes('\n')) {
+      out.push(`${r.label}: ${r.full}`);
+    } else {
+      out.push(`${r.label}: ${r.value}`);
+      if (!written.has(r.full)) {
+        written.add(r.full);
+        out.push(...r.full.split('\n').map((l) => `  ${l}`));
+      }
+    }
+  }
+  out.push(`OS: ${os}`);
+  return out;
+}
+
+// The vitals text the player shares from Build / Update Info.
+export function formatVitalsText(menuLine: string, rows: InfoRow[], os: string, capturedAt: Date): string {
+  return [
+    'Endless Escape - Build / Update Info',
+    `Captured: ${capturedAt.toISOString().replace('T', ' ').slice(0, 19)} UTC`,
+    '',
+    ...formatInfoLines(menuLine, rows, os),
+  ].join('\n');
+}

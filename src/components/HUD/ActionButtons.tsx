@@ -11,7 +11,7 @@ import Animated, {
 import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
 import type { Stance } from '../../types/world';
-import { type as T } from '../../ui/theme';
+import { hud, type as T } from '../../ui/theme';
 
 // Stance picker only. RUN is its own component (RunButton) sitting
 // near the joystick on the left side of the screen.
@@ -119,19 +119,20 @@ const styles = StyleSheet.create({
     width: 78,
     height: 56,
     borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
+    backgroundColor: hud.fill,
+    borderWidth: hud.ringWidth,
+    borderColor: hud.ring,
     alignItems: 'center',
     justifyContent: 'center',
   },
   btnActive: {
-    backgroundColor: 'rgba(255, 209, 74, 0.35)',
-    borderColor: 'rgba(255, 209, 74, 0.65)',
+    backgroundColor: hud.goldFill,
+    borderColor: hud.goldRing,
   },
   label: {
-    color: 'rgba(255,255,255,0.92)',
-    fontWeight: '700',
+    color: hud.label,
+    ...hud.textShadow,
+    fontWeight: '800',
     letterSpacing: 0.5,
     fontSize: T.small,
   },

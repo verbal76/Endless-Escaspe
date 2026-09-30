@@ -10,6 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
+import { hud } from '../../ui/theme';
 
 // Hold-to-look arrows. Use react-native-gesture-handler instead of
 // Pressable so they coexist with the joystick's Pan gesture - with
@@ -84,9 +85,9 @@ const baseBtn = {
   width: ARROW_SIZE,
   height: ARROW_SIZE,
   borderRadius: ARROW_SIZE / 2,
-  backgroundColor: 'rgba(255, 255, 255, 0.10)',
-  borderWidth: 1,
-  borderColor: 'rgba(255, 255, 255, 0.20)',
+  backgroundColor: hud.fill,
+  borderWidth: hud.ringWidth,
+  borderColor: hud.ring,
   alignItems: 'center' as const,
   justifyContent: 'center' as const,
 };
@@ -101,7 +102,8 @@ const styles = StyleSheet.create({
     right: 63 + 78 + 14,
   },
   glyph: {
-    color: '#fff',
+    color: hud.label,
+    ...hud.textShadow,
     fontSize: 30,
     fontWeight: '900',
     lineHeight: 32,

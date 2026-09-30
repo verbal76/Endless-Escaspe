@@ -41,6 +41,27 @@ export const color = {
   shadow: 'rgba(0, 0, 0, 0.75)',
 } as const;
 
+// On-screen gameplay controls (stance, RUN, pickups, look arrows).
+// They sit over the 3D world, so each gets its own small dark backing
+// and a light rim: readable over snow, sky or night alike, without a
+// panel behind the whole cluster. Colour only marks state / item.
+export const hud = {
+  fill: 'rgba(12, 16, 22, 0.55)',
+  ring: 'rgba(255, 255, 255, 0.38)',
+  ringWidth: 1.5,
+  label: '#ffffff',
+  // Text / icon shadow so labels hold up on bright backgrounds.
+  textShadow: {
+    textShadowColor: 'rgba(0, 0, 0, 0.85)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  goldFill: 'rgba(120, 92, 20, 0.72)',
+  goldRing: '#ffd14a',
+  cyanFill: 'rgba(24, 84, 120, 0.72)',
+  cyanRing: '#8fd3ff',
+} as const;
+
 // Type scale (dp). Nothing the player must read goes below `caption`.
 export const type = {
   caption: 12,

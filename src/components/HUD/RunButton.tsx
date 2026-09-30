@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
-import { type as T } from '../../ui/theme';
+import { hud, type as T } from '../../ui/theme';
 
 // RUN is a speed-toggle that doubles whatever stance speed is active.
 // Lives in the right-hand action cluster (left of the CROUCH / WALK
@@ -83,18 +83,19 @@ const styles = StyleSheet.create({
     width: 70,
     height: 70,
     borderRadius: 35,
-    backgroundColor: 'rgba(120,200,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(120,200,255,0.30)',
+    backgroundColor: hud.fill,
+    borderWidth: hud.ringWidth,
+    borderColor: hud.ring,
     alignItems: 'center',
     justifyContent: 'center',
   },
   btnActive: {
-    backgroundColor: 'rgba(120,200,255,0.45)',
-    borderColor: 'rgba(140,220,255,0.85)',
+    backgroundColor: hud.cyanFill,
+    borderColor: hud.cyanRing,
   },
   label: {
-    color: 'rgba(255,255,255,0.92)',
+    color: hud.label,
+    ...hud.textShadow,
     fontWeight: '800',
     letterSpacing: 0.5,
     fontSize: T.body,

@@ -46,6 +46,9 @@ export type RunStats = {
   livesUsed: number;
   // Computed 1..3 stars based on the four metrics above.
   stars: number;
+  // Run time needed for full marks on the time metric (seconds), for
+  // the results card. Absent on run-over / non-scored snapshots.
+  timeTarget3?: number;
 };
 
 type Store = {
@@ -85,6 +88,10 @@ type Store = {
   // launch and from the start-screen "How to play" button; flips
   // back to false when the cutscene finishes or the player skips.
   showTutorial: boolean;
+  // How to Play reference screen: where it was opened from (the home
+  // screen, or the pause panel - which is its own native modal, so the
+  // reference renders inside it there), or null when closed.
+  howToPlay: 'home' | 'pause' | null;
   // Persisted: the intro tutorial was watched or skipped once already.
   tutorialSeen: boolean;
   // Branded confirm / alert modal config. Any component can set
@@ -202,6 +209,7 @@ type Store = {
   setBestStars: (b: Record<number, number>) => void;
   setWeatherEnabled: (b: boolean) => void;
   setShowTutorial: (b: boolean) => void;
+  setHowToPlay: (v: 'home' | 'pause' | null) => void;
   setTutorialSeen: (b: boolean) => void;
   setGameModal: (m: GameModalConfig | null) => void;
   setBossModeUnlocked: (b: boolean) => void;
@@ -247,6 +255,7 @@ export const useStore = create<Store>((set) => ({
   segmentWeatherEnabled: true,
   weatherEnabled: true,
   showTutorial: false,
+  howToPlay: null,
   tutorialSeen: false,
   gameModal: null,
   bossModeUnlocked: false,
@@ -348,6 +357,7 @@ export const useStore = create<Store>((set) => ({
   setTutorialSeen: (b) => set({ tutorialSeen: b }),
   setShowTutorial: (b) =>
     set((st) => (st.showTutorial === b ? st : { showTutorial: b })),
+  setHowToPlay: (v) => set((st) => (st.howToPlay === v ? st : { howToPlay: v })),
   setGameModal: (m) => set({ gameModal: m }),
   setBossModeUnlocked: (b) =>
     set((st) => (st.bossModeUnlocked === b ? st : { bossModeUnlocked: b })),

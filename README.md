@@ -19,21 +19,27 @@ existing installs and saves keep working; the game's visible name is
 
 ## How it plays
 
-- Guards see in a cone. Tall props hide you only when they are
-  **between** you and the guard; there is no omnidirectional hiding.
+- Guards see in a cone. Props hide you only when they are **between**
+  you and the guard: standing needs a chest-high prop, crouching also
+  hides you behind low walls. Cameras obey the same cover rule.
 - Without line of sight, a guard's meter always decays. Noise (the ring
   around your feet) can alert a guard and send them investigating, but
   only sight escalates to a chase.
 - Guards shoot only with a clear view and after a visible laser
-  wind-up. Props stop bullets.
+  wind-up. Chest-high props stop bullets; low walls don't.
 - Guards pursue where they last saw or heard you, never where you
   secretly are. From stage 6 they stop and scan before searching.
+- RUN stands you up and sprints (running speed, running noise); let go
+  and you drop back into your stance.
+- Standing in a floodlight raises every guard's meter; from stage 8
+  some floodlights track you.
 - Dogs are faster than walking and slower than sprinting, and give up
   after a short burst. Smoke makes them lose your scent; a crowbar
   scares them off.
 - A full camera alarm dispatches a reinforcement guard.
-- Pickups: crowbar (knock out a guard or scare a dog), smoke bomb (blocks
-  sight), rock (throw it; guards investigate the noise).
+- Pickups: crowbar (stuns a guard for 4 s or scares a dog; a miss wastes
+  it), smoke bomb (blocks guard sight for 5 s - not cameras), rock
+  (throw it; guards investigate the noise).
 - From stage 3, forks offer a short guarded lane with extra pickups or
   a longer safe slalom.
 - Each stage has a single lighting mood; at night guards see less far

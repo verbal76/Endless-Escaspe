@@ -115,6 +115,7 @@ import { PickupBag } from '../components/HUD/PickupBag';
 import { CatchFlash } from '../components/HUD/CatchFlash';
 import { EventFlash } from '../components/HUD/EventFlash';
 import { Tutorial } from '../components/HUD/Tutorial';
+import { HowToPlay } from '../components/HUD/HowToPlay';
 import { GameModal } from '../components/HUD/GameModal';
 import { Toast } from '../components/HUD/Toast';
 import { DistanceHud } from '../components/HUD/DistanceHud';
@@ -199,7 +200,7 @@ import {
   throwTarget,
   updateRocks,
 } from '../scenes/ThrownRock';
-import { TIPS, contextTip, stageStartTip, type TipId } from '../util/stageTips';
+import { TIPS, contextTip, levelTips, stageStartTips, type TipId } from '../util/stageTips';
 import { createSfx, playSfx, type Sfx } from '../scenes/Sfx';
 import { writeSaves, type Save } from '../util/storage';
 import { haptics } from '../util/haptics';
@@ -947,6 +948,10 @@ export function Game() {
     const tipQueue: TipId[] = [];
     let tipCooldown = 0;
     let stageTipDelay = -1;
+    // Endless / Daily: highest level whose tips were offered this run.
+    let tipLevel = 1;
+    // Throttle for the low-wall proximity check (seconds).
+    let lowWallCheck = 0;
     const sessionSeen = new Set<string>();
     const seenTips = (): readonly string[] => {
       const st = useStore.getState();
@@ -963,6 +968,15 @@ export function Game() {
       if (!id || tipQueue.includes(id) || showingTip?.id === id || seenTips().includes(id)) return;
       tipQueue.push(id);
     };
+    // Per-frame triggers (floodlight, camera, low wall) offer their
+    // tip at most once per segment, without rebuilding the seen list
+    // every frame.
+    const offered = new Set<TipId>();
+    const offerTip = (id: TipId) => {
+      if (offered.has(id)) return;
+      offered.add(id);
+      queueTip(contextTip(id, seenTips()));
+    };
     const markTipSeen = (id: TipId) => {
       sessionSeen.add(id);
       const st = useStore.getState();
@@ -978,8 +992,7 @@ export function Game() {
         stageTipDelay -= dt;
         if (stageTipDelay < 0) {
           if (scene.endless) queueTip(contextTip(scene.mode === 'daily' ? 'daily' : 'endless', seenTips()));
-          else queueTip(stageStartTip(useStore.getState().stage, seenTips()));
-          if (scene.cameras.length > 0) queueTip(contextTip('cameras', seenTips()));
+          else for (const id of stageStartTips(useStore.getState().stage, seenTips())) queueTip(id);
         }
       }
       if (showingTip) {
@@ -1003,7 +1016,8 @@ export function Game() {
       useStore.getState().showToast(TIPS[id], 'tip');
       const shown = useStore.getState().toast;
       if (shown) showingTip = { id, toastId: shown.id, shown: 0 };
-      tipCooldown = 4;
+      // Tip toasts hold ~4.7 s (Toast.tsx): leave a short gap after.
+      tipCooldown = 5.4;
     };
 
     const resetSegment = () => {
@@ -1012,6 +1026,8 @@ export function Game() {
       tipQueue.length = 0;
       showingTip = null;
       stageTipDelay = 1.2;
+      tipLevel = 1;
+      offered.clear();
       clearDustField(dust);
       useStore.getState().setDangerLevel(0);
       pendingCatch = null;
@@ -1120,7 +1136,10 @@ export function Game() {
       if (stage !== perkChargedStage) {
         perkChargedStage = stage;
         perkBonusThisStage = st.perkRemainingStages > 0 ? 1 : 0;
-        if (perkBonusThisStage) st.decayBossPerk();
+        if (perkBonusThisStage) {
+          st.decayBossPerk();
+          queueTip(contextTip('perk', seenTips()));
+        }
       }
       st.setHearts(startingHeartsFor(stage) + perkBonusThisStage);
     };
@@ -1315,11 +1334,9 @@ export function Game() {
       const justClearedStage = st.stage;
       logDebug('log', 'handleWin', { stage: justClearedStage, isBossArena: scene.isBossArena, runTime: tracker.runTime });
       const stats: Omit<RunStats, 'stars'> = tracker.snapshot();
-      const stars = scoreStars(
-        stats,
-        timeTargetsFor(scene.segLen, scene.isBossArena ? scene.bossSurviveSeconds : null),
-      );
-      st.setLastStats({ ...stats, stars });
+      const targets = timeTargetsFor(scene.segLen, scene.isBossArena ? scene.bossSurviveSeconds : null);
+      const stars = scoreStars(stats, targets);
+      st.setLastStats({ ...stats, stars, timeTarget3: targets.three });
       const paid = payRun({ kind: 'campaign', runId, stage: justClearedStage, stars });
       st.setRunSummary({
         mode: 'campaign',
@@ -1469,7 +1486,15 @@ export function Game() {
         st.setPaused(true);
         st.setGameModal({
           title: 'BOSS ROUND',
-          body: `Stage ${st.stage} is a boss arena. Survive 60 seconds inside the enclosed yard. Lose all your hearts and you retry the round - you only advance by surviving it.`,
+          body: [
+            startingHeartsFor(st.stage) < startingHeartsFor(st.stage - 1)
+              ? `From this stage you start with ${startingHeartsFor(st.stage)} heart${startingHeartsFor(st.stage) === 1 ? '' : 's'}.`
+              : '',
+            `Survive 60 seconds in the arena. Lose every heart and you retry the round.`,
+            `Win: +1 heart for the next 10 stages.`,
+          ]
+            .filter(Boolean)
+            .join(' '),
           actions: [
             {
               label: 'START',
@@ -1587,6 +1612,30 @@ export function Game() {
         streamEndless();
         if (player.z > scene.maxZ) scene.maxZ = player.z;
         st.setDistance(scene.maxZ, levelAtZ(player.z));
+        // Rules that switch on with the level get their tip here (the
+        // campaign shows them at stage start).
+        const lvl = levelAtZ(player.z);
+        while (tipLevel < lvl) {
+          tipLevel++;
+          for (const id of levelTips(tipLevel, seenTips())) queueTip(id);
+        }
+      }
+      // First low wall nearby while standing: teach that crouching
+      // behind it hides you (standing needs taller cover).
+      lowWallCheck -= dt;
+      if (lowWallCheck <= 0) {
+        lowWallCheck = 0.25;
+        if (!player.isCrouched) {
+          for (const o of scene.procgen.obstacles()) {
+            if (o.kind !== 'lowwall') continue;
+            const dx = o.x - player.x;
+            const dz = o.z - player.z;
+            if (dx * dx + dz * dz < 9) {
+              offerTip('crouch');
+              break;
+            }
+          }
+        }
       }
       const staminaActive = staminaEnabledFor(stageNow);
       updatePlayer(player, scene.procgen.obstacles(), effDt, scene.segmentEndZ, staminaActive);
@@ -1769,7 +1818,10 @@ export function Game() {
       let searchlightBump = 0;
       for (const t of scene.lightTowers) {
         updateLightTower(t, effDt, player.x, player.z);
-        if (!lit && isPlayerLit(t, player.x, player.z)) lit = true;
+        if (!lit && isPlayerLit(t, player.x, player.z)) {
+          lit = true;
+          offerTip('floodlight');
+        }
         if (consumeSearchlightTrigger(t)) {
           // Late-stage searchlights bite harder. 0.4 is a discrete
           // jump - should yank the meter past the SEEN_THRESHOLD if
@@ -1833,6 +1885,8 @@ export function Game() {
       // sub-1% changes for the HUD, and feeding that coalesced value
       // back in (as before) meant per-frame increments (~0.0015) were
       // always dropped and the alarm could never fill.
+      // First time a camera actually sees the player (any mode).
+      if (newAlarm > alarmLevel) offerTip('cameras');
       alarmLevel = newAlarm;
       st.setAlarmLevel(newAlarm);
       // While the alarm is full, scale every guard's effective
@@ -2325,6 +2379,7 @@ export function Game() {
       <StartScreen />
       <SettingsScreen />
       <Tutorial />
+      <HowToPlay where="home" />
       <GameModal />
       <Toast />
     </View>

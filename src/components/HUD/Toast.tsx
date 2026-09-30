@@ -12,6 +12,8 @@ import { useStore } from '../../state/store';
 import { type as T } from '../../ui/theme';
 
 const HOLD_MS = 2600;
+// Tips are read while moving: they stay up longer.
+const TIP_HOLD_MS = 4200;
 
 const TONE_BG = {
   info: 'rgba(20,24,32,0.86)',
@@ -40,15 +42,16 @@ export function Toast() {
 
   useEffect(() => {
     if (!toast) return;
+    const hold = toast.tone === 'tip' ? TIP_HOLD_MS : HOLD_MS;
     o.value = withSequence(
       withTiming(1, { duration: 160, easing: Easing.out(Easing.quad) }),
-      withDelay(HOLD_MS, withTiming(0, { duration: 320 })),
+      withDelay(hold, withTiming(0, { duration: 320 })),
     );
     y.value = -10;
     y.value = withTiming(0, { duration: 200, easing: Easing.out(Easing.back(1.4)) });
     const t = setTimeout(() => {
       if (useStore.getState().toast?.id === toast.id) useStore.getState().clearToast();
-    }, HOLD_MS + 520);
+    }, hold + 520);
     return () => clearTimeout(t);
   }, [toast?.id]);
 

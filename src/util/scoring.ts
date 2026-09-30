@@ -1,9 +1,9 @@
 import type { RunStats } from '../state/store';
 
 // Stats thresholds. Higher = lenient; lower = stingy.
-const STAT_DETECTED_3 = 3; // <= seconds detected for 3 stars on this metric
+export const STAT_DETECTED_3 = 3; // <= seconds detected for 3 stars on this metric
 const STAT_DETECTED_2 = 12;
-const STAT_TIMES_3 = 0;
+export const STAT_TIMES_3 = 0;
 const STAT_TIMES_2 = 2;
 const STAT_TIME_3 = 60;
 const STAT_TIME_2 = 120;

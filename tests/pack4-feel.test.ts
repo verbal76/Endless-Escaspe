@@ -83,25 +83,32 @@ test('danger edge tint is silent at low detection and capped', async () => {
   }
 });
 
-test('stage tips: one mechanic per early stage, each shown once per save', async () => {
-  const { stageStartTip, contextTip } = await import('../src/util/stageTips');
+test('stage tips: a rule is taught on the stage that introduces it, once per save', async () => {
+  const { stageStartTips, levelTips, contextTip, TIPS } = await import('../src/util/stageTips');
   const seen: string[] = [];
-  const shown: string[] = [];
-  for (let stage = 1; stage <= 6; stage++) {
-    const tip = stageStartTip(stage, seen);
-    assert.ok(tip, `no tip on stage ${stage}`);
-    shown.push(tip!);
-    seen.push(tip!);
-    // Replaying the stage doesn't repeat it.
-    assert.equal(stageStartTip(stage, seen), null);
-  }
-  assert.equal(new Set(shown).size, 6);
-  assert.equal(stageStartTip(7, seen), null);
-  assert.equal(stageStartTip(8, seen), 'dogs');
-  // A veteran save loaded at stage 20 isn't lectured on stage-1 basics.
-  assert.equal(stageStartTip(20, []), null);
+  const at = (stage: number) => {
+    const ids = stageStartTips(stage, seen);
+    seen.push(...ids);
+    return ids;
+  };
+  assert.deepEqual(at(1), ['stage1']);
+  assert.deepEqual(at(1), [], 'replaying the stage does not repeat it');
+  assert.deepEqual(at(2), []);
+  assert.deepEqual(at(5), ['stage5']);
+  assert.deepEqual(at(6), ['stage6']);
+  assert.deepEqual(at(8), ['dogs', 'searchlight']);
+  assert.deepEqual(at(12), ['stage12']);
+  assert.deepEqual(at(14), ['razor']);
+  assert.deepEqual(at(20), ['hearts1']);
+  // A veteran save loaded at stage 20 isn't lectured on earlier rules.
+  assert.deepEqual(stageStartTips(20, []), ['hearts1']);
+  // Endless / Daily get the same rules as the level rises.
+  assert.deepEqual(levelTips(8, []), ['dogs', 'searchlight']);
+  assert.deepEqual(levelTips(14, ['razor']), []);
   assert.equal(contextTip('crowbar', []), 'crowbar');
   assert.equal(contextTip('crowbar', ['crowbar']), null);
+  // Short enough to read while playing.
+  for (const t of Object.values(TIPS)) assert.ok(t.length <= 75, t);
 });
 
 test('old saves (no tipsSeen) load with every other field intact', async () => {

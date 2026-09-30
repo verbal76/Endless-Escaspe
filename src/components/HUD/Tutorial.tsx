@@ -13,9 +13,10 @@ import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
 import { color as ui, type as T, fonts } from '../../ui/theme';
 
-// Top-down 2D intro cutscene. Auto-plays four beats illustrating
-// the core stealth loop: walk past guards, get spotted, hide behind
-// cover, get caught. Non-interactive aside from a skip button.
+// Top-down 2D intro cutscene. Auto-plays six beats: four animated
+// ones illustrating the core stealth loop (walk past a guard, get
+// spotted, crouch behind a low wall, get caught) and two text cards.
+// Non-interactive aside from a skip button.
 //
 // Why 2D and not the real 3D scene: this teaches geometric
 // abstractions (line of sight, detection meter, cover) which read
@@ -91,30 +92,33 @@ const OUTRO_MS = 1300;
 const BEAT_DURATIONS = [BEAT_MS, BEAT_MS + 500, BEAT_MS + 500, BEAT_MS + 1000, 5200, 5200];
 const TOTAL_BEATS = BEAT_DURATIONS.length;
 
+// Only what matters on stage 1, plus the controls. Rules that arrive
+// later are taught when they first appear (util/stageTips.ts) and all
+// of them are in the How to Play reference (HowToPlay.tsx).
 const POPUPS: { title: string; body: string }[] = [
   {
-    title: 'Stay out of the light',
-    body: 'Guards see in a cone in front of them. Outside it they can\'t see you, but they can still hear you.',
+    title: 'Move',
+    body: 'Left thumb: move. CROUCH / WALK set your stance. RUN is on / off and stands you up to sprint.',
   },
   {
-    title: 'Watch the ring',
-    body: 'In a cone, the ring at your feet fills: yellow, orange, red. At red guards chase and aim. A red laser means a shot is coming, so break line of sight!',
+    title: 'Guards\' cones',
+    body: 'Guards only see inside their cone. The dots at your feet fill as they notice you.',
   },
   {
-    title: 'Cover works one way',
-    body: 'Tall props only hide you when they are between you and the guard. Get the prop between you and them and the meter drains.',
+    title: 'Hide behind props',
+    body: 'Put a prop between you and the guard. Low walls only hide you if you CROUCH.',
   },
   {
-    title: 'Hearts',
-    body: 'A guard\'s touch, a dog, a bullet or razor wire costs a heart and sends you back to the start. Lose them all and the run ends.',
+    title: 'Red = danger',
+    body: 'Red dots: they can shoot. A laser means a shot is coming - break line of sight! A touch costs a heart.',
   },
   {
     title: 'Noise',
-    body: 'Walking and running make noise; the ring around you shows how far it carries. CROUCH to move almost silently. From stage 5, RUN uses stamina.',
+    body: 'Moving makes noise (the circle around you). Standing still is silent. Noise alone never starts a chase.',
   },
   {
-    title: 'Tools and the exit',
-    body: 'Crowbars knock out a guard or scare off a dog. Smoke blocks sight and makes dogs lose your scent. Reach the green line to escape.',
+    title: 'Escape',
+    body: 'Grab tools on the way. Reach the green line. Stars for staying unseen, fast and unhurt.',
   },
 ];
 
@@ -138,6 +142,8 @@ export function Tutorial() {
   const guardAngle = useSharedValue(180);
   const popScale = useSharedValue(0);
   const catchFlash = useSharedValue(0);
+  // 1 = standing, smaller while crouched behind the low wall (beat 2).
+  const crouch = useSharedValue(1);
 
   // Card-entry shared value drives popup fade/slide on each beat.
   const cardT = useSharedValue(0);
@@ -164,6 +170,7 @@ export function Tutorial() {
     guardAngle.value = 180;
     popScale.value = 0;
     catchFlash.value = 0;
+    crouch.value = 1;
   }, [
     showTutorial,
     L.PLAYER_START.x,
@@ -214,7 +221,8 @@ export function Tutorial() {
         withTiming(0.7, { duration: BEAT_MS - 900, easing: Easing.out(Easing.quad) }),
       );
     } else if (beat === 2) {
-      // Beat 3: slip behind cover; detection drains.
+      // Beat 3: crouch behind the low wall; detection drains.
+      crouch.value = withTiming(0.72, { duration: 400, easing: Easing.out(Easing.quad) });
       playerY.value = withTiming(L.beat2Target.y, { duration: 600, easing: Easing.out(Easing.cubic) });
       playerX.value = withTiming(L.beat2Target.x, { duration: 600, easing: Easing.out(Easing.cubic) });
       detection.value = withDelay(
@@ -222,7 +230,8 @@ export function Tutorial() {
         withTiming(0, { duration: BEAT_MS - 700, easing: Easing.in(Easing.quad) }),
       );
     } else if (beat === 3) {
-      // Beat 4: walk back into the cone; "!" pops; ring caps; flash.
+      // Beat 4: stand, walk back into the cone; "!" pops; ring caps; flash.
+      crouch.value = withTiming(1, { duration: 300 });
       playerY.value = withTiming(L.beat3Target.y, { duration: 1000, easing: Easing.out(Easing.cubic) });
       detection.value = withDelay(
         700,
@@ -272,6 +281,7 @@ export function Tutorial() {
   const playerStyle = useAnimatedStyle(() => ({
     left: playerX.value - playerR,
     top: playerY.value - playerR,
+    transform: [{ scale: crouch.value }],
   }));
 
   // Detection ring: colour shifts yellow → orange → red as the value
@@ -281,9 +291,10 @@ export function Tutorial() {
   const ringStyle = useAnimatedStyle(() => {
     const v = detection.value;
     const opacity = 0.18 + v * 0.55;
-    let color = 'rgba(255, 209, 74, 1)'; // alert yellow
-    if (v >= 0.75) color = 'rgba(255, 56, 56, 1)'; // chase red
-    else if (v >= 0.4) color = 'rgba(255, 154, 48, 1)'; // investigate orange
+    // Same thresholds as the in-game ring (RadialMeter.ts).
+    let color = 'rgba(255, 209, 74, 1)'; // noticed: yellow
+    if (v >= 0.85) color = 'rgba(255, 56, 56, 1)'; // can shoot: red
+    else if (v >= 0.5) color = 'rgba(255, 154, 48, 1)'; // searching: orange
     return {
       left: playerX.value - ringR,
       top: playerY.value - ringR,
@@ -353,7 +364,7 @@ export function Tutorial() {
             ]}
           />
           <Text style={[styles.coverLabel, { left: L.COVER.x, top: L.COVER.y - 12 }]}>
-            COVER
+            LOW WALL
           </Text>
 
           {/* Vision cone. Wrapper sized 0×0 with transformOrigin at

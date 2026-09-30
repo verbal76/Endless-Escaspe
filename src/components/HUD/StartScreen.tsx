@@ -453,7 +453,7 @@ export function StartScreen() {
           ) : null}
         </View>
         <Pressable
-          onPress={() => setShowTutorial(true)}
+          onPress={() => useStore.getState().setHowToPlay('home')}
           style={({ pressed }) => [styles.linkBtn, pressed && styles.linkBtnDown]}
         >
           <Text style={styles.linkLabel}>HOW TO PLAY</Text>
@@ -727,6 +727,7 @@ export function StartScreen() {
             style={({ pressed }) => [styles.modeBtn, pressed && styles.bigBtnDown]}
           >
             <Text style={styles.modeLabel}>ENDLESS</Text>
+            <Text style={styles.modeHint}>No finish. Harder every 120 m.</Text>
             <Text style={styles.modeSub}>best {profile.endlessBest} m</Text>
           </Pressable>
           <Pressable
@@ -734,6 +735,7 @@ export function StartScreen() {
             style={({ pressed }) => [styles.modeBtn, pressed && styles.bigBtnDown]}
           >
             <Text style={styles.modeLabel}>DAILY RUN</Text>
+            <Text style={styles.modeHint}>Same yard for everyone today.</Text>
             <Text style={styles.modeSub}>
               {profile.daily?.day === utcDayKey(new Date()) ? `today ${profile.daily.best} m` : 'new today'}
             </Text>
@@ -743,6 +745,7 @@ export function StartScreen() {
             style={({ pressed }) => [styles.modeBtn, pressed && styles.bigBtnDown]}
           >
             <Text style={styles.modeLabel}>OUTFITS</Text>
+            <Text style={styles.modeHint}>Looks only.</Text>
             <Text style={styles.modeSub}>{profile.coins} coins</Text>
           </Pressable>
         </View>
@@ -1327,6 +1330,12 @@ const styles = StyleSheet.create({
     color: ui.textMuted,
     fontSize: T.caption,
     marginTop: 1,
+  },
+  modeHint: {
+    color: ui.textBody,
+    fontSize: T.caption,
+    textAlign: 'center',
+    maxWidth: 150,
   },
   outfitTitle: {
     color: ui.gold,

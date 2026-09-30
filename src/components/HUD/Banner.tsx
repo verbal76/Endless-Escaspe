@@ -13,6 +13,8 @@ import Animated, {
 import { useStore } from '../../state/store';
 import { color as ui, type as T, fonts } from '../../ui/theme';
 
+import { STAT_DETECTED_3, STAT_TIMES_3 } from '../../util/scoring';
+
 const STAR_FILLED = '★';
 const STAR_EMPTY = '☆';
 const SKULL = '💀';
@@ -155,20 +157,24 @@ export function Banner() {
           </View>
         ) : stats && (
           <View style={[styles.statBlock, compact && styles.statBlockCompact]}>
-            <StatRow compact={compact} index={0} label="Times spotted" value={String(stats.timesSeen)} />
+            {/* Each row shows its full-marks target, so players can see
+                what the stars ask for (scoring.ts). */}
+            <StatRow compact={compact} index={0} label="Times spotted" value={String(stats.timesSeen)} target={`${STAR_FILLED} ${STAT_TIMES_3}`} />
             <StatRow compact={compact}
               index={1}
               label="Time detected"
               value={`${stats.timeDetected.toFixed(1)}s`}
+              target={`${STAR_FILLED} ≤ ${STAT_DETECTED_3}s`}
             />
             <StatRow compact={compact}
               index={2}
               label="Run time"
               value={`${stats.runDurationS.toFixed(1)}s`}
+              target={stats.timeTarget3 ? `${STAR_FILLED} ≤ ${stats.timeTarget3}s` : undefined}
             />
-            <StatRow compact={compact} index={3} label="Lives used" value={String(stats.livesUsed)} />
+            <StatRow compact={compact} index={3} label="Lives used" value={String(stats.livesUsed)} target={`${STAR_FILLED} 0`} />
             {isCleared && summary ? (
-              <StatRow compact={compact} index={4} label="Coins earned" value={`+${summary.coinsEarned} (${summary.coinsTotal})`} />
+              <StatRow compact={compact} index={4} label="Coins earned" value={`+${summary.coinsEarned} · total ${summary.coinsTotal}`} />
             ) : null}
           </View>
         )}
@@ -197,7 +203,7 @@ export function Banner() {
             style={({ pressed }) => [styles.btn, compact && styles.btnCompact, pressed && styles.btnDown]}
             onPress={() => resetForSegment(segmentSeed + 1)}
           >
-            <Text style={styles.btnLabel}>NEXT SEGMENT</Text>
+            <Text style={styles.btnLabel}>NEXT STAGE</Text>
           </Pressable>
         ) : (
           // Caught panel: send the player back to the start screen
@@ -222,7 +228,19 @@ export function Banner() {
 // numbers landing at once. The card-entry animation finishes around
 // 320ms; the first row starts ~280ms in and each subsequent row
 // follows 70ms later.
-function StatRow({ index, label, value, compact = false }: { index: number; label: string; value: string; compact?: boolean }) {
+function StatRow({
+  index,
+  label,
+  value,
+  target,
+  compact = false,
+}: {
+  index: number;
+  label: string;
+  value: string;
+  target?: string;
+  compact?: boolean;
+}) {
   const t = useSharedValue(0);
   useEffect(() => {
     t.value = 0;
@@ -238,7 +256,10 @@ function StatRow({ index, label, value, compact = false }: { index: number; labe
   return (
     <Animated.View style={[styles.statRow, compact && styles.statRowCompact, style]}>
       <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statValue}>
+        {value}
+        {target ? <Text style={styles.statTarget}>{`   ${target}`}</Text> : null}
+      </Text>
     </Animated.View>
   );
 }
@@ -336,6 +357,10 @@ const styles = StyleSheet.create({
     fontSize: T.small,
     fontWeight: '700',
     fontFamily: 'monospace',
+  },
+  statTarget: {
+    color: ui.gold,
+    fontWeight: '600',
   },
   btn: {
     paddingHorizontal: 32,

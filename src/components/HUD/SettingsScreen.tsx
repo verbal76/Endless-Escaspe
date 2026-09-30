@@ -23,6 +23,7 @@ import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
 import { composeBugReportUrl, composeFeatureRequestUrl } from '../../util/support';
 import { BuildInfo } from './BuildInfo';
+import { HowToPlay } from './HowToPlay';
 import { CARD_BORDER, CARD_PADDING, PANEL_MARGIN, pausePanelHeights } from '../../ui/pauseLayout';
 import { color as ui, type as T, fonts } from '../../ui/theme';
 import { SETTINGS_GEAR } from '../../ui/iconData';
@@ -130,6 +131,9 @@ export function SettingsScreen() {
   };
 
   const openPanel = () => {
+    // A reference left open when the panel last closed another way
+    // (restart, main menu) must not reappear.
+    if (useStore.getState().howToPlay === 'pause') useStore.getState().setHowToPlay(null);
     setOpen(true);
     setPaused(true);
   };
@@ -215,7 +219,17 @@ export function SettingsScreen() {
         <Image source={{ uri: SETTINGS_GEAR }} style={styles.gearIcon} />
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          // Back closes the rules reference first, then the panel.
+          const st = useStore.getState();
+          if (st.howToPlay === 'pause') st.setHowToPlay(null);
+          else close();
+        }}
+      >
         {/* Modal content lives in a separate native view tree from
             the App's GestureHandlerRootView, so gestures registered
             here would never fire. Wrap the modal's content in a
@@ -281,6 +295,13 @@ export function SettingsScreen() {
                 showsVerticalScrollIndicator
                 persistentScrollbar
               >
+                <Pressable
+                  onPress={() => useStore.getState().setHowToPlay('pause')}
+                  style={({ pressed }) => [styles.feedbackBtn, styles.helpBtn, pressed && styles.btnPressed]}
+                >
+                  <Text style={styles.feedbackLabel}>HOW TO PLAY</Text>
+                </Pressable>
+
                 <Text style={styles.sectionHeading}>Settings</Text>
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>Volume</Text>
@@ -333,6 +354,9 @@ export function SettingsScreen() {
             </View>
           </View>
         </View>
+        {/* The pause panel is its own native modal, so the rules
+            reference opened from here renders inside it. */}
+        <HowToPlay where="pause" />
         </GestureHandlerRootView>
       </Modal>
     </>
@@ -523,6 +547,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     marginTop: 4,
+    marginBottom: 4,
+  },
+  helpBtn: {
+    alignSelf: 'flex-start',
     marginBottom: 4,
   },
   feedbackBtn: {

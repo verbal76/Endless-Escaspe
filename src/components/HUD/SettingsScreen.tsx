@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   AppState,
   BackHandler,
+  Image,
   Linking,
   Modal,
   Pressable,
@@ -24,6 +25,7 @@ import { composeBugReportUrl, composeFeatureRequestUrl } from '../../util/suppor
 import { BuildInfo } from './BuildInfo';
 import { CARD_BORDER, CARD_PADDING, PANEL_MARGIN, pausePanelHeights } from '../../ui/pauseLayout';
 import { color as ui, type as T, fonts } from '../../ui/theme';
+import { SETTINGS_GEAR } from '../../ui/iconData';
 
 const SLIDER_TRACK_W = 220;
 const SLIDER_KNOB_R = 13;
@@ -210,7 +212,7 @@ export function SettingsScreen() {
         onPress={openPanel}
         hitSlop={10}
       >
-        <Text style={styles.gearGlyph}>⚙</Text>
+        <Image source={{ uri: SETTINGS_GEAR }} style={styles.gearIcon} />
       </Pressable>
 
       <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
@@ -340,10 +342,8 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   gearWrap: {
     position: 'absolute',
-    // Plain overlay glyph with no background or border - the user
+    // Plain overlay icon with no background or border - the user
     // wanted it to read as just an icon, not an icon-in-a-box.
-    // Width / height kept generous so the press target stays
-    // forgiving even though the visible art is just the glyph.
     width: 36,
     height: 36,
     alignItems: 'center',
@@ -352,12 +352,11 @@ const styles = StyleSheet.create({
   gearPressed: {
     opacity: 0.6,
   },
-  gearGlyph: {
-    color: 'rgba(255, 255, 255, 0.92)',
-    fontSize: T.heading,
-    lineHeight: 30,
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowRadius: 3,
+  // assets/ui/settings-gear.png (144 px, embedded as a data URI) drawn
+  // at the full 36 dp button size.
+  gearIcon: {
+    width: 36,
+    height: 36,
   },
   ghRoot: {
     flex: 1,

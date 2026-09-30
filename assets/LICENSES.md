@@ -15,6 +15,10 @@
 - `assets/splash-icon.png` is typeset in Black Ops One (OFL).
 - The chain-link fence and blob-shadow textures are generated in code
   (`src/scenes/Fence.ts`, `src/scenes/BlobShadows.ts`).
+- `assets/ui/settings-gear.png` is the settings gear artwork supplied by
+  the project owner, cropped to the gear, centred on a square
+  transparent canvas and resized to 144 px (embedded via
+  `scripts/gen-ui-icons.mjs`).
 
 ### Sound effect sources
 

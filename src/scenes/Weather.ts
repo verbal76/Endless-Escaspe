@@ -25,16 +25,45 @@ const SNOW_FALL_SPEED = 4.5;
 const SNOW_DRIFT_AMP = 0.6; // horizontal sway
 
 const RAIN_MAT = new THREE.LineBasicMaterial({
-  color: 0xa8c4d8,
+  color: 0xcfe0ee,
   transparent: true,
   opacity: 0.55,
 });
-const SNOW_MAT = new THREE.MeshBasicMaterial({
+// Snow is a point cloud with a soft round sprite. It used to be tiny
+// 6-sided spheres, and flakes passing near the camera blew up into big
+// white hexagons; a soft sprite just reads as a close, blurred flake
+// (and the GPU's max point size caps it).
+function flakeTexture(): THREE.DataTexture {
+  const n = 32;
+  const data = new Uint8Array(n * n * 4);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      const dx = (x + 0.5) / n - 0.5;
+      const dy = (y + 0.5) / n - 0.5;
+      const d = Math.sqrt(dx * dx + dy * dy) * 2;
+      const a = Math.max(0, 1 - d);
+      const i = (y * n + x) * 4;
+      data[i] = 255;
+      data[i + 1] = 255;
+      data[i + 2] = 255;
+      data[i + 3] = Math.round(255 * a * a * (3 - 2 * a));
+    }
+  }
+  const tex = new THREE.DataTexture(data, n, n, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+const SNOW_MAT = new THREE.PointsMaterial({
   color: 0xffffff,
+  size: 0.16,
+  sizeAttenuation: true,
+  map: flakeTexture(),
   transparent: true,
-  opacity: 0.85,
+  opacity: 0.9,
+  depthWrite: false,
 });
-const SNOW_GEO = new THREE.SphereGeometry(0.05, 4, 3);
 // The weather column follows the player; its lightning plane is
 // re-positioned on each strike.
 
@@ -47,7 +76,6 @@ const LIGHTNING_MAT = new THREE.MeshBasicMaterial({
 });
 
 [RAIN_MAT, SNOW_MAT, LIGHTNING_MAT].forEach((m) => markShared(m));
-markShared(SNOW_GEO);
 
 type Particle = {
   x: number;
@@ -57,15 +85,15 @@ type Particle = {
 };
 
 // All precipitation is drawn in ONE draw call: rain as a single
-// LineSegments whose vertex buffer is rewritten each frame, snow as a
-// single InstancedMesh. (Previously every drop was its own Line /
+// LineSegments and snow as a single Points cloud, each with a vertex
+// buffer rewritten every frame. (Previously every drop was its own Line /
 // Mesh with its own BufferGeometry: ~280 draw calls.)
 export type Weather = {
   kind: WeatherKind;
   group: THREE.Group;
   particles: Particle[];
   rain: THREE.LineSegments | null;
-  snow: THREE.InstancedMesh | null;
+  snow: THREE.Points | null;
   lightning: THREE.Mesh | null;
   lightningTimer: number;
   lightningFlash: number; // 0..1, fades out after a strike
@@ -101,7 +129,7 @@ export function createWeather(kind: WeatherKind, centerX: number, centerZ: numbe
   const group = new THREE.Group();
   const particles: Particle[] = [];
   let rain: THREE.LineSegments | null = null;
-  let snow: THREE.InstancedMesh | null = null;
+  let snow: THREE.Points | null = null;
 
   if (kind !== 'clear') {
     for (let i = 0; i < PARTICLE_COUNT; i++) {
@@ -121,8 +149,11 @@ export function createWeather(kind: WeatherKind, centerX: number, centerZ: numbe
       rain.frustumCulled = false;
       group.add(rain);
     } else {
-      snow = new THREE.InstancedMesh(SNOW_GEO, SNOW_MAT, PARTICLE_COUNT);
-      snow.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      const geo = new THREE.BufferGeometry();
+      const attr = new THREE.BufferAttribute(new Float32Array(PARTICLE_COUNT * 3), 3);
+      attr.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('position', attr);
+      snow = new THREE.Points(geo, SNOW_MAT);
       snow.frustumCulled = false;
       group.add(snow);
     }
@@ -145,8 +176,6 @@ export function createWeather(kind: WeatherKind, centerX: number, centerZ: numbe
   return w;
 }
 
-const tmpM = new THREE.Matrix4();
-
 function writeBuffers(w: Weather) {
   if (w.rain) {
     const attr = w.rain.geometry.attributes.position as THREE.BufferAttribute;
@@ -163,12 +192,15 @@ function writeBuffers(w: Weather) {
     }
     attr.needsUpdate = true;
   } else if (w.snow) {
+    const attr = w.snow.geometry.attributes.position as THREE.BufferAttribute;
+    const a = attr.array as Float32Array;
     for (let i = 0; i < w.particles.length; i++) {
       const p = w.particles[i];
-      tmpM.makeTranslation(p.x, p.y, p.z);
-      w.snow.setMatrixAt(i, tmpM);
+      a[i * 3] = p.x;
+      a[i * 3 + 1] = p.y;
+      a[i * 3 + 2] = p.z;
     }
-    w.snow.instanceMatrix.needsUpdate = true;
+    attr.needsUpdate = true;
   }
 }
 

@@ -76,6 +76,10 @@ function configure(tex: THREE.Texture, key: string): THREE.Texture {
   // earlier flipY=false made police bodies sample brown, lights green).
   // Applies to raw pixel uploads as well as image uploads.
   tex.flipY = true;
+  // The PNGs hold sRGB colour. Without this three treated them as
+  // linear and gamma-encoded them again on output, which washed every
+  // texture out (chalky props, beige prisoner, grey-green ground).
+  tex.colorSpace = THREE.SRGBColorSpace;
   tex.needsUpdate = true;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;

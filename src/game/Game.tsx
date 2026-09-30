@@ -173,6 +173,7 @@ import {
   createBackdrop,
   createTreeLine,
   followBackdrop,
+  updateBackdropFar,
   setBackdropSnow,
   updateBackdrop,
 } from '../scenes/Backdrop';
@@ -542,7 +543,7 @@ export function Game() {
       s.cameras.push(...spawnCameras(secRoot, len, camCount, zStart));
 
       if (s.endless) {
-        spawnFences(secRoot, moodStageFor(level, s.mode), s.weatherKind, len, razorWireEnabledFor(level), len, zStart === 0 ? null : zStart);
+        spawnFences(secRoot, moodStageFor(level, s.mode, s.seed), s.weatherKind, len, razorWireEnabledFor(level), len, zStart === 0 ? null : zStart);
         secRoot.add(createTreeLine(zStart === 0 ? -10 : zStart, zStart === 0 ? len + 10 : len, s.seed + index));
       }
       if (s.weatherKind === 'snow') {
@@ -605,9 +606,12 @@ export function Game() {
 
     // Endless / Daily: difficulty level for a world Z.
     const ENDLESS_SECTION_LEN = CHUNKS_AHEAD * CHUNK_LEN; // 120 m
-    // Endless / Daily keep one daylight mood (stage 1), independent of
-    // the player's campaign progress.
-    const moodStageFor = (stage: number, mode: GameMode) => (mode === 'campaign' ? stage : 1);
+    // Endless / Daily: one mood per run, picked from the run's seed
+    // (day, afternoon, dusk or night - the moods of stages 1-4), so runs
+    // differ but a Daily is the same for everyone that day. Independent
+    // of the player's campaign progress.
+    const moodStageFor = (stage: number, mode: GameMode, seed: number) =>
+      mode === 'campaign' ? stage : 1 + (((seed >>> 0) * 2654435761) >>> 0) % 4;
     const levelAtZ = (z: number) => Math.min(30, 1 + Math.floor(Math.max(0, z) / ENDLESS_SECTION_LEN));
 
     const buildScene = (stage: number, seed: number, mode: GameMode = 'campaign'): Scene => {
@@ -655,7 +659,16 @@ export function Game() {
       const weather: Weather = createWeather(weatherKind, 0, 1);
       root.add(weather.group);
       if (weatherKind === 'snow') {
-        groundMat.color.setHex(0xc8d6dc);
+        // Snow cover: the grass texture stays (faintly showing through)
+        // but a cool white emissive base carries the ground, dimmed with
+        // the mood so night snow doesn't glow. Tinting the colour alone
+        // left dark brown mud once textures decode as sRGB.
+        const dark = getStageLighting(moodStageFor(stage, mode, seed)).darkness;
+        groundMat.color.setHex(0xdfe6ec);
+        groundMat.emissive.setHex(0xb4c0cc);
+        groundMat.emissiveMap = null;
+        groundMat.emissiveIntensity = 0.75 * (1 - 0.7 * dark);
+        groundMat.needsUpdate = true;
       }
 
       // Win line is omitted on arena stages (survive the timer) and in
@@ -749,7 +762,7 @@ export function Game() {
         scene.nextSection = 1;
         // Visual fence length = gameplay segment + horizon chunks +
         // small lead-in, so the fence keeps going past the win line.
-        spawnFences(root, moodStageFor(stage, mode), weatherKind, segLen, razorWire, segLen + HORIZON_CHUNKS * CHUNK_LEN + 4);
+        spawnFences(root, moodStageFor(stage, mode, seed), weatherKind, segLen, razorWire, segLen + HORIZON_CHUNKS * CHUNK_LEN + 4);
         root.add(createTreeLine(-10, segLen + HORIZON_CHUNKS * CHUNK_LEN + 40, seed));
         // Boss stage: the lead guard sees ~50% further (every 5th stage).
         if (isBossStage(stage) && scene.guards.length > 0) {
@@ -801,7 +814,7 @@ export function Game() {
     // One lighting mood per stage (day / afternoon / dusk / night /
     // deep night; see Lighting.ts). Applied once per (re)build - the
     // mood never changes during a stage.
-    let lighting: StageLighting = applyStageLighting(r, moodStageFor(initialStage, useStore.getState().gameMode));
+    let lighting: StageLighting = applyStageLighting(r, moodStageFor(initialStage, useStore.getState().gameMode, useStore.getState().segmentSeed));
     applyBackdropMood(backdrop, lighting);
     setBackdropSnow(backdrop, scene.weatherKind === 'snow');
     useStore
@@ -833,7 +846,7 @@ export function Game() {
       tearDownScene(scene);
       scene = buildScene(stage, seed, mode);
       if (!scene.endless) backdrop.group.position.z = 0;
-      lighting = applyStageLighting(r, moodStageFor(stage, mode));
+      lighting = applyStageLighting(r, moodStageFor(stage, mode, seed));
       applyBackdropMood(backdrop, lighting);
       setBackdropSnow(backdrop, scene.weatherKind === 'snow');
       // The boss countdown is re-armed by resetSegment(), which every
@@ -2250,6 +2263,7 @@ export function Game() {
         scene.ground.position.z = 400 + Math.round(player.z / 4) * 4;
         followBackdrop(backdrop, player.z);
       }
+      updateBackdropFar(backdrop, player.x, player.z);
       updateCameraRig(r.camera, player, 1 / 60);
       // Catch shake: small sin-driven offset on top of the rig pose,
       // scaled by the remaining fraction of SHAKE_DURATION so the

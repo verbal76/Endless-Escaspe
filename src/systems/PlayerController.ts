@@ -58,6 +58,16 @@ export function updatePlayer(
     input.run = false;
   }
   p.isRunning = wantsRun;
+  // Sprinting stands the player up: a moving RUN is always upright
+  // (running speed, running noise, standing visibility), and letting
+  // go of RUN or stopping drops back into the chosen stance. Before,
+  // CROUCH + RUN kept crouch's stealth at 1.3x walking speed.
+  // RUN left on while standing still keeps the crouch (hiding).
+  const moving = input.axisX !== 0 || input.axisY !== 0;
+  if (p.isRunning && moving && p.stance === 'crouch') {
+    p.stance = 'walk';
+    p.isCrouched = false;
+  }
 
   // Drain / regen stamina. Always tracked so the HUD can read it
   // even at stages where it's not yet gating movement, but stages

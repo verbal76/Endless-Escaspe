@@ -73,3 +73,28 @@ test('fence wire colour follows the lighting mood, not a fixed stage cut-off', a
   assert.equal(fenceColorFor(6, 'clear'), BLACK); // afternoon: was light grey
   assert.equal(fenceColorFor(1, 'snow'), BLACK);
 });
+
+test('a moving RUN stands the player up; standing still with RUN on stays crouched', async () => {
+  const { updatePlayer } = await import('../src/systems/PlayerController');
+  const { input } = await import('../src/systems/InputSystem');
+  const { PLAYER_WALK_SPEED } = await import('../src/util/geometry');
+  const p = createPlayer();
+  const DT = 1 / 60;
+  input.stance = 'crouch';
+  input.run = true;
+  input.axisX = 0;
+  input.axisY = 0;
+  updatePlayer(p, [], DT, 500, false);
+  assert.equal(p.isCrouched, true, 'hiding with RUN left on keeps the crouch');
+  input.axisY = 1;
+  updatePlayer(p, [], DT, 500, false);
+  assert.equal(p.isCrouched, false);
+  assert.equal(p.stance, 'walk');
+  assert.equal(p.vz, PLAYER_WALK_SPEED * 2, 'sprints at standing run speed');
+  input.run = false;
+  updatePlayer(p, [], DT, 500, false);
+  assert.equal(p.isCrouched, true, 'back to the chosen crouch once RUN is off');
+  assert.ok(p.vz < PLAYER_WALK_SPEED, 'crouch walk is slower than walking');
+  input.stance = 'walk';
+  input.axisY = 0;
+});

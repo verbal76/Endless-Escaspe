@@ -59,8 +59,12 @@ const PALETTE: Record<string, MaterialDef> = {
   wall_metal: { color: 0x8a8e94, emissiveIntensity: 0.12 },
   roof: { color: 0x32323a, emissiveIntensity: 0.12 },
   dirt: { color: 0x6e5232, emissiveIntensity: 0.11 },
-  woodBarkDark: { color: 0xcc7659, emissiveIntensity: 0.12 },
-  leafsDark: { color: 0x3a7d2e, emissiveIntensity: 0.12 },
+  // Pine bark / needles: a dark, natural brown and forest green (were
+  // salmon-orange 0xcc7659 and saturated 0x3a7d2e with a 0.12 glow,
+  // which read as toy trees). Per-tree variation comes from instance
+  // colours (Backdrop.createTreeLine).
+  woodBarkDark: { color: 0x5a4032, emissiveIntensity: 0.06 },
+  leafsDark: { color: 0x2f5e3a, emissiveIntensity: 0.06 },
 };
 
 const SOLID_BY_DESIGN: Record<string, true> = { woodBarkDark: true, leafsDark: true };
@@ -151,7 +155,13 @@ export function createKitProp(
 // Many copies of one prop in a single draw call per material group:
 // one InstancedMesh per template sub-mesh, sharing the template
 // geometry and materials. `matrices` are full world transforms.
-export function createKitPropInstances(kind: KitKind, matrices: readonly THREE.Matrix4[]): THREE.Group {
+// `colors` (optional, one per matrix) multiplies each instance's
+// material colour - free per-instance variation, no extra draw calls.
+export function createKitPropInstances(
+  kind: KitKind,
+  matrices: readonly THREE.Matrix4[],
+  colors?: readonly THREE.Color[],
+): THREE.Group {
   const subs = parseTemplate(kind);
   const group = new THREE.Group();
   for (const s of subs) {
@@ -159,6 +169,10 @@ export function createKitPropInstances(kind: KitKind, matrices: readonly THREE.M
     const inst = new THREE.InstancedMesh(s.geometry, mats.length > 1 ? mats : mats[0], matrices.length);
     for (let i = 0; i < matrices.length; i++) inst.setMatrixAt(i, matrices[i]);
     inst.instanceMatrix.needsUpdate = true;
+    if (colors && colors.length === matrices.length) {
+      for (let i = 0; i < colors.length; i++) inst.setColorAt(i, colors[i]);
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    }
     inst.computeBoundingSphere();
     group.add(inst);
   }

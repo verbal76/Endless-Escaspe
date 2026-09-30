@@ -286,6 +286,10 @@ export function createTreeLine(zStart: number, length: number, seed: number): TH
     treePineTallA: [],
     treePineTallADetailed: [],
   };
+  const tints: Record<'treePineTallA' | 'treePineTallADetailed', THREE.Color[]> = {
+    treePineTallA: [],
+    treePineTallADetailed: [],
+  };
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);
   const pos = new THREE.Vector3();
@@ -295,16 +299,23 @@ export function createTreeLine(zStart: number, length: number, seed: number): TH
     for (const sign of [-1, 1]) {
       const xJitter = rng() * (TREE_LINE_FAR - TREE_LINE_OUTER);
       const variant = rng() < 0.5 ? 'treePineTallA' : 'treePineTallADetailed';
-      const sc = 3.5 * (0.85 + rng() * 0.5);
-      pos.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
+      // Varied sizes, and about half the trees sunk a little so fewer
+      // bare trunks show: the band reads as a forest, not a row of
+      // identical copies.
+      const sc = 3.5 * (0.7 + rng() * 0.8);
+      const sink = rng() < 0.5 ? rng() * 0.35 * sc : 0;
+      pos.set(sign * (TREE_LINE_OUTER + xJitter), -sink, z);
       q.setFromAxisAngle(up, rng() * Math.PI * 2);
       scl.set(sc, sc, sc);
       mats[variant].push(new THREE.Matrix4().compose(pos, q, scl));
+      // Instance tint: +-10% lightness with a slight green/blue drift.
+      const l = 0.9 + rng() * 0.2;
+      tints[variant].push(new THREE.Color(l * (0.94 + rng() * 0.06), l, l * (0.94 + rng() * 0.1)));
     }
   }
   const g = new THREE.Group();
-  g.add(createKitPropInstances('treePineTallA', mats.treePineTallA));
-  g.add(createKitPropInstances('treePineTallADetailed', mats.treePineTallADetailed));
+  g.add(createKitPropInstances('treePineTallA', mats.treePineTallA, tints.treePineTallA));
+  g.add(createKitPropInstances('treePineTallADetailed', mats.treePineTallADetailed, tints.treePineTallADetailed));
   return g;
 }
 

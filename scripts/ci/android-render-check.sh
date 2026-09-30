@@ -6,7 +6,24 @@ set -uo pipefail
 PKG=com.verbal76.endlessescaspe
 OUT=render-check
 mkdir -p "$OUT"
-adb install -r -g app.apk
+# Every adb call is time-limited: if the emulator disappears, adb
+# otherwise waits for a device forever (run 10 hung 74 minutes until
+# the job timeout) instead of failing fast with a clear message.
+ADB_BIN=$(command -v adb)
+adb() {
+  local limit=60
+  [ "$1" = install ] && limit=300
+  timeout "$limit" "$ADB_BIN" "$@"
+  local rc=$?
+  if [ $rc -eq 124 ]; then
+    echo "EMULATOR LOST: 'adb $1' did not answer within ${limit}s" >&2
+  fi
+  return $rc
+}
+if ! adb install -r -g app.apk; then
+  echo "RENDER CHECK FAILED: could not install the APK"
+  exit 1
+fi
 launch() { adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null; }
 
 adb logcat -c

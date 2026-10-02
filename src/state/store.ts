@@ -4,6 +4,11 @@ import type { WeatherKind } from '../scenes/Weather';
 import type { Save, SavesMap } from '../util/storage';
 import type { GameModalConfig } from '../components/HUD/GameModal';
 import { startingHeartsFor } from '../util/progression';
+import { snapVolume } from '../util/musicIntensity';
+
+// Coalesce slider noise, but never swallow a move onto an endpoint.
+const volumeUnchanged = (prev: number, next: number) =>
+  next === prev || (next !== 0 && next !== 1 && Math.abs(prev - next) < 0.005);
 import type { OutfitId } from '../util/outfits';
 
 // How many of each pickup the player is currently carrying. Counts
@@ -365,19 +370,18 @@ export const useStore = create<Store>((set) => ({
     set((st) => (st.bossModeEnabled === b ? st : { bossModeEnabled: b })),
   setBossTimeRemaining: (v) =>
     set((st) => (st.bossTimeRemaining === v ? st : { bossTimeRemaining: v })),
+  // Volume setters: endpoints snap (<= 0.01 -> 0, >= 0.99 -> 1) and
+  // always land, so the 0.005 change dead-band can never leave the
+  // game faintly audible at "0" (audio review E-4).
   setMasterVolume: (v) =>
     set((st) => {
-      const clamped = Math.max(0, Math.min(1, v));
-      return Math.abs(st.masterVolume - clamped) < 0.005
-        ? st
-        : { masterVolume: clamped };
+      const snapped = snapVolume(v);
+      return volumeUnchanged(st.masterVolume, snapped) ? st : { masterVolume: snapped };
     }),
   setMusicVolume: (v) =>
     set((st) => {
-      const clamped = Math.max(0, Math.min(1, v));
-      return Math.abs(st.musicVolume - clamped) < 0.005
-        ? st
-        : { musicVolume: clamped };
+      const snapped = snapVolume(v);
+      return volumeUnchanged(st.musicVolume, snapped) ? st : { musicVolume: snapped };
     }),
   // Beating a boss tops up the perk counter; subsequent boss wins
   // refresh / extend it instead of stacking - one heart of buffer is

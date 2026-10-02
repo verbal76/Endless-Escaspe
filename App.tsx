@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { setAudioModeAsync } from 'expo-audio';
 import { Game } from './src/game/Game';
 import { useStore } from './src/state/store';
 import { installDebugLogger, logDebug } from './src/util/debug';
@@ -43,9 +44,18 @@ export default function App() {
       useStore.getState().setBossModeEnabled(s.bossModeEnabled);
     });
     loadSaves().then((m) => useStore.getState().setSaves(m));
+    // Audio session (audio review E-1): mix with other apps' audio so
+    // the game never pauses the player's own music / podcast, and stay
+    // silent in the background. Set before Game mounts (it gates boot
+    // below) so no player has requested exclusive focus first.
+    const audioModeReady = setAudioModeAsync({
+      interruptionMode: 'mixWithOthers',
+      shouldPlayInBackground: false,
+      playsInSilentMode: false,
+    }).catch((e) => logDebug('warn', '[audio] setAudioModeAsync failed', e));
     // Textures and the display font load in parallel; the font never
     // blocks boot for long (it resolves false on failure).
-    Promise.all([preloadAllTextures(), loadDisplayFont()]).then(() => {
+    Promise.all([preloadAllTextures(), loadDisplayFont(), audioModeReady]).then(() => {
       // One line each in logcat identifying the running code and how
       // the texture files resolved (checked by the Android render CI).
       const info = getReleaseInfo();

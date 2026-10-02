@@ -1,10 +1,15 @@
 // Danger-driven music intensity with hysteresis.
 //
 //   calm   - the regular playlist at full level
-//   alert  - a guard is suspicious: playlist ducks, the tension layer
-//            fades in
-//   chase  - someone is actively chasing: tension layer up front,
-//            slightly faster; playlist almost silent
+//   alert  - a guard is suspicious: crossfade most of the way to the
+//            tension track (the playlist stays only as a faint bed)
+//   chase  - someone is actively chasing: tension track alone,
+//            slightly faster; playlist fully out
+//
+// The tension track is a separate song, not a stem of the playlist,
+// so the two never sit at comparable levels in a steady state (that
+// clashed: different tempo and key). In any steady state the quieter
+// of the two gains is <= MAX_BLEND.
 //
 // Entering a higher state is quick; leaving requires the danger to
 // stay below a LOWER threshold for a hold period, so a meter hovering
@@ -31,9 +36,16 @@ export const FADE_S = 1.2;
 
 const TARGETS: Record<MusicState, { calm: number; tension: number; rate: number }> = {
   calm: { calm: 1, tension: 0, rate: 1 },
-  alert: { calm: 0.4, tension: 0.6, rate: 1 },
-  chase: { calm: 0.08, tension: 1, rate: 1.06 },
+  alert: { calm: 0.15, tension: 0.8, rate: 1 },
+  chase: { calm: 0, tension: 1, rate: 1.06 },
 };
+
+// Upper bound for min(calmGain, tensionGain) once a state has settled.
+export const MAX_BLEND = 0.15;
+
+export function musicTargets(state: MusicState) {
+  return TARGETS[state];
+}
 
 export class MusicIntensity {
   state: MusicState = 'calm';
@@ -88,4 +100,30 @@ function approach(v: number, target: number, maxStep: number): number {
   if (v < target) return Math.min(target, v + maxStep);
   if (v > target) return Math.max(target, v - maxStep);
   return v;
+}
+
+// ---------------------------------------------------------------
+// Volume helpers (shared by the store, Music, Sfx and Siren).
+
+// Slider endpoints: a drag rarely lands exactly on 0 or 1, and the
+// store's 0.005 change dead-band would otherwise swallow the final
+// step (leaving the game faintly audible at "0").
+export const VOLUME_SNAP = 0.01;
+
+export function snapVolume(v: number): number {
+  if (!Number.isFinite(v)) return 0;
+  const c = Math.max(0, Math.min(1, v));
+  if (c <= VOLUME_SNAP) return 0;
+  if (c >= 1 - VOLUME_SNAP) return 1;
+  return c;
+}
+
+// Sliders are linear in position; loudness is not. Squaring the
+// slider value before it reaches a player spreads the audible range
+// across the whole knob instead of the bottom 10%. Applied where the
+// volume is consumed (Music.setVolume, playSfx, updateSiren), so the
+// stored settings stay in slider units.
+export function perceptualVolume(v: number): number {
+  const c = snapVolume(v);
+  return c * c;
 }

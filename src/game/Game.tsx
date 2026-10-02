@@ -2371,7 +2371,23 @@ export function Game() {
       }
     };
 
-    loopRef.current = startLoop({ update, render });
+    // Frame errors are caught by the loop (it keeps running); record them
+    // in the debug log that bug reports attach, at most one per second
+    // so a fault repeating every frame doesn't flood it.
+    let lastFrameErrorAt = 0;
+    loopRef.current = startLoop({
+      update,
+      render,
+      onError: (err, phase) => {
+        const t = Date.now();
+        if (t - lastFrameErrorAt < 1000) return;
+        lastFrameErrorAt = t;
+        logDebug('error', `frame ${phase} failed`, err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err));
+      },
+      onFatal: (err) => {
+        logDebug('error', 'frame loop failing repeatedly', err instanceof Error ? err.message : String(err));
+      },
+    });
   };
 
   return (

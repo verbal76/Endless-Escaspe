@@ -442,6 +442,13 @@ export function getSavesLoadReport(): SavesLoadReport {
 
 let lastWriteError: string | null = null;
 // Message of the most recent failed saves write (null after a success).
+// One app-level listener (App.tsx shows a notice), so every writeSaves
+// call site surfaces a failed save without handling it itself.
+let writeFailureListener: ((error: string) => void) | null = null;
+export function setSavesWriteFailureListener(fn: ((error: string) => void) | null): void {
+  writeFailureListener = fn;
+}
+
 export function getLastSavesWriteError(): string | null {
   return lastWriteError;
 }
@@ -655,6 +662,11 @@ export function writeSaves(saves: SavesMap): Promise<boolean> {
     } catch (e) {
       lastWriteError = errText(e);
       warnStorage('saves: write failed', e);
+      try {
+        writeFailureListener?.(lastWriteError);
+      } catch {
+        // A failing listener must not turn a logged failure into a rejection.
+      }
       return false;
     }
   });

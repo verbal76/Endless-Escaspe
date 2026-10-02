@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { formatDetailRows } from '../../util/releaseInfo';
 import { checkForNewUpdate, getReleaseInfo, reloadIntoUpdate } from '../../util/releaseRuntime';
+import { flushDebugLog } from '../../util/debug';
 import { getTextureStatus } from '../../util/textures';
 import { formatTextureRow } from '../../util/textureSource';
 import { formatFontRow, getFontStatus } from '../../ui/fonts';
@@ -29,6 +30,8 @@ export function BuildInfo() {
     if (ready) {
       setStatus('Restarting into the new update...');
       try {
+        // Persist the crash trail first: the reload ends this JS context.
+        await flushDebugLog().catch(() => undefined);
         await reloadIntoUpdate();
       } catch (e) {
         setStatus(`Restart failed: ${e instanceof Error ? e.message : String(e)}. Close and reopen the app to apply it.`);

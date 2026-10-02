@@ -65,7 +65,9 @@ export function Toast() {
     transform: [{ translateY: y.value }],
   }));
 
-  if (!toast || runState !== 'playing') return null;
+  // Gameplay notices show only while playing; a warning (a failed or
+  // restored save) shows on the menus too, so it is never silent.
+  if (!toast || (runState !== 'playing' && toast.tone !== 'warn')) return null;
   return (
     <Animated.View
       pointerEvents="none"

@@ -17,6 +17,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useStore, type PlayerSkin } from '../../state/store';
 import {
+  getSave,
+  isSaveKeyTaken,
   newSave,
   saveKeyFromName,
   saveSettings,
@@ -220,7 +222,7 @@ export function StartScreen() {
   // surface on the next tick. Keeps render side-effect-free.
   useEffect(() => {
     if (mode !== 'profile') return;
-    if (!profileKey || !saves[profileKey]) {
+    if (!profileKey || !getSave(saves, profileKey)) {
       setMode(Object.keys(saves).length > 0 ? 'continue' : 'home');
       setProfileKey(null);
     }
@@ -287,7 +289,7 @@ export function StartScreen() {
     // Live read of saves so a save upserted during the keystroke
     // window is honoured by the duplicate check.
     const liveSavesPre = useStore.getState().saves;
-    if (liveSavesPre[key]) {
+    if (isSaveKeyTaken(liveSavesPre, key)) {
       setGameModal({
         title: 'Name already taken',
         body: `"${name}" is already in use. Pick a different name or delete the existing save from the load screen.`,
@@ -329,7 +331,9 @@ export function StartScreen() {
     setPlayerName(s.name);
     setBestStars(s.bestStars);
     setStage(stage ?? s.stage);
-    startRun();
+    // The boss perk travels with the save (also into replays, which
+    // never write it back).
+    startRun({ perkStages: s.perkStages });
   };
 
   // Endless / Daily with this character (coins and bests go to it).
@@ -658,7 +662,7 @@ export function StartScreen() {
   }
 
   if (mode === 'outfits') {
-    const owner = profileKey ? saves[profileKey] : undefined;
+    const owner = getSave(saves, profileKey);
     if (!owner) return null;
     return (
       <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
@@ -705,7 +709,7 @@ export function StartScreen() {
 
   // mode === 'profile'. The effect above redirects when the key is
   // stale; just render nothing this frame.
-  const profile = profileKey ? saves[profileKey] : undefined;
+  const profile = getSave(saves, profileKey);
   if (!profile) return null;
   const clearedStages = Math.max(0, profile.stage - 1);
   // Show every stage they've cleared plus the current "next" stage,

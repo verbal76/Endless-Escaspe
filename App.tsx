@@ -8,7 +8,7 @@ import { Game } from './src/game/Game';
 import { boundedStep } from './src/util/async';
 import { useStore } from './src/state/store';
 import { installDebugLogger, logDebug } from './src/util/debug';
-import { loadSaves, loadSettings } from './src/util/storage';
+import { getSavesLoadReport, loadSaves, loadSettings, setSavesWriteFailureListener } from './src/util/storage';
 import { getTextureStatus, preloadAllTextures } from './src/util/textures';
 import { getReleaseInfo } from './src/util/releaseRuntime';
 import { formatMenuLine } from './src/util/releaseInfo';
@@ -44,7 +44,18 @@ export default function App() {
       useStore.getState().setBossModeUnlocked(s.bossModeUnlocked);
       useStore.getState().setBossModeEnabled(s.bossModeEnabled);
     });
-    const savesReady = loadSaves().then((m) => useStore.getState().setSaves(m));
+    const savesReady = loadSaves().then((m) => {
+      useStore.getState().setSaves(m);
+      if (getSavesLoadReport().recovered) useStore.getState().showToast('Saves restored from backup', 'warn');
+    });
+    // A failed save is never silent (at most one notice per 30 s).
+    let lastWriteNotice = -Infinity;
+    setSavesWriteFailureListener(() => {
+      const now = Date.now();
+      if (now - lastWriteNotice < 30000) return;
+      lastWriteNotice = now;
+      useStore.getState().showToast('Couldn’t save progress - storage error', 'warn');
+    });
     // Audio session (audio review E-1): mix with other apps' audio so
     // the game never pauses the player's own music / podcast, and stay
     // silent in the background. Set before Game mounts (it gates boot

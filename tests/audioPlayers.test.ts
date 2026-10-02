@@ -98,7 +98,9 @@ test('music: boots on a calm track, tension paused while inaudible', async () =>
   const m = await makeMusic(0.6);
   const playingCalm = m.calm.filter((p) => p.playing);
   assert.equal(playingCalm.length, 1);
-  assert.ok(Math.abs(playingCalm[0].volume - 0.36) < 1e-9, 'perceptual curve: 0.6^2');
+  const { perceptualVolume } = await import('../src/util/musicIntensity');
+  assert.ok(Math.abs(playingCalm[0].volume - perceptualVolume(0.6)) < 1e-9, 'perceptual curve');
+  assert.ok(playingCalm[0].volume < 0.6, 'taper is below linear');
   assert.equal(m.tension.playing, false);
   assert.equal(m.tension.loop, true);
 });
@@ -216,7 +218,8 @@ test('sfx: perceptual master, endpoints silent, throttled stingers, new events',
   }
   assert.equal(sfxVolume('gunshot', 0), 0);
   assert.equal(sfxVolume('gunshot', 0.004), 0);
-  assert.ok(Math.abs(sfxVolume('caught', 0.5) - 0.25 * SFX_GAIN.caught) < 1e-9);
+  const { perceptualVolume } = await import('../src/util/musicIntensity');
+  assert.ok(Math.abs(sfxVolume('caught', 0.5) - perceptualVolume(0.5) * SFX_GAIN.caught) < 1e-9);
   // Level balance: the death cues outrank the gunshot that precedes them.
   assert.ok(SFX_GAIN.hurt > SFX_GAIN.gunshot);
   assert.equal(playSfx(s, 'gunshot', 0), false);

@@ -118,12 +118,15 @@ export function snapVolume(v: number): number {
   return c;
 }
 
-// Sliders are linear in position; loudness is not. Squaring the
-// slider value before it reaches a player spreads the audible range
-// across the whole knob instead of the bottom 10%. Applied where the
-// volume is consumed (Music.setVolume, playSfx, updateSiren), so the
+// Sliders are linear in position; loudness is not. A power curve
+// (exponent 1.5, an "audio taper") spreads the audible range across the
+// whole knob instead of the bottom 10%. 1.5 rather than 2 so players'
+// saved settings don't come out much quieter after the update (music
+// at the default sliders moves ~4.6 dB, effects ~1.5 dB). Applied where
+// the volume is consumed (Music.setVolume, playSfx, updateSiren), so the
 // stored settings stay in slider units.
+export const VOLUME_CURVE_EXPONENT = 1.5;
 export function perceptualVolume(v: number): number {
   const c = snapVolume(v);
-  return c * c;
+  return c === 0 ? 0 : Math.pow(c, VOLUME_CURVE_EXPONENT);
 }

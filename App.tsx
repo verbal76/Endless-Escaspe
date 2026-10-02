@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { setAudioModeAsync } from 'expo-audio';
 import { Game } from './src/game/Game';
+import { boundedStep } from './src/util/async';
 import { useStore } from './src/state/store';
 import { installDebugLogger, logDebug } from './src/util/debug';
 import { loadSaves, loadSettings } from './src/util/storage';
@@ -35,7 +36,7 @@ export default function App() {
     installDebugLogger().then(() => {
       logDebug('log', 'app boot');
     });
-    loadSettings().then((s) => {
+    const settingsReady = loadSettings().then((s) => {
       useStore.getState().setMasterVolume(s.masterVolume);
       useStore.getState().setMusicVolume(s.musicVolume);
       useStore.getState().setWeatherEnabled(s.weatherEnabled);
@@ -43,7 +44,7 @@ export default function App() {
       useStore.getState().setBossModeUnlocked(s.bossModeUnlocked);
       useStore.getState().setBossModeEnabled(s.bossModeEnabled);
     });
-    loadSaves().then((m) => useStore.getState().setSaves(m));
+    const savesReady = loadSaves().then((m) => useStore.getState().setSaves(m));
     // Audio session (audio review E-1): mix with other apps' audio so
     // the game never pauses the player's own music / podcast, and stay
     // silent in the background. Set before Game mounts (it gates boot
@@ -53,9 +54,22 @@ export default function App() {
       shouldPlayInBackground: false,
       playsInSilentMode: false,
     }).catch((e) => logDebug('warn', '[audio] setAudioModeAsync failed', e));
-    // Textures and the display font load in parallel; the font never
-    // blocks boot for long (it resolves false on failure).
-    Promise.all([preloadAllTextures(), loadDisplayFont(), audioModeReady]).then(() => {
+    // Boot waits for textures, the display font, the audio session and the
+    // saved settings / characters (so the first sound already uses the
+    // saved volume and the menu shows the real save list). Every step is
+    // time-limited and can't fail the boot: a hung or failing step is
+    // logged and the game starts anyway - never a blank screen.
+    const step = <T,>(name: string, p: Promise<T>, ms: number) =>
+      boundedStep(p, ms).then((r) => {
+        if (r === 'timeout') logDebug('warn', `[boot] ${name} still pending after ${ms} ms - continuing`);
+      }, (e) => logDebug('error', `[boot] ${name} failed`, e));
+    Promise.all([
+      step('textures', preloadAllTextures(), 8000),
+      step('font', loadDisplayFont(), 4000),
+      step('audio mode', audioModeReady, 2000),
+      step('settings', settingsReady, 3000),
+      step('saves', savesReady, 3000),
+    ]).then(() => {
       // One line each in logcat identifying the running code and how
       // the texture files resolved (checked by the Android render CI).
       const info = getReleaseInfo();
@@ -64,6 +78,7 @@ export default function App() {
       );
       console.log(`[textures] ${JSON.stringify(getTextureStatus())}`);
       console.log(`[font] ${JSON.stringify(getFontStatus())}`);
+    }).catch((e) => logDebug('error', '[boot] diagnostics failed', e)).finally(() => {
       setTexturesReady(true);
     });
   }, []);

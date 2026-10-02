@@ -48,7 +48,9 @@ test('perceptual curve: squared, monotonic, exact endpoints', () => {
   assert.equal(perceptualVolume(0), 0);
   assert.equal(perceptualVolume(0.005), 0);
   assert.equal(perceptualVolume(1), 1);
-  assert.equal(perceptualVolume(0.5), 0.25);
+  assert.ok(Math.abs(perceptualVolume(0.5) - Math.pow(0.5, 1.5)) < 1e-12);
+  // Monotonic over the whole slider.
+  for (let v = 0.02; v <= 1; v += 0.02) assert.ok(perceptualVolume(v) >= perceptualVolume(v - 0.02));
   let prev = -1;
   for (let v = 0; v <= 1; v += 0.01) {
     const p = perceptualVolume(v);

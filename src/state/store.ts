@@ -239,7 +239,9 @@ type Store = {
   consumePickup: (kind: PickupKind) => boolean;
   requestRestart: () => void;
   resetForSegment: (seed: number) => void;
-  startRun: () => void;
+  // `opts.perkStages`: boss perk carried by the save being resumed
+  // (Save.perkStages); omitted / invalid -> 0 (fresh perk state).
+  startRun: (opts?: { perkStages?: number }) => void;
 };
 
 let toastSeq = 0;
@@ -271,7 +273,7 @@ export const useStore = create<Store>((set) => ({
   perkRemainingStages: 0,
   playerSkin: 'beige',
   playerName: '',
-  saves: {},
+  saves: Object.create(null) as SavesMap,
   activeSaveName: null,
   pendingStartMode: null,
   lastStats: null,
@@ -400,17 +402,19 @@ export const useStore = create<Store>((set) => ({
   setPlayerName: (n) =>
     set((st) => (st.playerName === n ? st : { playerName: n })),
   setSaves: (m) => set({ saves: m }),
+  // --- save-map plumbing (own-property safe; see storage.hasOwn) ---
+  // Maps are built with a null prototype so a lookup like
+  // saves['constructor'] can't hit Object.prototype.
   upsertSave: (save) =>
     set((st) => ({
-      saves: {
-        ...st.saves,
+      saves: Object.assign(Object.create(null) as SavesMap, st.saves, {
         [save.name.trim().toLowerCase()]: save,
-      },
+      }),
     })),
   removeSave: (key) =>
     set((st) => {
-      if (!(key in st.saves)) return st;
-      const next: SavesMap = {};
+      if (!Object.prototype.hasOwnProperty.call(st.saves, key)) return st;
+      const next: SavesMap = Object.create(null);
       for (const k of Object.keys(st.saves)) {
         if (k !== key) next[k] = st.saves[k];
       }
@@ -490,12 +494,18 @@ export const useStore = create<Store>((set) => ({
       endlessLevel: 1,
       runSummary: null,
     }),
-  startRun: () =>
+  startRun: (opts) =>
     set((st) => ({
       runState: 'playing',
-      // Fresh runs don't inherit a leftover boss perk - the +1
-      // heart buffer is earned per-run inside the gameplay loop.
-      perkRemainingStages: 0,
+      // --- boss-perk persistence ---
+      // A campaign continue resumes the perk stored on the save
+      // (Save.perkStages); anything else starts without one. The
+      // value is checked because startRun is also wired to handlers
+      // that may pass an event object.
+      perkRemainingStages:
+        opts && typeof opts.perkStages === 'number' && Number.isFinite(opts.perkStages)
+          ? Math.max(0, Math.floor(opts.perkStages))
+          : 0,
       hearts: startingHeartsFor(st.stage),
       detection: {},
       stamina: 1,

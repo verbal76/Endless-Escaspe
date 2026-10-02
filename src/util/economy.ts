@@ -17,6 +17,12 @@ export const MAX_COINS = 999_999;
 
 const clampCoins = (n: number) => Math.max(0, Math.min(MAX_COINS, Math.floor(n)));
 
+// Own-property read for the per-stage ledgers (never answered by
+// Object.prototype). Local copy: importing storage.ts here would make
+// an import cycle (storage.ts imports campaignReward).
+const ownNum = (m: Record<number, number>, k: number): number =>
+  Object.prototype.hasOwnProperty.call(m, k) && typeof m[k] === 'number' ? m[k] : 0;
+
 export function campaignReward(stars: number, alreadyPaidStars: number): number {
   const s = Math.max(0, Math.min(3, Math.floor(stars)));
   const paid = Math.max(0, Math.min(3, Math.floor(alreadyPaidStars)));
@@ -45,7 +51,7 @@ export function applyRunResult(save: Save, r: RunResult): { save: Save; earned: 
   let earned = 0;
   let next: Save = { ...save, lastRewardedRun: r.runId };
   if (r.kind === 'campaign') {
-    const paid = save.coinStars[r.stage] ?? 0;
+    const paid = ownNum(save.coinStars, r.stage);
     earned = campaignReward(r.stars, paid);
     if (r.stars > paid) next = { ...next, coinStars: { ...save.coinStars, [r.stage]: Math.min(3, r.stars) } };
   } else if (r.kind === 'endless') {

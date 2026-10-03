@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { FixedText as Text } from '../../ui/Text';
 import { color as ui, type as T, touch } from '../../ui/theme';
 
 // Compact in-app keyboard for name entry. Replaces the system soft

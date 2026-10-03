@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Easing,

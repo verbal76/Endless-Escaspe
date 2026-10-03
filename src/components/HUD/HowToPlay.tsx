@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { BackHandler, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { BackHandler, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { color as ui, fonts, radius, type as T } from '../../ui/theme';

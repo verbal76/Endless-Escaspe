@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { FixedText as Text } from '../../ui/Text';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,

@@ -4,12 +4,12 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   useWindowDimensions,
   View,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { FixedText, Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeIn,
@@ -951,14 +951,14 @@ export function StartScreen() {
                     pressed && styles.boardCellDown,
                   ]}
                 >
-                  <Text style={styles.boardStageNum}>{n}</Text>
-                  <Text style={styles.boardStars} numberOfLines={1}>
+                  <FixedText style={styles.boardStageNum}>{n}</FixedText>
+                  <FixedText style={styles.boardStars} numberOfLines={1}>
                     {stars > 0
                       ? STAR_FILLED.repeat(stars) + STAR_EMPTY.repeat(3 - stars)
                       : isNext
                         ? 'NEXT'
                         : '— — —'}
-                  </Text>
+                  </FixedText>
                 </Pressable>
               );
             })}

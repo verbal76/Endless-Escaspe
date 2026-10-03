@@ -8,10 +8,10 @@ import {
   ScrollView,
   Share,
   StyleSheet,
-  Text,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Text } from '../../ui/Text';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,

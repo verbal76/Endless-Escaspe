@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useStore } from '../../state/store';
 import { color as ui, fonts, type as T } from '../../ui/theme';
 

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/Text';
 import Animated, {
   Easing,
   useAnimatedStyle,

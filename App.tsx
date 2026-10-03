@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -8,7 +9,8 @@ import { Game } from './src/game/Game';
 import { boundedStep } from './src/util/async';
 import { useStore } from './src/state/store';
 import { installDebugLogger, logDebug } from './src/util/debug';
-import { getSavesLoadReport, loadSaves, loadSettings, setSavesWriteFailureListener } from './src/util/storage';
+import { getSavesLoadReport, loadSaves, loadSettings, saveSettings, setSavesWriteFailureListener } from './src/util/storage';
+import { setActiveSettingsAutosave, startSettingsAutosave } from './src/util/settingsAutosave';
 import { getTextureStatus, preloadAllTextures } from './src/util/textures';
 import { getReleaseInfo } from './src/util/releaseRuntime';
 import { formatMenuLine } from './src/util/releaseInfo';
@@ -43,6 +45,20 @@ export default function App() {
       useStore.getState().setTutorialSeen(s.tutorialSeen);
       useStore.getState().setBossModeUnlocked(s.bossModeUnlocked);
       useStore.getState().setBossModeEnabled(s.bossModeEnabled);
+    });
+    // From here on every settings change is saved as it happens (started
+    // after the load so the loaded values aren't written straight back).
+    let autosave: ReturnType<typeof startSettingsAutosave> | null = null;
+    let disposed = false;
+    settingsReady
+      .catch(() => undefined)
+      .then(() => {
+        if (disposed) return;
+        autosave = startSettingsAutosave(useStore, saveSettings);
+        setActiveSettingsAutosave(autosave);
+      });
+    const appStateSub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active') autosave?.flush();
     });
     const savesReady = loadSaves().then((m) => {
       useStore.getState().setSaves(m);
@@ -92,6 +108,13 @@ export default function App() {
     }).catch((e) => logDebug('error', '[boot] diagnostics failed', e)).finally(() => {
       setTexturesReady(true);
     });
+    return () => {
+      disposed = true;
+      appStateSub.remove();
+      autosave?.stop();
+      setActiveSettingsAutosave(null);
+      setSavesWriteFailureListener(null);
+    };
   }, []);
 
   return (

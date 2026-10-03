@@ -3,6 +3,7 @@ import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 import { formatDetailRows } from '../../util/releaseInfo';
 import { checkForNewUpdate, getReleaseInfo, reloadIntoUpdate } from '../../util/releaseRuntime';
 import { flushDebugLog } from '../../util/debug';
+import { flushPendingSettings } from '../../util/settingsAutosave';
 import { getTextureStatus } from '../../util/textures';
 import { formatTextureRow } from '../../util/textureSource';
 import { formatFontRow, getFontStatus } from '../../ui/fonts';
@@ -30,7 +31,9 @@ export function BuildInfo() {
     if (ready) {
       setStatus('Restarting into the new update...');
       try {
-        // Persist the crash trail first: the reload ends this JS context.
+        // Persist pending settings and the crash trail first: the reload
+        // ends this JS context.
+        await flushPendingSettings();
         await flushDebugLog().catch(() => undefined);
         await reloadIntoUpdate();
       } catch (e) {

@@ -3,11 +3,42 @@ name: CI
 # Fast checks for every pull request and every pushed branch; also the
 # `validate` stage of eas-update.yml (workflow_call), so the commit that
 # gets published passed exactly these checks.
+#
+# Every push is validated exactly once. On the publishing branch a push
+# that changes a publishing path starts eas-update.yml, whose validate
+# stage IS this workflow, so the standalone push run stands down (the
+# `plan` job). A push that only touches paths-ignored files (tests, docs,
+# scripts, workflows, native config ...) does not start eas-update.yml,
+# so this workflow runs standalone for it.
+#
+#   event                                    eas-update.yml  this workflow (check)
+#   ---------------------------------------  --------------  ---------------------
+#   push, other branch / tag                 no              runs
+#   pull_request                             no              runs
+#   workflow_dispatch (this workflow)        no              runs
+#   push, live branch, publishing paths      runs, calls us  OTA call runs; the
+#                                                            standalone push run
+#                                                            stands down
+#   push, live branch, ONLY ignored paths    does not start  runs (standalone)
+#   push, live branch, cannot tell (new      maybe           runs (fail-safe: a
+#     branch, force push, >=300 files,                       duplicate is fine,
+#     diff unavailable)                                      an unvalidated push
+#                                                            is not)
+#   eas-update.yml call (push or dispatch)   runs            runs (`ota` = true)
+#
+# The live branch below must equal the branch in eas-update.yml
+# (tests/ciGate.test.ts checks it, and that eas-update.yml's
+# paths-ignore equals scripts/ci/publish-paths.mjs, which plan uses).
 
 on:
   pull_request:
   push:
   workflow_call:
+    inputs:
+      ota:
+        description: 'Set by eas-update.yml: never stand down'
+        type: boolean
+        default: false
   workflow_dispatch:
 
 permissions:
@@ -20,16 +51,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      # Empty (step skipped) means "run".
+      run: ${{ steps.gate.outputs.run || 'true' }}
+    steps:
+      - name: Check out repo
+        if: github.event_name == 'push' && github.ref == 'refs/heads/claude/game-review-suggestions-cjxiqh' && inputs.ota != true
+        uses: actions/checkout@v7
+
+      - name: Will eas-update.yml run for this push?
+        id: gate
+        if: github.event_name == 'push' && github.ref == 'refs/heads/claude/game-review-suggestions-cjxiqh' && inputs.ota != true
+        env:
+          EVENT_BEFORE: ${{ github.event.before }}
+        run: node scripts/ci/publish-gate.mjs standalone
+
   check:
     name: Typecheck, tests, native fingerprint, Android bundle
+    needs: plan
+    if: needs.plan.outputs.run == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'

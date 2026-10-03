@@ -158,10 +158,6 @@ export function getStageLighting(stage: number): StageLighting {
   return MOODS[ORDER[idx]];
 }
 
-export function moodByName(name: MoodName): StageLighting {
-  return MOODS[name];
-}
-
 export type LightRig = {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;

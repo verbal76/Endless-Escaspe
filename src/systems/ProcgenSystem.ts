@@ -4,7 +4,6 @@ import { mulberry32, pick, randInt, type Rng } from '../util/rng';
 import {
   CHUNK_LEN,
   CHUNKS_AHEAD,
-  COVER_RADIUS,
   PLAYER_RADIUS,
   PLAY_HALF_W,
 } from '../util/geometry';

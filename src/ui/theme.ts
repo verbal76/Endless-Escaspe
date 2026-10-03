@@ -9,7 +9,6 @@ const rgba = (r: number, g: number, b: number) => (a: number) => `rgba(${r}, ${g
 export const gold = rgba(255, 209, 74);
 // Panel base (#141820) at any opacity.
 export const panel = rgba(20, 24, 32);
-export const white = rgba(255, 255, 255);
 export const danger = rgba(255, 90, 90);
 export const info = rgba(120, 200, 255);
 export const success = rgba(110, 220, 140);

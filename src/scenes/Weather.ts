@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
+import { CHUNK_LEN, CHUNKS_AHEAD } from '../util/geometry';
 import { markShared } from '../util/dispose';
 
 // Weather: rain or snow or clear. Rolled at the start of each

@@ -100,13 +100,6 @@ export const OBSTACLE_HEIGHT: Record<ObstacleKind, number> = {
   hedgerow: 1.10, // block stretched top
 };
 
-// True if guards can see THROUGH this obstacle. Knee-high stuff yes;
-// torso/head-high stuff no. Used by DetectionSystem (crate already
-// included; this map keeps the rule explicit).
-export function blocksLineOfSight(kind: ObstacleKind): boolean {
-  return kind !== 'lowwall';
-}
-
 // Non-cover obstacle palette - cover is spawned separately by the
 // procgen. Weights bias toward the more-common props (crates,
 // boulders) over the standout-but-rarer ones (cars, trees).

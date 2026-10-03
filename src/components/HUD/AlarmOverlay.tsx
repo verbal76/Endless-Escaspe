@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
 
-// Visual stand-in for a siren until expo-audio is wired. The screen-
+// Visual partner of the siren (scenes/Siren.ts). The screen-
 // edge red border pulses with the *most alarmed* guard's detection so
 // the player gets a single, unambiguous threat reading regardless of
 // how many guards are on the field.

@@ -8,7 +8,6 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
-import {  } from '../../ui/theme';
 
 // Brief full-screen flash on segment win / catch transitions. Sits
 // underneath the Banner card so the card itself stays readable; the

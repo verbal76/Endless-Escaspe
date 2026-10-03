@@ -114,19 +114,3 @@ export function updateSmokeCloud(c: SmokeCloud, dt: number): boolean {
 export function disposeSmokeCloud(c: SmokeCloud) {
   if (POOL.length < 6 && !POOL.includes(c)) POOL.push(c);
 }
-
-// True if (px, pz) lies inside any active cloud's vision-blocking
-// disc. Using XZ distance (ignoring Y) since the gameplay is on a
-// flat plane.
-export function pointInAnySmoke(
-  clouds: readonly SmokeCloud[],
-  px: number,
-  pz: number,
-): boolean {
-  for (const c of clouds) {
-    const dx = c.x - px;
-    const dz = c.z - pz;
-    if (dx * dx + dz * dz <= c.radius * c.radius) return true;
-  }
-  return false;
-}

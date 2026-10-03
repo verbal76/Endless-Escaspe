@@ -58,7 +58,17 @@ export function GameModal({ config: configProp }: { config?: GameModalConfig | n
   if (!config) return null;
 
   return (
-    <Modal visible transparent animationType="fade">
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      // Android back = the dialog's cancel action (or its only action);
+      // a dialog without one ignores back rather than closing silently.
+      onRequestClose={() => {
+        const back = config.actions.find((a) => a.variant === 'cancel') ?? (config.actions.length === 1 ? config.actions[0] : undefined);
+        back?.onPress();
+      }}
+    >
       <View style={styles.backdrop}>
         <Animated.View style={[styles.card, cardStyle]}>
           <Text style={styles.title}>{config.title}</Text>

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,6 +28,7 @@ import {
   type SavesMap,
 } from '../../util/storage';
 import { NameKeyboard } from './NameKeyboard';
+import { startScreenBack, type StartMode } from '../../util/startNav';
 import { getReleaseInfo } from '../../util/releaseRuntime';
 import { formatMenuLine } from '../../util/releaseInfo';
 import { OUTFITS, type OutfitId } from '../../util/outfits';
@@ -140,7 +142,7 @@ function FigurePickButton({
   );
 }
 
-type Mode = 'home' | 'name' | 'tutorialPrompt' | 'continue' | 'profile' | 'outfits';
+type Mode = StartMode;
 
 export function StartScreen() {
   const runState = useStore((s) => s.runState);
@@ -193,6 +195,36 @@ export function StartScreen() {
       setPendingRunAfterTutorial(false);
     }
   }, [runState, mode]);
+
+  // A run always starts from a clean menu: without this, MAIN MENU
+  // returned to whatever step started the run (the name entry, the demo
+  // prompt, a character's stage board) instead of the home menu.
+  // (LOAD RUN still lands on the save list via pendingStartMode.)
+  useEffect(() => {
+    if (runState !== 'idle') setMode('home');
+  }, [runState]);
+
+  // Android back walks the menu steps like the BACK buttons. Not while
+  // a run, the intro or the rules reference is up (they handle it), and
+  // on the home menu back is left to the system.
+  useEffect(() => {
+    if (runState !== 'idle' || showTutorial) return;
+    const target = startScreenBack(mode);
+    if (target === null) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (useStore.getState().howToPlay !== null || useStore.getState().gameModal !== null) return false;
+      if (target === 'home') {
+        setMode('home');
+        setPickedSkin(null);
+        setNameDraft('');
+        setNameError(null);
+      } else {
+        setMode(target);
+      }
+      return true;
+    });
+    return () => sub.remove();
+  }, [mode, runState, showTutorial]);
 
   // Once the player actually leaves idle (run started), clear the
   // pending-run flag so it can't fire again on a future tutorial

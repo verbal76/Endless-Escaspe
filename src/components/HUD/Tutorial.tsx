@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -192,7 +192,6 @@ export function Tutorial() {
     }
     const t = setTimeout(() => setBeat(beat + 1), BEAT_DURATIONS[beat] ?? BEAT_MS);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [beat, showTutorial]);
 
   // Drive the beat-specific animations. Splitting per-beat keeps
@@ -321,6 +320,17 @@ export function Tutorial() {
     opacity: cardT.value,
     transform: [{ translateY: (1 - cardT.value) * 8 }],
   }));
+
+  // Android back skips the intro, like the SKIP button.
+  useEffect(() => {
+    if (!showTutorial) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      dismissAndPersist();
+      return true;
+    });
+    return () => sub.remove();
+    // dismissAndPersist only uses stable store setters.
+  }, [showTutorial]);
 
   if (!showTutorial) return null;
 

@@ -8,8 +8,8 @@ name: APK Build (GitHub-hosted)
 # `expo prebuild` fresh on each CI run to generate the android/
 # project; nothing native is checked into the repo.
 #
-# OTA updates still flow through EAS via eas-update.yml - that
-# workflow stays unchanged and uses EAS's free Updates tier.
+# OTA updates flow through EAS via eas-update.yml (free Updates
+# tier); it only publishes JS whose native fingerprint matches the APKs.
 
 on:
   workflow_dispatch:
@@ -32,12 +32,13 @@ on:
       - 'assets/adaptive-icon.png'
       - 'assets/splash-icon.png'
       - 'assets/adaptive-icon-background.png'
-      - '.github/workflows/apk-build.yml'
+    # This file deliberately does NOT list itself: GitHub evaluates the
+    # pushed version of the workflow, so an edit to the pipeline alone
+    # must not cut a new APK + release (and a new versionCode). Test a
+    # workflow change with a manual run (workflow_dispatch) instead.
 
 permissions:
-  # softprops/action-gh-release needs write access to publish the
-  # release + upload the APK as an asset.
-  contents: write
+  contents: read
 
 concurrency:
   group: apk-build-${{ github.ref }}
@@ -48,6 +49,10 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      # softprops/action-gh-release needs write access to publish the
+      # release + upload the APK as an asset.
+      contents: write
     # Release metadata baked into the APK (see app.config.js): the
     # versionCode is this workflow's run number (= the build-N release
     # tag) and the embedded manifest records the source commit.
@@ -98,6 +103,26 @@ jobs:
 
       - name: Unit tests
         run: npm test
+
+      # Record which native layer this APK carries. eas-update.yml only
+      # publishes OTAs whose fingerprint equals the one recorded for
+      # app.json's version in scripts/native-fingerprint.json; a new
+      # runtime's hash must be recorded there (--record) in the same
+      # change that bumps the version.
+      - name: Native fingerprint
+        id: fp
+        run: |
+          node scripts/check-native-fingerprint.mjs --print | tee fingerprint.txt
+          HASH=$(sed -n 's/^native fingerprint (android) for app version [^:]*: //p' fingerprint.txt)
+          echo "hash=$HASH" >> "$GITHUB_OUTPUT"
+          if ! node scripts/check-native-fingerprint.mjs --hash "$HASH" > /dev/null 2>&1; then
+            echo "::warning::The native fingerprint $HASH is not the one recorded for this app version: OTAs for this runtime will be refused until scripts/native-fingerprint.json is updated (see the step log)."
+          fi
+
+      # Pre-install the pinned NDK with retries instead of Gradle's
+      # on-demand download (a corrupt download failed a render-check run).
+      - name: Install NDK
+        run: bash scripts/ci/install-ndk.sh
 
       - name: Generate android/ project (expo prebuild)
         run: npx expo prebuild --platform android --clean
@@ -160,20 +185,27 @@ jobs:
           name: ${{ steps.apk.outputs.name }}
           path: ${{ steps.apk.outputs.name }}
           if-no-files-found: error
+          # The same file is attached to the GitHub release.
+          retention-days: 7
 
-      # Auto-publish a GitHub Release on every push so testers always
-      # have a stable URL for the latest build. Manual (workflow_-
-      # dispatch) runs skip this and just leave the APK as a workflow
-      # artifact you can download from the run page.
+      # Publish a GitHub Release for every run (push AND manual
+      # workflow_dispatch runs) so testers always have a stable URL for
+      # the latest build. The build-N tag is created at the commit that
+      # was built (without target_commitish GitHub tags the default
+      # branch, which is how build-9..13 ended up on main).
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        # v2.6.2, pinned by commit: third-party action with contents: write.
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           tag_name: build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
           name: 'APK build #${{ github.run_number }}'
           body: |
             Auto-built from commit `${{ github.sha }}`.
 
             **Version ${{ steps.ver.outputs.version }} • Build ${{ github.run_number }}** (runtime ${{ steps.ver.outputs.version }}, update channel `preview`)
+
+            Native fingerprint (android): `${{ steps.fp.outputs.hash }}`
 
             Release-variant APK (debug-keystore signed) with OTA updates enabled. Install via:
             1. Download the APK below.

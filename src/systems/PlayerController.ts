@@ -31,6 +31,158 @@ const STAMINA_REGEN_PER_S = 0.15;
 // Pool level an exhausted player must regain before RUN works again.
 export const STAMINA_RECOVER_AT = 0.3;
 
+function firstHit(obstacles: readonly Obstacle[], x: number, z: number): Obstacle | null {
+  for (const o of obstacles) {
+    if (obstacleHitsPlayer(o, x, z)) return o;
+  }
+  return null;
+}
+
+function isObb(o: Obstacle): o is Obstacle & { halfW: number; halfL: number; rotY: number } {
+  return o.halfW !== undefined && o.halfL !== undefined && o.rotY !== undefined;
+}
+
+// Where the player would be ejected to from (x, z) for one obstacle.
+function pushOut(o: Obstacle, x: number, z: number): { x: number; z: number } {
+  if (isObb(o)) {
+    return pushCircleFromObb(x, z, PLAYER_RADIUS, { x: o.x, z: o.z, halfW: o.halfW, halfL: o.halfL, rotY: o.rotY });
+  }
+  const dx = x - o.x;
+  const dz = z - o.z;
+  const d = Math.hypot(dx, dz);
+  if (d < 0.0001) return { x, z };
+  const minD = PLAYER_RADIUS + o.r + 0.001;
+  return { x: o.x + (dx / d) * minD, z: o.z + (dz / d) * minD };
+}
+
+// Outward surface normal of an obstacle at (x, z) (the mover's centre,
+// touching or just outside the prop), or null if undefined.
+function contactNormal(o: Obstacle, x: number, z: number): { x: number; z: number } | null {
+  let nx: number;
+  let nz: number;
+  if (isObb(o)) {
+    const dx = x - o.x;
+    const dz = z - o.z;
+    const c = Math.cos(-o.rotY);
+    const s = Math.sin(-o.rotY);
+    const lx = dx * c - dz * s;
+    const lz = dx * s + dz * c;
+    const cx = Math.max(-o.halfW, Math.min(o.halfW, lx));
+    const cz = Math.max(-o.halfL, Math.min(o.halfL, lz));
+    let ex = lx - cx;
+    let ez = lz - cz;
+    if (ex === 0 && ez === 0) {
+      // Centre inside the box: nearest face.
+      if (o.halfW - Math.abs(lx) < o.halfL - Math.abs(lz)) ex = Math.sign(lx) || 1;
+      else ez = Math.sign(lz) || 1;
+    }
+    const cb = Math.cos(o.rotY);
+    const sb = Math.sin(o.rotY);
+    nx = ex * cb - ez * sb;
+    nz = ex * sb + ez * cb;
+  } else {
+    nx = x - o.x;
+    nz = z - o.z;
+  }
+  const l = Math.hypot(nx, nz);
+  return l > 1e-9 ? { x: nx / l, z: nz / l } : null;
+}
+
+// One movement step against props and the playfield bounds.
+//
+// The bounds clamp is applied BEFORE any collision test (a prop poking
+// past the fence used to be tested at the unclamped x, then the clamp
+// pulled the player back inside it), and the depenetration pass below
+// folds the clamp in. A blocked move first slides along the contact
+// surface (velocity minus its into-surface component), so round props
+// (trees, barrels) deflect the player around them instead of stopping
+// them dead; axis-separated moves remain the fallback.
+export function resolveMove(
+  x: number,
+  z: number,
+  dx: number,
+  dz: number,
+  obstacles: readonly Obstacle[],
+  segmentEndZ: number,
+): { x: number; z: number } {
+  const clampX = (v: number) => Math.max(-PLAYER_X_LIMIT, Math.min(PLAYER_X_LIMIT, v));
+  const clampZ = (v: number) => Math.max(PLAYFIELD_BACK_Z, Math.min(segmentEndZ, v));
+  let nx = clampX(x + dx);
+  let nz = clampZ(z + dz);
+  const hit = firstHit(obstacles, nx, nz);
+  if (hit) {
+    let moved = false;
+    // Slide along the contact surface: drop the into-surface part of
+    // the step, then project back onto the surface (a tangent step off
+    // a curved prop ends a hair inside it).
+    const n = contactNormal(hit, x, z);
+    if (n) {
+      const into = dx * n.x + dz * n.z;
+      if (into < 0) {
+        let sx = clampX(x + dx - into * n.x);
+        let sz = clampZ(z + dz - into * n.z);
+        const again = firstHit(obstacles, sx, sz);
+        if (again) {
+          const out = pushOut(again, sx, sz);
+          sx = clampX(out.x);
+          sz = clampZ(out.z);
+        }
+        if (!firstHit(obstacles, sx, sz) && Math.hypot(sx - x, sz - z) <= Math.hypot(dx, dz) + 1e-6) {
+          nx = sx;
+          nz = sz;
+          moved = true;
+        }
+      }
+    }
+    if (!moved) {
+      // Sequential X-then-Z fallback.
+      nx = clampX(x + dx);
+      if (firstHit(obstacles, nx, z)) nx = x;
+      nz = clampZ(z + dz);
+      if (firstHit(obstacles, nx, nz)) nz = z;
+    }
+  }
+
+  // Anti-stick push-out. If the resolved position still penetrates an
+  // obstacle (spawned / respawned inside one, or a pinch between a
+  // prop and the fence), eject along the surface normal with the
+  // bounds clamp folded into every pass, so the clamp can't undo the
+  // push. Several passes catch overlapping obstacles.
+  for (let pass = 0; pass < 4; pass++) {
+    let pushed = false;
+    for (const o of obstacles) {
+      if (!obstacleHitsPlayer(o, nx, nz)) continue;
+      const out = pushOut(o, nx, nz);
+      nx = clampX(out.x);
+      nz = clampZ(out.z);
+      pushed = true;
+    }
+    if (!pushed) break;
+  }
+  if (firstHit(obstacles, nx, nz)) {
+    // Still wedged (the push-out points through the fence): take the
+    // nearest free spot inside the bounds.
+    for (let r = 0.05; r <= 1.2; r += 0.05) {
+      let best: { x: number; z: number } | null = null;
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2;
+        const cx = clampX(nx + Math.cos(a) * r);
+        const cz = clampZ(nz + Math.sin(a) * r);
+        if (!firstHit(obstacles, cx, cz)) {
+          best = { x: cx, z: cz };
+          break;
+        }
+      }
+      if (best) {
+        nx = best.x;
+        nz = best.z;
+        break;
+      }
+    }
+  }
+  return { x: nx, z: nz };
+}
+
 export function updatePlayer(
   p: Player,
   obstacles: readonly Obstacle[],
@@ -100,70 +252,7 @@ export function updatePlayer(
   p.vx = -input.axisX * speed;
   p.vz = input.axisY * speed;
 
-  // Sequential X-then-Z collision resolution. ALL obstacles (including
-  // cover) block the player; cover only matters for guard line of
-  // sight and the prone-hide check.
-  let nx = p.x + p.vx * dt;
-  for (const o of obstacles) {
-    if (obstacleHitsPlayer(o, nx, p.z)) {
-      nx = p.x;
-      break;
-    }
-  }
-  let nz = p.z + p.vz * dt;
-  for (const o of obstacles) {
-    if (obstacleHitsPlayer(o, nx, nz)) {
-      nz = p.z;
-      break;
-    }
-  }
-
-  // Anti-stick push-out. If the resolved position still penetrates
-  // an obstacle (e.g. soft-wall + obstacle pinch from the previous
-  // frame wedged us inside), eject along the surface normal. Four
-  // passes catches cases where multiple obstacles overlap. OBB
-  // obstacles use pushCircleFromObb (closest-face eject); circular
-  // obstacles use the radial eject the prior code did.
-  for (let pass = 0; pass < 4; pass++) {
-    let pushed = false;
-    for (const o of obstacles) {
-      if (!obstacleHitsPlayer(o, nx, nz)) continue;
-      if (o.halfW !== undefined && o.halfL !== undefined && o.rotY !== undefined) {
-        const out = pushCircleFromObb(nx, nz, PLAYER_RADIUS, {
-          x: o.x,
-          z: o.z,
-          halfW: o.halfW,
-          halfL: o.halfL,
-          rotY: o.rotY,
-        });
-        nx = out.x;
-        nz = out.z;
-        pushed = true;
-      } else {
-        const dx = nx - o.x;
-        const dz = nz - o.z;
-        const minD = PLAYER_RADIUS + o.r;
-        const distSq = dx * dx + dz * dz;
-        if (distSq > 0.0001) {
-          const d = Math.sqrt(distSq);
-          nx = o.x + (dx / d) * minD;
-          nz = o.z + (dz / d) * minD;
-          pushed = true;
-        }
-      }
-    }
-    if (!pushed) break;
-  }
-
-  // Soft playfield walls. PLAY_HALF_W is the half-width of the
-  // playfield; the player can roam its full width (the camera now
-  // tracks them at 1:1, no lateral dampening).
-  const xLimit = PLAYER_X_LIMIT;
-  if (nx > xLimit) nx = xLimit;
-  if (nx < -xLimit) nx = -xLimit;
-  if (nz < PLAYFIELD_BACK_Z) nz = PLAYFIELD_BACK_Z;
-  if (nz > segmentEndZ) nz = segmentEndZ;
-
+  const { x: nx, z: nz } = resolveMove(p.x, p.z, p.vx * dt, p.vz * dt, obstacles, segmentEndZ);
   p.x = nx;
   p.z = nz;
 }

@@ -76,3 +76,69 @@ test('stop() ends the loop and huge frame gaps are clamped', () => {
   h.handle.stop();
   assert.equal(h.frame(), false);
 });
+
+// C-5: vsync jitter at 60 Hz must not alternate 0 / 2 sim steps per
+// rendered frame (repeated position, then a double step).
+test('60 Hz with vsync jitter runs exactly one sim step per rendered frame', () => {
+  let steps = 0;
+  const perFrame: number[] = [];
+  const h = harness(
+    () => {
+      steps++;
+    },
+    () => {
+      perFrame.push(steps);
+      steps = 0;
+    },
+  );
+  let seed = 1;
+  const jitter = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 0.6; // +-0.3 ms
+  for (let i = 0; i < 600; i++) h.frame(1000 / 60 + jitter());
+  const odd = perFrame.slice(2).filter((n) => n !== 1).length;
+  assert.equal(odd, 0, `${odd} frames ran 0 or 2 steps`);
+});
+
+test('snapping never drifts the sim clock on a 59 Hz / 61 Hz display', () => {
+  for (const hz of [59, 61, 90, 120, 30]) {
+    let steps = 0;
+    const h = harness(() => {
+      steps++;
+    });
+    const frames = hz * 20; // 20 s
+    for (let i = 0; i < frames; i++) h.frame(1000 / hz);
+    const want = 20 * 60;
+    assert.ok(Math.abs(steps - want) <= 1, `${hz} Hz: ${steps} steps for ${want}`);
+  }
+});
+
+// C-10: a static picture (paused) is redrawn at a quarter rate; the
+// sim keeps its normal cadence and full-rate drawing resumes at once.
+test('static frames are rendered at a throttled rate', () => {
+  let t = 0;
+  let pending: ((now: number) => void) | null = null;
+  let renders = 0;
+  let paused = true;
+  startLoop({
+    update: () => {},
+    render: () => {
+      renders++;
+    },
+    isStatic: () => paused,
+    now: () => t,
+    schedule: (cb) => {
+      pending = cb;
+    },
+  });
+  const frame = () => {
+    t += 1000 / 60;
+    const cb = pending;
+    pending = null;
+    cb?.(t);
+  };
+  for (let i = 0; i < 40; i++) frame();
+  assert.equal(renders, 10);
+  paused = false;
+  frame();
+  frame();
+  assert.equal(renders, 12);
+});

@@ -74,7 +74,16 @@ export type DetectionTuning = {
 // (noise still counts - smoke covers eyes, not ears).
 export type SmokeRegion = { x: number; z: number; radius: number };
 
-function smokeBlocks(
+export function pointInSmoke(regions: readonly SmokeRegion[], x: number, z: number): boolean {
+  for (const r of regions) {
+    const dx = x - r.x;
+    const dz = z - r.z;
+    if (dx * dx + dz * dz <= r.radius * r.radius) return true;
+  }
+  return false;
+}
+
+export function smokeBlocks(
   regions: readonly SmokeRegion[],
   ax: number,
   az: number,
@@ -113,6 +122,33 @@ export function guardCanSee(
   if (smokeBlocks(smokeRegions, guard.x, guard.z, player.x, player.z)) return false;
   const coverHeight = player.isCrouched ? COVER_HEIGHT_CROUCHED : COVER_HEIGHT_STANDING;
   return clearLine(obstacles, guard.x, guard.z, player.x, player.z, coverHeight);
+}
+
+// Per-guard share of the external detection feeds. The light feeds
+// (floodlight rate, searchlight jolt) only reach a guard who could
+// plausibly see the lit player: within its vision range and with no
+// smoke between them. The dog's smell is already per handler (and
+// gated on the dog being with the handler in Dog.ts). A guard that
+// gets a non-zero feed also gets a rough fix on the player through
+// GuardSenses.external, so the feed never leaves it searching blind.
+export function externalFeedFor(
+  guard: Guard,
+  player: Player,
+  visionRange: number,
+  lightFeed: number,
+  smell: number,
+  smokeRegions: readonly SmokeRegion[] = [],
+): number {
+  if (guard.stunTimer > 0) return 0;
+  let feed = smell > 0 ? smell : 0;
+  if (
+    lightFeed > 0 &&
+    dist2Sq(guard.x, guard.z, player.x, player.z) <= visionRange * visionRange &&
+    !smokeBlocks(smokeRegions, guard.x, guard.z, player.x, player.z)
+  ) {
+    feed += lightFeed;
+  }
+  return feed;
 }
 
 export type DetectionResult = {

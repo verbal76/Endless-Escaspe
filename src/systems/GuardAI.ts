@@ -2,6 +2,7 @@ import type { Guard, Obstacle, Player } from '../types/world';
 import { dist2Sq } from '../util/math';
 import { clearLine } from '../util/collision';
 import { PLAY_HALF_W } from '../util/geometry';
+import { simRandom } from '../util/rng';
 import type { NavGrid } from './NavGrid';
 import { navigateToward, resetNavState } from './Navigator';
 
@@ -87,13 +88,18 @@ export type GuardSenses = {
   visual: boolean;
   heard: boolean;
   aiTier: number;
+  // An external feed (floodlight on the player, searchlight jolt, the
+  // handler's dog smelling the player) raised this guard's meter this
+  // frame. Like noise it gives a rough fix on the player's position,
+  // so the guard has somewhere to search instead of freezing.
+  external?: boolean;
 };
 
-const NO_SENSES: GuardSenses = { visual: false, heard: false, aiTier: 1 };
+const NO_SENSES: GuardSenses = { visual: false, heard: false, aiTier: 1, external: false };
 
 function rngTarget(g: Guard, grid: NavGrid | null): { x: number; z: number } {
-  const angle = Math.random() * Math.PI * 2;
-  const r = Math.random() * g.homeRadius;
+  const angle = simRandom() * Math.PI * 2;
+  const r = simRandom() * g.homeRadius;
   // Stay inside playfield even if homeRadius nudges outside.
   let x = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, g.homeX + Math.cos(angle) * r));
   let z = Math.max(2, Math.min(g.homeZ + g.homeRadius, g.homeZ + Math.sin(angle) * r));
@@ -129,8 +135,8 @@ function moveToward(
 }
 
 function pickSearchPoint(g: Guard, grid: NavGrid | null, cx: number, cz: number) {
-  const angle = Math.random() * Math.PI * 2;
-  const r = (0.4 + Math.random() * 0.6) * SEARCH_RADIUS;
+  const angle = simRandom() * Math.PI * 2;
+  const r = (0.4 + simRandom() * 0.6) * SEARCH_RADIUS;
   let sx = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, cx + Math.cos(angle) * r));
   let sz = Math.max(2, cz + Math.sin(angle) * r);
   if (grid) {
@@ -144,6 +150,14 @@ function pickSearchPoint(g: Guard, grid: NavGrid | null, cx: number, cz: number)
 }
 
 function setState(g: Guard, next: Guard['state'], target?: { x: number; z: number } | null) {
+  // Invariant: 'investigate' always has a goal. Without a target (no
+  // sighting, no noise fix) a guard would stand frozen until the
+  // timeout, so a goal-less request is refused: a wandering guard
+  // keeps wandering, anyone else heads home.
+  if (next === 'investigate' && !target && !g.investigationTarget) {
+    if (g.state === 'wander' || g.state === 'return') return;
+    next = 'return';
+  }
   if (g.state === next) return;
   g.state = next;
   g.behaviorTimer = 0;
@@ -178,6 +192,13 @@ export function hearNoiseAt(g: Guard, x: number, z: number) {
     g.investigationTarget = { x, z };
     if (g.state === 'wander' || g.state === 'return' || g.state === 'alert') {
       setState(g, 'investigate', { x, z });
+    } else {
+      // Already investigating: a new cue (rock, radio call-out) is a
+      // new lead, so the search clock restarts for it instead of the
+      // guard dropping the fresh spot a second later on the old
+      // investigation's timeout.
+      g.behaviorTimer = 0;
+      resetNavState(g.nav);
     }
   }
 }
@@ -233,11 +254,11 @@ export function updateGuard(
       g.lookTimer = LOOK_SCAN_S;
       g.lookBase = Math.atan2(g.lastSeen.z - g.z, g.lastSeen.x - g.x);
     }
-    if (senses.heard && g.hearTimer <= 0) {
+    if ((senses.heard || senses.external) && g.hearTimer <= 0) {
       const d = Math.hypot(p.x - g.x, p.z - g.z);
       const err = d * HEAR_ERROR_FRAC;
-      const a = Math.random() * Math.PI * 2;
-      g.lastHeard = { x: p.x + Math.cos(a) * err * Math.random(), z: p.z + Math.sin(a) * err * Math.random() };
+      const a = simRandom() * Math.PI * 2;
+      g.lastHeard = { x: p.x + Math.cos(a) * err * simRandom(), z: p.z + Math.sin(a) * err * simRandom() };
       g.sinceHeard = 0;
       g.hearTimer = HEAR_REFRESH_S;
     }
@@ -313,12 +334,19 @@ export function updateGuard(
         if (!ok) g.behaviorTimer = ALERT_PAUSE_S;
       }
       if (g.behaviorTimer >= ALERT_PAUSE_S) {
+        // setState refuses a goal-less investigate (-> return).
         setState(g, 'investigate', g.investigationTarget ?? believed);
       }
       break;
     }
     case 'investigate': {
-      if (g.investigationTarget) {
+      if (!g.investigationTarget) {
+        // Defensive: nothing to search (the invariant in setState
+        // should make this unreachable). Never stand frozen.
+        setState(g, 'return');
+        break;
+      }
+      {
         const ok = moveToward(
           g,
           g.investigationTarget.x,

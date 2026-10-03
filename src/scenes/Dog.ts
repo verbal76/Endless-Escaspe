@@ -3,10 +3,11 @@ import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import type { Guard, Obstacle, Player } from '../types/world';
 import type { NavGrid } from '../systems/NavGrid';
 import { createNavState, navigateToward, resetNavState, type NavState } from '../systems/Navigator';
-import type { SmokeRegion } from '../systems/DetectionSystem';
+import { pointInSmoke as inSmoke, type SmokeRegion } from '../systems/DetectionSystem';
 import { dist2Sq } from '../util/math';
 import { PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
+import { simRandom } from '../util/rng';
 import { dog_OBJ } from '../../assets/animals/dogObj';
 import { getVehicleColormap } from '../util/textures';
 import { tagAuditMaterial } from '../util/renderAudit';
@@ -99,6 +100,13 @@ const SMELL_RADIUS_SQ = SMELL_RADIUS * SMELL_RADIUS;
 const SMELL_RATE = 0.25;
 
 const DOG_PATROL_SPEED = 2.2;
+// Leashed dogs speed up with the gap to their trail slot so they keep
+// up with a handler who is investigating (4.0 m/s) or chasing (5.0).
+const LEASH_CATCHUP_PER_M = 2.0;
+const LEASH_SLACK_M = 1.2;
+// The handler only gets smell reports from a dog that is actually
+// with them.
+export const SMELL_HANDLER_RANGE = 15;
 // Faster than a walking or crouching player, slower than a sprint
 // (7.0 m/s): a running player can always open distance.
 export const DOG_CHASE_SPEED = 5.6;
@@ -146,6 +154,13 @@ export type Dog = {
   nav: NavState;
   group: THREE.Group;
 };
+
+// Leash follow speed for a dog `gap` metres from its trail slot: the
+// patrol amble when close, rising with the gap up to chase speed, so
+// a moving handler never leaves the dog behind.
+export function leashFollowSpeed(gap: number): number {
+  return Math.min(DOG_CHASE_SPEED, DOG_PATROL_SPEED + Math.max(0, gap - LEASH_SLACK_M) * LEASH_CATCHUP_PER_M);
+}
 
 export function createDog(id: number, handlerGuardId: number, x: number, z: number): Dog {
   const group = new THREE.Group();
@@ -195,14 +210,6 @@ export function resetDog(d: Dog, x: number, z: number) {
   setDogState(d, 'leash');
 }
 
-function inSmoke(regions: readonly SmokeRegion[], x: number, z: number): boolean {
-  for (const r of regions) {
-    const dx = x - r.x;
-    const dz = z - r.z;
-    if (dx * dx + dz * dz <= r.radius * r.radius) return true;
-  }
-  return false;
-}
 
 export type DogWorld = {
   grid: NavGrid | null;
@@ -262,7 +269,7 @@ export function updateDog(
     case 'confused': {
       // Short aimless sniffing hops around where the scent was lost.
       if (Math.hypot(d.wanderX - d.x, d.wanderZ - d.z) < 0.4) {
-        const a = Math.random() * Math.PI * 2;
+        const a = simRandom() * Math.PI * 2;
         d.wanderX = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, d.x + Math.cos(a) * 2));
         d.wanderZ = d.z + Math.sin(a) * 2;
       }
@@ -306,7 +313,8 @@ export function updateDog(
         // Trail position: 1m to the side of the handler, on whichever
         // side leaves the dog inside the playfield.
         const offset = handler.x < 0 ? 1 : -1;
-        go(d, handler.x + offset, handler.z, DOG_PATROL_SPEED, dt, w);
+        const gap = Math.hypot(handler.x + offset - d.x, handler.z - d.z);
+        go(d, handler.x + offset, handler.z, leashFollowSpeed(gap), dt, w);
       }
       break;
     }
@@ -314,7 +322,13 @@ export function updateDog(
 
   // Smell contribution to the handler's detection meter only while
   // still on leash.
-  if (d.state === 'leash' && handler && dSq <= SMELL_RADIUS_SQ && !playerHiddenBySmoke) {
+  if (
+    d.state === 'leash' &&
+    handler &&
+    dSq <= SMELL_RADIUS_SQ &&
+    !playerHiddenBySmoke &&
+    dist2Sq(d.x, d.z, handler.x, handler.z) <= SMELL_HANDLER_RANGE * SMELL_HANDLER_RANGE
+  ) {
     const proximity = 1 - dSq / SMELL_RADIUS_SQ;
     return SMELL_RATE * proximity * dt;
   }

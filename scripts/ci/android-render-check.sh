@@ -44,12 +44,26 @@ audit_settled() {
 # wait_for_audit <logcat file> <timeout s>: dumps logcat into the file
 # until audit_settled or the timeout (the checker then reports what is
 # missing).
+#
+# Only this launch's process is read (logcat --pid): `logcat -c` does
+# not reliably drop lines the previous process wrote just before its
+# force-stop, and a stale render-audit line used to "settle" the second
+# launch instantly with none of its boot lines in the file.
 wait_for_audit() {
-  local f=$1 limit=$2 waited=0
+  local f=$1 limit=$2 waited=0 pid=""
   while :; do
-    adb logcat -d > "$f"
-    if audit_settled "$f"; then
-      echo "launch settled after ~${waited}s ($f)"
+    if [ -z "$pid" ]; then
+      pid=$(adb shell pidof "$PKG" | tr -d '\r' | awk '{print $1}')
+      # Never the previous launch's process (if force-stop was slow).
+      [ -n "$pid" ] && [ "$pid" = "${STALE_PID:-}" ] && pid=""
+    fi
+    if [ -n "$pid" ]; then
+      adb logcat -d --pid="$pid" > "$f"
+    else
+      : > "$f"
+    fi
+    if [ -n "$pid" ] && audit_settled "$f"; then
+      echo "launch settled after ~${waited}s (pid $pid, $f)"
       return 0
     fi
     if [ "$waited" -ge "$limit" ]; then
@@ -83,6 +97,7 @@ adb logcat -c
 launch
 wait_for_audit "$OUT/logcat-launch1.txt" 240
 adb exec-out screencap -p > "$OUT/launch1.png"
+STALE_PID=$(adb shell pidof "$PKG" | tr -d '\r' | awk '{print $1}')
 adb shell am force-stop "$PKG"
 wait_until 15 app_stopped || echo "note: process still listed 15s after force-stop"
 

@@ -15,6 +15,7 @@ import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts }
 
 import { STAT_DETECTED_3, STAT_TIMES_3 } from '../../util/scoring';
 import { SkullIcon } from '../../ui/icons';
+import { dailyRunAgainDay, dailySeed } from '../../util/daily';
 
 const STAR_FILLED = '★';
 const STAR_EMPTY = '☆';
@@ -186,9 +187,18 @@ export function Banner() {
             <Pressable
               style={({ pressed }) => [styles.btn, compact && styles.btnCompact, pressed && styles.btnDown]}
               onPress={() => {
-                // Daily: the same seeded run again. Endless: a fresh yard.
-                if (summary!.mode === 'daily') requestRestart();
-                else resetForSegment((Math.random() * 0x7fffffff) | 0);
+                // Daily: the same seeded run again - unless the UTC day
+                // has rolled over, then today's Daily. Endless: a fresh yard.
+                if (summary!.mode === 'daily') {
+                  const st = useStore.getState();
+                  const next = dailyRunAgainDay(st.dailyDay, new Date());
+                  if (next.sameDay) requestRestart();
+                  else {
+                    st.setGameMode('daily', next.day);
+                    st.startRun();
+                    resetForSegment(dailySeed(next.day));
+                  }
+                } else resetForSegment((Math.random() * 0x7fffffff) | 0);
               }}
             >
               <Text style={styles.btnLabel}>RUN AGAIN</Text>

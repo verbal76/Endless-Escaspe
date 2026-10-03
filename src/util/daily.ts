@@ -27,3 +27,11 @@ export function dailySeed(dayKey: string, rulesVersion: number = DAILY_RULES_VER
   // Never 0 (mulberry32 handles it, but keep seeds recognisable).
   return fnv1a(`endless-escape:daily:${dayKey}:rules-v${rulesVersion}`) || 1;
 }
+
+// RUN AGAIN on a Daily result (review A-12): the same yard again while
+// it is still that UTC day; after midnight, today's Daily instead of
+// replaying (and recording as "today") yesterday's.
+export function dailyRunAgainDay(playedDay: string | null, now: Date): { sameDay: boolean; day: string } {
+  const today = utcDayKey(now);
+  return { sameDay: playedDay === today, day: today };
+}

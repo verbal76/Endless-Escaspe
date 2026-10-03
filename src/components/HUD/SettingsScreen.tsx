@@ -22,7 +22,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
 import { composeBugReportUrl, composeFeatureRequestUrl, composeVitalsText, openSupportUrl } from '../../util/support';
-import { BuildInfo } from './BuildInfo';
+import { AboutPanel } from './AboutPanel';
+import { formatMenuLine } from '../../util/releaseInfo';
+import { getReleaseInfo } from '../../util/releaseRuntime';
 import { HowToPlay } from './HowToPlay';
 import { CARD_BORDER, CARD_PADDING, PANEL_MARGIN, pausePanelHeights } from '../../ui/pauseLayout';
 import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts, touch } from '../../ui/theme';
@@ -148,10 +150,12 @@ export function SettingsScreen() {
     // A reference left open when the panel last closed another way
     // (restart, main menu) must not reappear.
     if (useStore.getState().howToPlay === 'pause') useStore.getState().setHowToPlay(null);
+    useStore.getState().setAboutOpen(false);
     setOpen(true);
     setPaused(true);
   };
   const close = () => {
+    useStore.getState().setAboutOpen(false);
     setOpen(false);
     setPaused(false);
     persistSettings();
@@ -246,7 +250,8 @@ export function SettingsScreen() {
         onRequestClose={() => {
           // Back closes the rules reference first, then the panel.
           const st = useStore.getState();
-          if (st.howToPlay === 'pause') st.setHowToPlay(null);
+          if (st.aboutOpen) st.setAboutOpen(false);
+          else if (st.howToPlay === 'pause') st.setHowToPlay(null);
           else close();
         }}
       >
@@ -379,8 +384,15 @@ export function SettingsScreen() {
                   </Pressable>
                 </View>
 
-                <Text style={styles.sectionHeading}>Build / Update Info</Text>
-                <BuildInfo />
+                <Text style={styles.sectionHeading}>About</Text>
+                <Pressable
+                  accessibilityLabel="About: version, build and update info"
+                  onPress={() => useStore.getState().setAboutOpen(true)}
+                  style={({ pressed }) => [styles.feedbackBtn, styles.helpBtn, pressed && styles.btnPressed]}
+                >
+                  <Text style={styles.feedbackLabel}>ABOUT</Text>
+                </Pressable>
+                <Text style={styles.subLabel}>{formatMenuLine(getReleaseInfo())}</Text>
               </ScrollView>
             </View>
           </View>
@@ -388,6 +400,7 @@ export function SettingsScreen() {
         {/* The pause panel is its own native modal, so the rules
             reference opened from here renders inside it. */}
         <HowToPlay where="pause" />
+        <AboutPanel />
         </GestureHandlerRootView>
       </Modal>
     </>

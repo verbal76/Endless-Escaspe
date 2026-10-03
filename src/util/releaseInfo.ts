@@ -59,7 +59,7 @@ export type ReleaseInfo = {
 
 export const UNAVAILABLE = 'Unavailable';
 
-type ReleaseExtra = { gitSha?: unknown; otaSequence?: unknown };
+type ReleaseExtra = { gitSha?: unknown; otaSequence?: unknown; targetSdk?: unknown; signing?: unknown };
 
 function asObject(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
@@ -238,4 +238,22 @@ export function formatVitalsText(menuLine: string, rows: InfoRow[], os: string, 
     '',
     ...formatInfoLines(menuLine, rows, os),
   ].join('\n');
+}
+
+// Build facts that travel in the same `extra.release` block (written by
+// app.config.js): the Android target SDK the app was built against and
+// the signing state of the APK. Both are optional - an older build or
+// update simply doesn't carry them and About shows them as unavailable.
+export type BuildExtra = { targetSdk: number | null; signing: string | null };
+
+export function readBuildExtra(...manifests: unknown[]): BuildExtra {
+  for (const m of manifests) {
+    const r = readReleaseExtra(m);
+    if (!r) continue;
+    const n = typeof r.targetSdk === 'number' ? r.targetSdk : typeof r.targetSdk === 'string' && /^\d+$/.test(r.targetSdk) ? Number(r.targetSdk) : NaN;
+    const targetSdk = Number.isInteger(n) && n >= 1 && n <= 99 ? n : null;
+    const signing = nonEmptyString(r.signing);
+    if (targetSdk !== null || signing !== null) return { targetSdk, signing };
+  }
+  return { targetSdk: null, signing: null };
 }

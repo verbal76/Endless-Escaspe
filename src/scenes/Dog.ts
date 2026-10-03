@@ -303,7 +303,8 @@ export function updateDog(
         break;
       }
       const offset = handler.x < 0 ? 1 : -1;
-      const ok = go(d, handler.x + offset, handler.z, DOG_RETURN_SPEED, dt, w);
+      const gap = Math.hypot(handler.x + offset - d.x, handler.z - d.z);
+      const ok = go(d, handler.x + offset, handler.z, Math.max(DOG_RETURN_SPEED, leashFollowSpeed(gap)), dt, w);
       if (!ok || dist2Sq(d.x, d.z, handler.x + offset, handler.z) < 1.5) setDogState(d, 'leash');
       break;
     }

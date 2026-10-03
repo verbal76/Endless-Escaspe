@@ -222,6 +222,20 @@ test('B-6: a leashed dog keeps up with an investigating / chasing handler', () =
     assert.ok(worst < 4, `speed ${speed}: dog fell ${worst.toFixed(1)} m behind`);
   }
   assert.ok(leashFollowSpeed(0) <= 2.2 + 1e-9);
+  // A dog trotting back after a chase also closes on a moving handler.
+  const handler = createGuard({ id: 1, homeX: 3, homeZ: 0, homeRadius: 3 });
+  handler.x = 3;
+  handler.z = 0;
+  const d = createDog(1, 1, 2, -10);
+  d.state = 'return';
+  const p = createPlayer();
+  p.x = -8;
+  p.z = -80;
+  for (let i = 0; i < 60 * 10; i++) {
+    handler.z += 4.0 * DT;
+    updateDog(d, handler, p, DT);
+  }
+  assert.ok(Math.hypot(d.x - handler.x, d.z - handler.z) < 4, 'returning dog caught up');
 });
 
 // ---- B-7: player collision ---------------------------------------------

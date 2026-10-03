@@ -107,6 +107,7 @@ export class NavGrid {
     const cosR = hasObb ? Math.cos(-(o.rotY as number)) : 1;
     const sinR = hasObb ? Math.sin(-(o.rotY as number)) : 0;
     const circleSq = (o.r + this.inflate) * (o.r + this.inflate);
+    if (r0 <= r1 && r0 < this.paintFloor) this.paintFloor = r0;
     for (let row = r0; row <= r1; row++) {
       const z = this.rowZ(row);
       for (let col = c0; col <= c1; col++) {
@@ -135,35 +136,193 @@ export class NavGrid {
   // Breadth-first flood from every free cell within `seeds`. Returns
   // a visited mask (1 = reachable). 4-connected so the fill never
   // squeezes diagonally between two touching footprints.
-  flood(seeds: readonly Cell[], rowLimit: number = this.rows - 1): Uint8Array {
-    const visited = new Uint8Array(this.rows * this.cols);
-    const queue = new Int32Array(this.rows * this.cols);
+  //
+  // Allocation-free: the mask is written into `out` when given, else
+  // into a scratch buffer owned by the grid that the NEXT flood call
+  // overwrites - copy it (or pass your own `out`) to keep it.
+  flood(seeds: readonly Cell[], rowLimit: number = this.rows - 1, out?: Uint8Array): Uint8Array {
+    const mask = this.maskBuffer(out);
+    this.fill(seeds, 0, rowLimit, null, mask, -1);
+    const n = this.rows * this.cols;
+    return mask.length === n ? mask : mask.subarray(0, n);
+  }
+
+  // A mask buffer big enough for flood / floodBand output right now.
+  newMask(): Uint8Array {
+    return new Uint8Array(this.rows * this.cols);
+  }
+
+  // flood() restricted to rows [rowMin, rowLimit]. `links` (one entry
+  // per column of row rowMin, from rowLinks) says which cells of row
+  // rowMin are joined to each other through the rows below it, so the
+  // mask equals flood()'s on every row >= rowMin while the fill only
+  // walks the band. Rows below rowMin are left 0. With stopRow >= 0 the
+  // fill stops as soon as a cell of that row is reached (the mask is
+  // then partial); the return value says whether it was.
+  floodBand(
+    seeds: readonly Cell[],
+    rowMin: number,
+    rowLimit: number,
+    links: Int32Array | null,
+    out: Uint8Array,
+    stopRow: number = -1,
+  ): boolean {
+    return this.fill(seeds, rowMin, rowLimit, links, this.maskBuffer(out), stopRow);
+  }
+
+  // Connectivity labels for the free cells of `row`, under 4-connected
+  // movement within rows [baseRow, row]; cells of baseRow that share a
+  // non-negative `baseLinks` label count as already joined (through
+  // rows below baseRow). out[col] is the lowest column of that cell's
+  // component on `row`, or -1 when the cell is blocked. baseRow 0 with
+  // no baseLinks is plain connectivity over every row up to `row`.
+  rowLinks(row: number, baseRow: number = 0, baseLinks: Int32Array | null = null, out?: Int32Array): Int32Array {
+    const cols = this.cols;
+    const labels = out && out.length === cols ? out : new Int32Array(cols);
+    labels.fill(-1);
+    if (row < 0 || row >= this.rows) return labels;
+    const mask = this.maskBuffer(undefined);
+    mask.fill(0);
+    const expanded = this.expandedScratch();
+    const seed: Cell[] = [{ col: 0, row }];
+    for (let c = 0; c < cols; c++) {
+      const i = row * cols + c;
+      if (this.blocked[i] > 0 || mask[i]) continue;
+      seed[0].col = c;
+      // Components never share cells (or base labels), so one mask and
+      // one expanded set serve every component of this call.
+      this.fillInto(seed, baseRow, row, baseLinks, mask, -1, expanded, c, labels);
+    }
+    return labels;
+  }
+
+  // Lowest row painted (by add/removeObstacle) since the last
+  // resetPaintFloor(); Infinity when none was. Lets a caller holding
+  // rowLinks() labels check that the rows under them did not change.
+  paintFloor = Infinity;
+  resetPaintFloor() {
+    this.paintFloor = Infinity;
+  }
+
+  private scratchMask: Uint8Array = new Uint8Array(0);
+  private scratchQueue: Int32Array = new Int32Array(0);
+  private scratchExpanded: Uint8Array = new Uint8Array(0);
+
+  private maskBuffer(out: Uint8Array | undefined): Uint8Array {
+    const n = this.rows * this.cols;
+    if (out) {
+      if (out.length < n) throw new Error('NavGrid: flood output buffer too small');
+      return out;
+    }
+    if (this.scratchMask.length < n) this.scratchMask = new Uint8Array(n);
+    return this.scratchMask;
+  }
+
+  private expandedScratch(): Uint8Array {
+    if (this.scratchExpanded.length < this.cols) this.scratchExpanded = new Uint8Array(this.cols);
+    this.scratchExpanded.fill(0);
+    return this.scratchExpanded;
+  }
+
+  private fill(
+    seeds: readonly Cell[],
+    rowMin: number,
+    rowLimit: number,
+    links: Int32Array | null,
+    mask: Uint8Array,
+    stopRow: number,
+  ): boolean {
+    mask.fill(0);
+    return this.fillInto(seeds, rowMin, rowLimit, links, mask, stopRow, links ? this.expandedScratch() : null, -1, null);
+  }
+
+  // The BFS behind flood / floodBand / rowLinks: inline neighbour
+  // checks (no per-cell closure) and a reused queue. Every cell is
+  // queued at most once, so the queue never outgrows the grid.
+  private fillInto(
+    seeds: readonly Cell[],
+    rowMin: number,
+    rowLimit: number,
+    links: Int32Array | null,
+    mask: Uint8Array,
+    stopRow: number,
+    expanded: Uint8Array | null,
+    label: number,
+    labels: Int32Array | null,
+  ): boolean {
+    const cols = this.cols;
+    const blocked = this.blocked;
+    const n = this.rows * cols;
+    if (this.scratchQueue.length < n) this.scratchQueue = new Int32Array(n);
+    const queue = this.scratchQueue;
+    if (rowLimit > this.rows - 1) rowLimit = this.rows - 1;
+    if (rowMin < 0) rowMin = 0;
+    const lo = rowMin * cols;
+    const hi = (rowLimit + 1) * cols; // exclusive
+    const linkLo = links ? lo : -1;
+    const linkHi = links ? lo + cols : -1;
+    const labelLo = labels ? rowLimit * cols : -1;
+    const labelHi = labels ? labelLo + cols : -1;
+    const stopLo = stopRow >= 0 ? stopRow * cols : -1;
+    const stopHi = stopRow >= 0 ? stopLo + cols : -1;
     let head = 0;
     let tail = 0;
-    for (const s of seeds) {
-      if (s.row > rowLimit || this.isBlocked(s.col, s.row)) continue;
-      const i = s.row * this.cols + s.col;
-      if (visited[i]) continue;
-      visited[i] = 1;
+    for (let k = 0; k < seeds.length; k++) {
+      const s = seeds[k];
+      if (s.row > rowLimit || s.row < rowMin || s.col < 0 || s.col >= cols) continue;
+      const i = s.row * cols + s.col;
+      if (mask[i] || blocked[i] > 0) continue;
+      mask[i] = 1;
       queue[tail++] = i;
     }
     while (head < tail) {
       const i = queue[head++];
-      const row = (i / this.cols) | 0;
-      const col = i - row * this.cols;
-      const tryPush = (c: number, r: number) => {
-        if (c < 0 || c >= this.cols || r < 0 || r > rowLimit) return;
-        const j = r * this.cols + c;
-        if (visited[j] || this.blocked[j] > 0) return;
-        visited[j] = 1;
+      if (i >= stopLo && i < stopHi) return true;
+      if (labels && i >= labelLo && i < labelHi) labels[i - labelLo] = label;
+      const col = i % cols;
+      let j: number;
+      if (col + 1 < cols) {
+        j = i + 1;
+        if (mask[j] === 0 && blocked[j] === 0) {
+          mask[j] = 1;
+          queue[tail++] = j;
+        }
+      }
+      if (col > 0) {
+        j = i - 1;
+        if (mask[j] === 0 && blocked[j] === 0) {
+          mask[j] = 1;
+          queue[tail++] = j;
+        }
+      }
+      j = i + cols;
+      if (j < hi && mask[j] === 0 && blocked[j] === 0) {
+        mask[j] = 1;
         queue[tail++] = j;
-      };
-      tryPush(col + 1, row);
-      tryPush(col - 1, row);
-      tryPush(col, row + 1);
-      tryPush(col, row - 1);
+      }
+      j = i - cols;
+      if (j >= lo && mask[j] === 0 && blocked[j] === 0) {
+        mask[j] = 1;
+        queue[tail++] = j;
+      }
+      // Joined through the rows below the band: reaching one cell of a
+      // linked group reaches all of them.
+      if (links && expanded && i >= linkLo && i < linkHi) {
+        const l = links[i - linkLo];
+        if (l >= 0 && expanded[l] === 0) {
+          expanded[l] = 1;
+          for (let c = 0; c < cols; c++) {
+            if (links[c] !== l) continue;
+            j = linkLo + c;
+            if (mask[j] === 0 && blocked[j] === 0) {
+              mask[j] = 1;
+              queue[tail++] = j;
+            }
+          }
+        }
+      }
     }
-    return visited;
+    return stopRow < 0;
   }
 
   // Nearest free cell to (x, z), searched in growing square rings up

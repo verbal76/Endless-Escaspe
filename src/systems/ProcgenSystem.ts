@@ -298,19 +298,52 @@ function placePickups(
 // alter (future obstacles start at least 1.5 m into their own chunk
 // and are at most ~3 m in radius, so they never reach more than
 // SEED_BACKOFF below their chunk's start).
+//
+// `links` caches how the cells of one row (`row`, at grid origin
+// `zMin`) are joined through every row below it (NavGrid.rowLinks), so
+// a chunk's walkability floods only walk a band of ~100 rows above it
+// instead of the whole retained grid (Endless keeps several hundred
+// metres). The answers are identical to whole-grid floods: the band
+// floods treat linked cells as connected, and the cache is rebuilt
+// whenever the rows under it change (a paint at or below `row`, or a
+// trim that moves the grid origin).
 export type Walkability = {
   grid: NavGrid;
   seeds: Cell[];
+  links?: { row: number; zMin: number; labels: Int32Array } | null;
+  masks?: { reach: Uint8Array; probe: Uint8Array };
 };
 const SEED_BACKOFF = 2.5;
 const SOLVE_CELL = 0.3;
 const SOLVE_MARGIN = 0.12;
+// Band floor below a chunk's start. Must clear the deepest footprint a
+// chunk's own obstacles can paint below its start (a car rolled 90 deg
+// at startZ + 1.5 reaches ~3.1 m below once inflated); if one ever does
+// reach it, generateChunk notices via paintFloor and floods the whole
+// grid for that chunk instead.
+const BAND_BACKOFF = 6;
 
 export function createWalkability(spawnX: number, spawnZ: number, zMin: number, zMax: number): Walkability {
   // A little wider than the player so accepted paths aren't
   // pixel-tight squeezes between two props.
   const grid = new NavGrid(SOLVE_CELL, PLAYER_RADIUS + SOLVE_MARGIN, zMin, zMax);
-  return { grid, seeds: [{ col: grid.colOf(spawnX), row: grid.rowOf(spawnZ) }] };
+  return { grid, seeds: [{ col: grid.colOf(spawnX), row: grid.rowOf(spawnZ) }], links: null };
+}
+
+// Labels for row `floorRow` (see Walkability.links), extended from the
+// cached row when the rows under it are unchanged, else rebuilt.
+function linksFor(walk: Walkability, floorRow: number): Int32Array {
+  const grid = walk.grid;
+  const cached = walk.links;
+  let labels: Int32Array;
+  if (cached && cached.zMin === grid.zMin && cached.row <= floorRow && grid.paintFloor > cached.row) {
+    labels = cached.row === floorRow ? cached.labels : grid.rowLinks(floorRow, cached.row, cached.labels);
+  } else {
+    labels = grid.rowLinks(floorRow);
+  }
+  walk.links = { row: floorRow, zMin: grid.zMin, labels };
+  grid.resetPaintFloor();
+  return labels;
 }
 
 // Try to populate a chunk so that the player can still walk from the
@@ -400,6 +433,27 @@ export function generateChunk(
     for (let c = 0; c < grid.cols; c++) if (mask[endRow * grid.cols + c]) return true;
     return false;
   };
+  // Floods walk only the band above floorRow (see Walkability.links);
+  // the masks are reused across chunks.
+  let floorRow = grid.rowOf(startZ - BAND_BACKOFF);
+  for (const sd of walk.seeds) if (sd.row < floorRow) floorRow = Math.max(0, sd.row);
+  const links = linksFor(walk, floorRow);
+  const n = grid.rows * grid.cols;
+  if (!walk.masks || walk.masks.reach.length < n) {
+    walk.masks = { reach: new Uint8Array(Math.ceil(n * 1.25)), probe: new Uint8Array(Math.ceil(n * 1.25)) };
+  }
+  const { reach, probe } = walk.masks;
+  // Mask of everything reachable from the seeds within rows <= limit.
+  // Falls back to a whole-grid flood if this chunk painted at or below
+  // the band floor (then the cached links no longer describe it).
+  const floodTo = (limit: number, out: Uint8Array) => {
+    if (grid.paintFloor > floorRow) grid.floodBand(walk.seeds, floorRow, limit, links, out);
+    else grid.flood(walk.seeds, limit, out);
+  };
+  const reachesEnd = (): boolean => {
+    if (grid.paintFloor > floorRow) return grid.floodBand(walk.seeds, floorRow, endRow, links, probe, endRow);
+    return reaches(grid.flood(walk.seeds, endRow, probe));
+  };
   const ATTEMPTS = 8;
   for (let attempt = 0; attempt <= ATTEMPTS; attempt++) {
     let obstacles: Obstacle[];
@@ -417,7 +471,7 @@ export function generateChunk(
           : generateChunkContents(rng, startZ, spec, Math.min(0.75, attempt * 0.12), seam);
     }
     for (const o of obstacles) grid.addObstacle(o);
-    const reach = grid.flood(walk.seeds, endRow);
+    floodTo(endRow, reach);
     let ok = reaches(reach);
     if (ok && fork) {
       // Both lanes must be passable on their own: block each lane in
@@ -428,7 +482,7 @@ export function generateChunk(
         plug.halfL = 0.4;
         plug.r = Math.hypot(4.6, 0.4);
         grid.addObstacle(plug);
-        const alone = reaches(grid.flood(walk.seeds, endRow));
+        const alone = reachesEnd();
         grid.removeObstacle(plug);
         if (!alone) ok = false;
       }
@@ -462,10 +516,10 @@ export function generateChunk(
     for (let c = 0; c < grid.cols; c++) {
       if (reach[seedRow * grid.cols + c]) next.push({ col: c, row: seedRow });
     }
-    const capped = grid.flood(walk.seeds, seedRow);
+    floodTo(seedRow, probe);
     const safe: Cell[] = [];
     for (let c = 0; c < grid.cols; c++) {
-      if (capped[seedRow * grid.cols + c]) safe.push({ col: c, row: seedRow });
+      if (probe[seedRow * grid.cols + c]) safe.push({ col: c, row: seedRow });
     }
     walk.seeds = safe.length > 0 ? safe : next;
     return {
@@ -573,6 +627,22 @@ export class ProcgenSystem {
     }
     if (added.length) this.rebuildCaches();
     return added;
+  }
+
+  // Endless mode, time-sliced: generate at most `maxChunks` of the
+  // chunks a later extendTo(z) would add, so a section's generation can
+  // be spread over frames before the section is needed. Chunks come out
+  // in the same order from the same RNG, so the level is identical to
+  // calling extendTo(z) in one go. Returns true while chunks are still
+  // missing below `z`.
+  prefetch(z: number, maxChunks: number = 1): boolean {
+    let made = 0;
+    while (this.nextZ < z && made < maxChunks) {
+      this.appendGameplayChunk();
+      made++;
+    }
+    if (made) this.rebuildCaches();
+    return this.nextZ < z;
   }
 
   // Endless mode: free chunks that end before `z` (well behind the

@@ -73,3 +73,9 @@ Source reports: scratchpad/review2/{A,B/B,C,D,E,F}.md, old-items.md, tutorial-au
   (T10 stale comments merged into hygiene; done except CatchFlash comment). Audit open questions: section 3 above.
 - Right-side control readability (L2): released OTA 117 (6eeda39), re-laid out in this pass (hudLayout.ts)
 - Graphics / UI audit V1-V12: released OTA 118-120; V13 (nav bar) is in section 1
+
+## 6. Added during the OTA 131 hold (2026-10-03)
+- RELEASE GATE: music provenance. All 3 music tracks carry an ID3 tag "made with suno" (created 2026-05-07). Suno free tier is non-commercial; owner must show a paid plan was active on that date (no retroactive licence) and whether any third-party audio was uploaded to "Pocket Escape (Remix)". Details: docs/release/music-licensing.md
+- Unverified asset provenance: Kenney models/textures (pack names not recorded), icon.png origin, settings-gear.png (owner-supplied). No in-app credits screen.
+- Play release prerequisites found missing in the repo: AAB build profile (eas.json production builds an APK), `blockedPermissions`, app.json hard-codes the `preview` update channel, privacy-policy URL, listing graphics, credits. See docs/release/play-store-readiness.md and owner-actions.md
+- Tester migration: debug-signed APK line -> Play-signed line requires uninstall (saves lost). A save export/import shipped by OTA BEFORE the key switch is the practical mitigation (plan: docs/signing-migration.md on claude/hold-native-batch).

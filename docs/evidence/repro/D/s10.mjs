@@ -1,0 +1,26 @@
+import { openGame, startStage } from '../h.mjs';
+const g = await openGame(8804, { width: 640, height: 360 });
+const p = g.page; const wait = (ms)=>p.waitForTimeout(ms);
+const click = async (t) => { try { await p.getByText(t, { exact: true }).first().click({timeout:4000, force:true}); } catch(e) { console.log('CLICK FAIL', t); } await wait(450); };
+const measure = (labels) => p.evaluate((labels) => labels.map((t) => {
+  const el = [...document.querySelectorAll('[dir="auto"]')].find((e) => e.textContent.trim() === t);
+  if (!el) return [t, 'missing'];
+  let b = el; while (b && b.getAttribute('tabindex') !== '0' && b.getAttribute('role') !== 'button') b = b.parentElement;
+  const r = (b || el).getBoundingClientRect(); const fs = getComputedStyle(el).fontSize;
+  return [t, Math.round(r.width) + 'x' + Math.round(r.height), 'font ' + fs];
+}), labels);
+await p.evaluate(() => { const st = globalThis.__ee.useStore.getState();
+  st.upsertSave({ name: 'Kev', skin: 'beige', stage: 4, bestStars: {1:3}, updatedAt: 1, tipsSeen: [], coins: 40, coinStars: {}, lastRewardedRun: null, outfits: ['classic','grey'], outfit: 'classic', endlessBest: 0, daily: null }); st.setTutorialSeen(true); });
+await wait(300);
+console.log('home', JSON.stringify(await measure(['NEW RUN','CONTINUE','HOW TO PLAY'])));
+await click('NEW RUN');
+console.log('name', JSON.stringify(await measure(['BACK','START','Q','SPACE','DONE','⌫'])));
+await click('BACK'); await click('CONTINUE');
+console.log('cont', JSON.stringify(await measure(['BACK','×'])));
+await click('BACK'); await click('HOW TO PLAY');
+console.log('howto', JSON.stringify(await measure(['WATCH INTRO','CLOSE'])));
+await click('CLOSE');
+await p.mouse.click(34,42); await wait(600);
+console.log('pause', JSON.stringify(await measure(['RESUME','HOW TO PLAY','REPORT A BUG','FEATURE REQUEST','COPY / SHARE INFO'])));
+console.log('gear', await p.evaluate(()=>{ const e=document.querySelector('[aria-label="Settings"]'); const r=e.getBoundingClientRect(); return [r.x,r.y,r.width,r.height];}));
+await g.close();

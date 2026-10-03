@@ -1,0 +1,16 @@
+stage 13 seed 1078: candidates=4
+  {"prop":"crate @7.94,180.65 rot=5.71","pinnedAt":"8.55,182.20 pen=0.020","movedPerDirection":"0.02 5.19 10.5 3.71 0 0 0.02 0.02","stuck":false}
+stage 9 seed 147: candidates=8
+  {"prop":"crate @7.48,126.90 rot=1.32","pinnedAt":"8.55,124.78 pen=0.020","movedPerDirection":"0.03 0.03 0.03 0 0 3.71 8.87 5.19","stuck":false}
+  {"prop":"crate @7.48,126.90 rot=1.32","pinnedAt":"8.55,128.69 pen=0.007","movedPerDirection":"0.01 5.22 9.8 3.71 0 0 0.01 0.01","stuck":false}
+  {"prop":"crate @-8.00,126.23 rot=0.69","pinnedAt":"-8.55,127.90 pen=0.011","movedPerDirection":"0 3.71 4.9 5.19 0.01 0.01 0.01 0","stuck":false}
+  {"prop":"crate @7.57,163.89 rot=0.70","pinnedAt":"8.55,162.59 pen=0.021","movedPerDirection":"0.03 0.03 0.03 0 0 3.71 8.75 5.19","stuck":false}
+  {"prop":"crate @7.57,163.89 rot=0.70","pinnedAt":"8.55,165.77 pen=0.050","movedPerDirection":"0.08 5.08 9.51 3.7 0.03 0.03 0.08 0.08","stuck":false}
+  {"prop":"crate @-7.47,182.17 rot=3.55","pinnedAt":"-8.55,183.47 pen=0.027","movedPerDirection":"0.03 3.71 182.67 0 0 0 0 0","stuck":false}
+stage 1 seed 161: candidates=3
+stage 19 seed 1176: candidates=10
+  {"prop":"cover @-7.95,11.51 rot=0.00","pinnedAt":"-8.55,14.53 pen=0.011","movedPerDirection":"0 3.71 10.33 5.16 0.02 0.02 0.02 0.04","stuck":false}
+  {"prop":"crate @7.44,79.61 rot=3.71","pinnedAt":"8.55,81.57 pen=0.018","movedPerDirection":"0.03 5.13 9.33 3.71 0 0 0.03 0.03","stuck":false}
+  {"prop":"cover @7.86,136.08 rot=1.57","pinnedAt":"8.55,134.69 pen=0.014","movedPerDirection":"0.02 0.02 0.02 0 0 3.71 9.16 1.25","stuck":false}
+  {"prop":"cover @7.86,136.08 rot=1.57","pinnedAt":"8.55,137.47 pen=0.014","movedPerDirection":"0.02 1.81 9.57 3.71 0 0 0.02 0.02","stuck":false}
+errors []

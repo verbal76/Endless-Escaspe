@@ -1,0 +1,12 @@
+src/components/HUD/StartScreen.tsx(122,10): error TS6133: 'FigurePickButton' is declared but its value is never read.
+src/components/HUD/StartScreen.tsx(262,9): error TS6133: 'onPickSkin' is declared but its value is never read.
+src/game/Game.tsx(903,11): error TS6133: 'DEMO_PERIOD' is declared but its value is never read.
+src/scenes/LightTower.ts(2,10): error TS6133: 'CHUNK_LEN' is declared but its value is never read.
+src/scenes/LightTower.ts(2,21): error TS6133: 'CHUNKS_AHEAD' is declared but its value is never read.
+src/scenes/SnowCaps.ts(15,7): error TS6133: 'CAP_MAT' is declared but its value is never read.
+src/scenes/SnowCaps.ts(25,7): error TS6133: 'T' is declared but its value is never read.
+src/scenes/SnowCaps.ts(30,10): error TS6133: 'box' is declared but its value is never read.
+src/scenes/SnowCaps.ts(39,10): error TS6133: 'cyl' is declared but its value is never read.
+src/scenes/SnowCaps.ts(48,10): error TS6133: 'sphereCap' is declared but its value is never read.
+src/scenes/Weather.ts(2,35): error TS6133: 'PLAY_HALF_W' is declared but its value is never read.
+src/systems/ProcgenSystem.ts(7,3): error TS6133: 'COVER_RADIUS' is declared but its value is never read.

@@ -1,0 +1,10 @@
+stage 10 spawn           survived 60 s motionless: 0/10  first-catch times: 45.6,11.2,9.5,5.9,22.7,18.4,12.9,50,22.3,31.7
+stage 10 backCorner      survived 60 s motionless: 3/10  first-catch times: 6.2,20,5.7,5.6,5.8,9.8,5.5
+stage 10 backCornerR     survived 60 s motionless: 1/10  first-catch times: 61,6.2,6.8,5.7,61,61,5.6,14.3,5.5
+stage 20 spawn           survived 60 s motionless: 3/10  first-catch times: 8.1,31.8,28.7,28.6,9.6,9.5,14.2
+stage 20 backCorner      survived 60 s motionless: 0/10  first-catch times: 4.1,6.2,56.8,5.4,4.6,10.2,37.7,24.1,4.7,61
+stage 20 backCornerR     survived 60 s motionless: 2/10  first-catch times: 4.1,5.4,4.1,21.3,4.1,15,4.7,61
+stage 30 spawn           survived 60 s motionless: 3/10  first-catch times: 7.8,13.1,46,8.2,6.2,25.9,26.8
+stage 30 backCorner      survived 60 s motionless: 0/10  first-catch times: 32,9.9,12.1,5.5,10.2,22.4,4.1,4.3,4.8,10.5
+stage 30 backCornerR     survived 60 s motionless: 2/10  first-catch times: 11.3,9.5,5.5,4.1,26.3,4.1,4.3,4.8
+errors []

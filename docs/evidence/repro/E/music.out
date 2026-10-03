@@ -1,0 +1,10 @@
+alert: calm 0.1458 tension 0.2042
+chase: calm 0.0331 tension 0.3461 rate 1.0555555555555554
+back to calm: calm 0.3500 tension residual 0.00000 rate 1.0044444444444447 mi 0 1
+vol 0.35 tension residual 0.00000 rate residual 1.0044
+vol 0.5 tension residual 0.00000 rate residual 1.0044
+vol 0.7 tension residual 0.00000 rate residual 1.0044
+vol 1 tension residual 0.00000 rate residual 1.0044
+after slider->0 calm 0.00920
+sfx players 16
+master 0.004 plays pickup at 0.0024

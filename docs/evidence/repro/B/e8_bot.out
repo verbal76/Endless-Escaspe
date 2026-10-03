@@ -1,0 +1,163 @@
+sprint stage  1 seed 501: WIN     t=17s hearts=3 lost=0 stars=3 seen=0 det=0s z=120/120 
+sprint stage  1 seed 502: WIN     t=19s hearts=3 lost=0 stars=2 seen=1 det=4.8s z=120/120 
+sprint stage  1 seed 503: DEAD    t=62s hearts=3 lost=3 stars=0 seen=3 det=6s z=39/120 22s:arrested@z39 31s:arrested@z39 62s:arrested@z39
+sprint stage  2 seed 501: WIN     t=17s hearts=3 lost=0 stars=3 seen=0 det=3s z=120/120 
+sprint stage  2 seed 502: WIN     t=31s hearts=3 lost=1 stars=2 seen=2 det=5.7s z=120/120 12s:arrested@z87
+sprint stage  2 seed 503: DEAD    t=25s hearts=3 lost=3 stars=0 seen=3 det=5.1s z=39/120 10s:arrested@z39 17s:arrested@z39 24s:arrested@z39
+sprint stage  3 seed 501: DEAD    t=23s hearts=3 lost=3 stars=0 seen=0 det=0s z=53/144 8s:arrested@z54 15s:arrested@z50 22s:arrested@z53
+sprint stage  3 seed 502: WIN     t=23s hearts=3 lost=0 stars=2 seen=1 det=12.7s z=144/144 
+sprint stage  3 seed 503: DEAD    t=29s hearts=3 lost=3 stars=0 seen=3 det=5.8s z=86/144 8s:arrested@z52 15s:arrested@z52 28s:arrested@z86
+sprint stage  4 seed 501: WIN     t=21s hearts=3 lost=0 stars=3 seen=0 det=1.1s z=144/144 
+sprint stage  4 seed 502: WIN     t=23s hearts=3 lost=0 stars=2 seen=1 det=13.7s z=144/144 
+sprint stage  4 seed 503: DEAD    t=36s hearts=3 lost=3 stars=0 seen=3 det=10.4s z=53/144 14s:arrested@z85 28s:arrested@z86 35s:arrested@z53
+sprint stage  5 seed 501: DEAD    t=36s hearts=3 lost=3 stars=0 seen=1 det=1.2s z=58/168 13s:arrested@z68 25s:arrested@z65 36s:arrested@z58
+sprint stage  5 seed 502: DEAD    t=49s hearts=3 lost=3 stars=0 seen=3 det=9.7s z=70/168 17s:killed@z72 33s:killed@z70 49s:killed@z70
+sprint stage  5 seed 503: DEAD    t=42s hearts=3 lost=3 stars=0 seen=2 det=4.5s z=66/168 16s:killed@z70 28s:arrested@z63 42s:killed@z66
+sprint stage  6 seed 501: WIN     t=70s hearts=3 lost=2 stars=2 seen=2 det=9s z=168/168 17s:arrested@z84 34s:arrested@z87
+sprint stage  6 seed 502: DEAD    t=45s hearts=3 lost=3 stars=0 seen=3 det=5.7s z=69/168 15s:killed@z69 29s:killed@z68 45s:killed@z69
+sprint stage  6 seed 503: DEAD    t=63s hearts=3 lost=3 stars=0 seen=3 det=8.5s z=96/168 21s:killed@z94 42s:killed@z94 63s:killed@z96
+sprint stage  7 seed 501: WIN     t=76s hearts=3 lost=2 stars=2 seen=2 det=9.8s z=168/168 18s:arrested@z92 41s:killed@z100
+sprint stage  7 seed 502: DEAD    t=25s hearts=3 lost=3 stars=0 seen=3 det=3s z=41/168 9s:arrested@z48 17s:arrested@z42 25s:arrested@z41
+sprint stage  7 seed 503: DEAD    t=64s hearts=3 lost=3 stars=0 seen=3 det=24.4s z=84/168 22s:arrested@z86 42s:arrested@z84 64s:arrested@z84
+sprint stage  8 seed 501: DEAD    t=32s hearts=3 lost=3 stars=0 seen=1 det=0.9s z=57/192 10s:arrested@z55 21s:arrested@z54 32s:arrested@z57
+sprint stage  8 seed 502: DEAD    t=33s hearts=3 lost=3 stars=0 seen=3 det=3.2s z=54/192 11s:arrested@z56 22s:arrested@z52 33s:arrested@z54
+sprint stage  8 seed 503: DEAD    t=39s hearts=3 lost=3 stars=0 seen=3 det=4.8s z=56/192 11s:arrested@z57 28s:arrested@z68 39s:arrested@z56
+sprint stage  9 seed 501: DEAD    t=31s hearts=3 lost=3 stars=0 seen=2 det=2.8s z=54/192 10s:arrested@z54 21s:arrested@z55 31s:arrested@z54
+sprint stage  9 seed 502: DEAD    t=34s hearts=3 lost=3 stars=0 seen=3 det=4.8s z=53/192 11s:arrested@z55 23s:arrested@z56 34s:arrested@z53
+sprint stage  9 seed 503: DEAD    t=34s hearts=3 lost=3 stars=0 seen=3 det=3.1s z=55/192 11s:arrested@z56 23s:arrested@z56 34s:arrested@z55
+sprint stage 11 seed 501: WIN     t=59s hearts=2 lost=1 stars=2 seen=2 det=20.2s z=192/192 17s:arrested@z84
+sprint stage 11 seed 502: DEAD    t=22s hearts=2 lost=2 stars=0 seen=2 det=2.2s z=54/192 11s:arrested@z57 22s:arrested@z54
+sprint stage 11 seed 503: DEAD    t=26s hearts=2 lost=2 stars=0 seen=2 det=5.1s z=53/192 15s:arrested@z67 26s:arrested@z53
+sprint stage 12 seed 501: WIN     t=45s hearts=2 lost=0 stars=2 seen=1 det=15.9s z=216/216 
+sprint stage 12 seed 502: DEAD    t=25s hearts=2 lost=2 stars=0 seen=2 det=5.3s z=58/216 13s:killed@z69 25s:killed@z58
+sprint stage 12 seed 503: DEAD    t=29s hearts=2 lost=2 stars=0 seen=2 det=5.4s z=62/216 16s:arrested@z82 28s:arrested@z62
+sprint stage 13 seed 501: DEAD    t=34s hearts=2 lost=2 stars=0 seen=1 det=2s z=86/216 16s:killed@z83 34s:arrested@z86
+sprint stage 13 seed 502: DEAD    t=21s hearts=2 lost=2 stars=0 seen=2 det=2.9s z=52/216 10s:arrested@z55 20s:arrested@z52
+sprint stage 13 seed 503: DEAD    t=22s hearts=2 lost=2 stars=0 seen=2 det=2.7s z=54/216 11s:arrested@z56 21s:arrested@z54
+sprint stage 14 seed 501: DEAD    t=36s hearts=2 lost=2 stars=0 seen=2 det=3.5s z=97/216 16s:killed@z82 35s:arrested@z97
+sprint stage 14 seed 502: DEAD    t=21s hearts=2 lost=2 stars=0 seen=2 det=3.2s z=52/216 11s:arrested@z57 21s:arrested@z52
+sprint stage 14 seed 503: DEAD    t=22s hearts=2 lost=2 stars=0 seen=2 det=3.4s z=55/216 11s:arrested@z57 22s:arrested@z55
+sprint stage 15 seed 501: DEAD    t=33s hearts=2 lost=2 stars=0 seen=2 det=9.3s z=84/216 16s:killed@z83 33s:arrested@z84
+sprint stage 15 seed 502: DEAD    t=21s hearts=2 lost=2 stars=0 seen=2 det=3.8s z=54/216 11s:arrested@z56 21s:killed@z54
+sprint stage 15 seed 503: DEAD    t=25s hearts=2 lost=2 stars=0 seen=2 det=8.7s z=54/216 15s:killed@z73 25s:killed@z54
+sprint stage 16 seed 501: DEAD    t=30s hearts=2 lost=2 stars=0 seen=2 det=8.5s z=98/216 11s:arrested@z56 30s:arrested@z98
+sprint stage 16 seed 502: DEAD    t=22s hearts=2 lost=2 stars=0 seen=0 det=0.3s z=57/216 10s:arrested@z54 21s:arrested@z57
+sprint stage 16 seed 503: DEAD    t=21s hearts=2 lost=2 stars=0 seen=2 det=2.1s z=56/216 10s:arrested@z53 21s:arrested@z56
+sprint stage 17 seed 501: DEAD    t=35s hearts=2 lost=2 stars=0 seen=1 det=2.5s z=95/216 16s:killed@z83 35s:arrested@z95
+sprint stage 17 seed 502: DEAD    t=21s hearts=2 lost=2 stars=0 seen=2 det=2.3s z=53/216 10s:arrested@z54 21s:arrested@z53
+sprint stage 17 seed 503: DEAD    t=29s hearts=2 lost=2 stars=0 seen=2 det=12.1s z=70/216 14s:arrested@z71 28s:arrested@z70
+sprint stage 18 seed 501: DEAD    t=28s hearts=2 lost=2 stars=0 seen=2 det=4.7s z=84/216 11s:arrested@z58 28s:arrested@z84
+sprint stage 18 seed 502: DEAD    t=21s hearts=2 lost=2 stars=0 seen=2 det=2.4s z=53/216 11s:arrested@z56 21s:arrested@z53
+sprint stage 18 seed 503: DEAD    t=32s hearts=2 lost=2 stars=0 seen=2 det=15.6s z=71/216 17s:arrested@z84 31s:arrested@z71
+sprint stage 19 seed 501: DEAD    t=32s hearts=2 lost=2 stars=0 seen=2 det=9.8s z=83/216 16s:arrested@z81 32s:arrested@z83
+sprint stage 19 seed 502: DEAD    t=21s hearts=2 lost=2 stars=0 seen=2 det=1.8s z=54/216 11s:arrested@z57 21s:arrested@z54
+sprint stage 19 seed 503: DEAD    t=19s hearts=2 lost=2 stars=0 seen=2 det=1.1s z=50/216 9s:arrested@z49 19s:arrested@z50
+sprint stage 21 seed 501: DEAD    t=16s hearts=1 lost=1 stars=0 seen=1 det=1.5s z=80/216 15s:arrested@z80
+sprint stage 21 seed 502: DEAD    t=10s hearts=1 lost=1 stars=0 seen=0 det=0.4s z=53/216 10s:arrested@z53
+sprint stage 21 seed 503: DEAD    t=11s hearts=1 lost=1 stars=0 seen=1 det=1.5s z=54/216 10s:killed@z54
+sprint stage 22 seed 501: DEAD    t=10s hearts=1 lost=1 stars=0 seen=1 det=0.7s z=52/216 9s:arrested@z52
+sprint stage 22 seed 502: DEAD    t=10s hearts=1 lost=1 stars=0 seen=0 det=0.2s z=53/216 10s:arrested@z53
+sprint stage 22 seed 503: DEAD    t=9s hearts=1 lost=1 stars=0 seen=1 det=0.4s z=49/216 9s:arrested@z49
+sprint stage 23 seed 501: DEAD    t=16s hearts=1 lost=1 stars=0 seen=1 det=3.9s z=81/216 16s:arrested@z81
+sprint stage 23 seed 502: DEAD    t=10s hearts=1 lost=1 stars=0 seen=0 det=0.2s z=52/216 10s:arrested@z52
+sprint stage 23 seed 503: DEAD    t=10s hearts=1 lost=1 stars=0 seen=1 det=0.8s z=51/216 10s:arrested@z51
+sprint stage 24 seed 501: DEAD    t=16s hearts=1 lost=1 stars=0 seen=1 det=5.7s z=83/216 16s:arrested@z83
+sprint stage 24 seed 502: DEAD    t=11s hearts=1 lost=1 stars=0 seen=1 det=0.8s z=55/216 10s:arrested@z55
+sprint stage 24 seed 503: DEAD    t=11s hearts=1 lost=1 stars=0 seen=1 det=1.7s z=56/216 11s:arrested@z56
+sprint stage 25 seed 501: DEAD    t=16s hearts=1 lost=1 stars=0 seen=1 det=5.2s z=81/216 16s:arrested@z81
+sprint stage 25 seed 502: DEAD    t=10s hearts=1 lost=1 stars=0 seen=1 det=1.1s z=53/216 10s:arrested@z53
+sprint stage 25 seed 503: DEAD    t=11s hearts=1 lost=1 stars=0 seen=1 det=1.6s z=55/216 11s:killed@z55
+sprint stage 26 seed 501: DEAD    t=11s hearts=1 lost=1 stars=0 seen=1 det=0.9s z=57/216 11s:arrested@z57
+sprint stage 26 seed 502: DEAD    t=9s hearts=1 lost=1 stars=0 seen=0 det=0.2s z=47/216 9s:arrested@z47
+sprint stage 26 seed 503: DEAD    t=10s hearts=1 lost=1 stars=0 seen=1 det=0.7s z=51/216 10s:arrested@z51
+sprint stage 27 seed 501: DEAD    t=16s hearts=1 lost=1 stars=0 seen=1 det=1.6s z=81/216 16s:arrested@z81
+sprint stage 27 seed 502: DEAD    t=10s hearts=1 lost=1 stars=0 seen=1 det=1s z=55/216 10s:arrested@z55
+sprint stage 27 seed 503: DEAD    t=9s hearts=1 lost=1 stars=0 seen=1 det=0.6s z=49/216 9s:arrested@z49
+sprint stage 28 seed 501: DEAD    t=16s hearts=1 lost=1 stars=0 seen=1 det=5.9s z=83/216 16s:killed@z83
+sprint stage 28 seed 502: DEAD    t=10s hearts=1 lost=1 stars=0 seen=0 det=0.3s z=52/216 10s:arrested@z52
+sprint stage 28 seed 503: DEAD    t=13s hearts=1 lost=1 stars=0 seen=1 det=4.1s z=67/216 13s:arrested@z67
+sprint stage 29 seed 501: DEAD    t=16s hearts=1 lost=1 stars=0 seen=1 det=1.7s z=81/216 16s:arrested@z81
+sprint stage 29 seed 502: DEAD    t=10s hearts=1 lost=1 stars=0 seen=0 det=0.1s z=52/216 10s:arrested@z52
+sprint stage 29 seed 503: DEAD    t=10s hearts=1 lost=1 stars=0 seen=1 det=0.9s z=52/216 10s:arrested@z52
+crouch stage  1 seed 501: WIN     t=53s hearts=3 lost=0 stars=3 seen=0 det=0s z=120/120 
+crouch stage  1 seed 502: WIN     t=53s hearts=3 lost=0 stars=3 seen=0 det=0s z=120/120 
+crouch stage  1 seed 503: TIMEOUT t=300s hearts=3 lost=0 stars=null seen=null det=nulls z=39/120 
+crouch stage  2 seed 501: WIN     t=73s hearts=3 lost=1 stars=2 seen=0 det=0s z=120/120 20s:arrested@z47
+crouch stage  2 seed 502: WIN     t=130s hearts=3 lost=2 stars=2 seen=0 det=0s z=120/120 38s:arrested@z86 77s:arrested@z87
+crouch stage  2 seed 503: TIMEOUT t=300s hearts=3 lost=0 stars=null seen=null det=nulls z=39/120 
+crouch stage  3 seed 501: DEAD    t=66s hearts=3 lost=3 stars=0 seen=0 det=0s z=50/144 22s:arrested@z51 44s:arrested@z51 66s:arrested@z50
+crouch stage  3 seed 502: WIN     t=63s hearts=3 lost=0 stars=3 seen=0 det=0s z=144/144 
+crouch stage  3 seed 503: WIN     t=111s hearts=3 lost=2 stars=2 seen=0 det=0s z=144/144 23s:arrested@z52 46s:arrested@z50
+crouch stage  4 seed 501: WIN     t=64s hearts=3 lost=0 stars=3 seen=0 det=0s z=144/144 
+crouch stage  4 seed 502: WIN     t=85s hearts=3 lost=1 stars=2 seen=0 det=0s z=144/144 22s:arrested@z50
+crouch stage  4 seed 503: WIN     t=88s hearts=3 lost=1 stars=2 seen=0 det=0s z=144/144 23s:arrested@z52
+crouch stage  5 seed 501: WIN     t=74s hearts=3 lost=0 stars=3 seen=0 det=0s z=168/168 
+crouch stage  5 seed 502: WIN     t=74s hearts=3 lost=0 stars=3 seen=0 det=0s z=168/168 
+crouch stage  5 seed 503: WIN     t=112s hearts=3 lost=1 stars=2 seen=0 det=0.5s z=168/168 37s:arrested@z84
+crouch stage  6 seed 501: DEAD    t=113s hearts=3 lost=3 stars=0 seen=0 det=0.4s z=86/168 37s:arrested@z84 75s:arrested@z86 113s:arrested@z86
+crouch stage  6 seed 502: DEAD    t=110s hearts=3 lost=3 stars=0 seen=1 det=1.3s z=123/168 30s:arrested@z67 56s:arrested@z58 110s:arrested@z123
+crouch stage  6 seed 503: WIN     t=186s hearts=3 lost=2 stars=1 seen=2 det=9.4s z=168/168 70s:arrested@z147 110s:arrested@z89
+crouch stage  7 seed 501: DEAD    t=65s hearts=3 lost=3 stars=0 seen=0 det=0s z=49/168 21s:arrested@z47 43s:arrested@z51 65s:arrested@z49
+crouch stage  7 seed 502: DEAD    t=82s hearts=3 lost=3 stars=0 seen=1 det=2.9s z=63/168 22s:arrested@z50 54s:arrested@z71 82s:arrested@z63
+crouch stage  7 seed 503: WIN     t=74s hearts=3 lost=0 stars=3 seen=0 det=0s z=168/168 
+crouch stage  8 seed 501: WIN     t=85s hearts=3 lost=0 stars=2 seen=2 det=16.7s z=192/192 
+crouch stage  8 seed 502: DEAD    t=67s hearts=3 lost=3 stars=0 seen=3 det=7.5s z=47/192 23s:arrested@z51 45s:arrested@z48 67s:arrested@z47
+crouch stage  8 seed 503: DEAD    t=77s hearts=3 lost=3 stars=0 seen=2 det=2.6s z=58/192 27s:arrested@z60 51s:arrested@z53 77s:arrested@z58
+crouch stage  9 seed 501: DEAD    t=71s hearts=3 lost=3 stars=0 seen=3 det=13s z=55/192 26s:arrested@z59 47s:killed@z47 71s:arrested@z55
+crouch stage  9 seed 502: DEAD    t=73s hearts=3 lost=3 stars=0 seen=4 det=14.6s z=61/192 22s:arrested@z50 45s:arrested@z49 73s:arrested@z61
+crouch stage  9 seed 503: DEAD    t=75s hearts=3 lost=3 stars=0 seen=3 det=12.5s z=53/192 26s:arrested@z58 51s:arrested@z55 75s:arrested@z53
+crouch stage 11 seed 501: DEAD    t=58s hearts=2 lost=2 stars=0 seen=2 det=10.8s z=51/192 36s:arrested@z74 58s:arrested@z51
+crouch stage 11 seed 502: DEAD    t=46s hearts=2 lost=2 stars=0 seen=2 det=1.6s z=51/192 24s:arrested@z54 46s:arrested@z51
+crouch stage 11 seed 503: DEAD    t=49s hearts=2 lost=2 stars=0 seen=2 det=8.1s z=55/192 24s:arrested@z54 49s:arrested@z55
+crouch stage 12 seed 501: DEAD    t=67s hearts=2 lost=2 stars=0 seen=3 det=28.7s z=87/216 29s:arrested@z66 67s:arrested@z87
+crouch stage 12 seed 502: DEAD    t=55s hearts=2 lost=2 stars=0 seen=2 det=2.3s z=62/216 28s:arrested@z63 55s:arrested@z62
+crouch stage 12 seed 503: DEAD    t=56s hearts=2 lost=2 stars=0 seen=2 det=1.1s z=63/216 28s:arrested@z63 56s:arrested@z63
+crouch stage 13 seed 501: DEAD    t=71s hearts=2 lost=2 stars=0 seen=4 det=26.3s z=81/216 35s:killed@z81 71s:killed@z81
+crouch stage 13 seed 502: DEAD    t=47s hearts=2 lost=2 stars=0 seen=2 det=9.3s z=59/216 21s:arrested@z47 47s:arrested@z59
+crouch stage 13 seed 503: DEAD    t=49s hearts=2 lost=2 stars=0 seen=3 det=7.6s z=58/216 23s:arrested@z51 49s:arrested@z58
+crouch stage 14 seed 501: DEAD    t=65s hearts=2 lost=2 stars=0 seen=3 det=25.8s z=85/216 28s:arrested@z64 65s:arrested@z85
+crouch stage 14 seed 502: DEAD    t=42s hearts=2 lost=2 stars=0 seen=2 det=6.7s z=45/216 21s:arrested@z48 42s:killed@z45
+crouch stage 14 seed 503: DEAD    t=51s hearts=2 lost=2 stars=0 seen=2 det=1.6s z=56/216 26s:arrested@z58 51s:arrested@z56
+crouch stage 15 seed 501: DEAD    t=59s hearts=2 lost=2 stars=0 seen=3 det=17.4s z=49/216 37s:arrested@z84 58s:arrested@z49
+crouch stage 15 seed 502: DEAD    t=50s hearts=2 lost=2 stars=0 seen=2 det=10.7s z=61/216 23s:killed@z51 50s:arrested@z61
+crouch stage 15 seed 503: DEAD    t=45s hearts=2 lost=2 stars=0 seen=2 det=4s z=45/216 24s:arrested@z55 45s:arrested@z45
+crouch stage 16 seed 501: DEAD    t=79s hearts=2 lost=2 stars=0 seen=2 det=24s z=99/216 35s:arrested@z81 79s:arrested@z99
+crouch stage 16 seed 502: DEAD    t=50s hearts=2 lost=2 stars=0 seen=2 det=1.6s z=55/216 25s:arrested@z57 49s:arrested@z55
+crouch stage 16 seed 503: DEAD    t=55s hearts=2 lost=2 stars=0 seen=2 det=4.8s z=63/216 27s:arrested@z59 55s:killed@z63
+crouch stage 17 seed 501: DEAD    t=45s hearts=2 lost=2 stars=0 seen=2 det=5.4s z=46/216 25s:arrested@z57 45s:killed@z46
+crouch stage 17 seed 502: DEAD    t=45s hearts=2 lost=2 stars=0 seen=2 det=4.2s z=43/216 26s:arrested@z58 45s:killed@z43
+crouch stage 17 seed 503: DEAD    t=64s hearts=2 lost=2 stars=0 seen=3 det=23.4s z=92/216 22s:arrested@z49 64s:arrested@z92
+crouch stage 18 seed 501: DEAD    t=71s hearts=2 lost=2 stars=0 seen=2 det=21.6s z=82/216 34s:killed@z79 70s:killed@z82
+crouch stage 18 seed 502: DEAD    t=50s hearts=2 lost=2 stars=0 seen=2 det=8.6s z=57/216 24s:arrested@z54 50s:arrested@z57
+crouch stage 18 seed 503: DEAD    t=84s hearts=2 lost=2 stars=0 seen=5 det=40.5s z=95/216 41s:arrested@z91 84s:arrested@z95
+crouch stage 19 seed 501: DEAD    t=54s hearts=2 lost=2 stars=0 seen=2 det=6.2s z=45/216 35s:killed@z79 54s:arrested@z45
+crouch stage 19 seed 502: DEAD    t=65s hearts=2 lost=2 stars=0 seen=3 det=15.4s z=94/216 23s:arrested@z53 65s:arrested@z94
+crouch stage 19 seed 503: DEAD    t=44s hearts=2 lost=2 stars=0 seen=2 det=4.6s z=50/216 22s:arrested@z48 44s:arrested@z50
+crouch stage 21 seed 501: DEAD    t=35s hearts=1 lost=1 stars=0 seen=1 det=2.6s z=79/216 35s:killed@z79
+crouch stage 21 seed 502: DEAD    t=24s hearts=1 lost=1 stars=0 seen=1 det=0.8s z=53/216 23s:arrested@z53
+crouch stage 21 seed 503: DEAD    t=21s hearts=1 lost=1 stars=0 seen=1 det=1.3s z=47/216 21s:arrested@z47
+crouch stage 22 seed 501: DEAD    t=26s hearts=1 lost=1 stars=0 seen=1 det=2.2s z=59/216 26s:arrested@z59
+crouch stage 22 seed 502: DEAD    t=25s hearts=1 lost=1 stars=0 seen=1 det=1.9s z=56/216 25s:arrested@z56
+crouch stage 22 seed 503: DEAD    t=22s hearts=1 lost=1 stars=0 seen=1 det=2.1s z=49/216 22s:arrested@z49
+crouch stage 23 seed 501: DEAD    t=27s hearts=1 lost=1 stars=0 seen=1 det=3.1s z=62/216 27s:arrested@z62
+crouch stage 23 seed 502: DEAD    t=23s hearts=1 lost=1 stars=0 seen=1 det=0.7s z=52/216 23s:arrested@z52
+crouch stage 23 seed 503: DEAD    t=21s hearts=1 lost=1 stars=0 seen=1 det=1.3s z=47/216 21s:arrested@z47
+crouch stage 24 seed 501: DEAD    t=35s hearts=1 lost=1 stars=0 seen=2 det=11.3s z=79/216 35s:killed@z79
+crouch stage 24 seed 502: DEAD    t=25s hearts=1 lost=1 stars=0 seen=1 det=1s z=56/216 25s:arrested@z56
+crouch stage 24 seed 503: DEAD    t=21s hearts=1 lost=1 stars=0 seen=1 det=1.3s z=47/216 21s:arrested@z47
+crouch stage 25 seed 501: DEAD    t=30s hearts=1 lost=1 stars=0 seen=1 det=7.9s z=68/216 30s:arrested@z68
+crouch stage 25 seed 502: DEAD    t=23s hearts=1 lost=1 stars=0 seen=0 det=0.4s z=53/216 23s:arrested@z53
+crouch stage 25 seed 503: DEAD    t=28s hearts=1 lost=1 stars=0 seen=1 det=7.5s z=61/216 27s:arrested@z61
+crouch stage 26 seed 501: DEAD    t=35s hearts=1 lost=1 stars=0 seen=1 det=1.9s z=79/216 35s:killed@z79
+crouch stage 26 seed 502: DEAD    t=23s hearts=1 lost=1 stars=0 seen=1 det=1.2s z=52/216 23s:arrested@z52
+crouch stage 26 seed 503: DEAD    t=23s hearts=1 lost=1 stars=0 seen=1 det=2.8s z=50/216 23s:arrested@z50
+crouch stage 27 seed 501: DEAD    t=35s hearts=1 lost=1 stars=0 seen=1 det=2.1s z=79/216 35s:killed@z79
+crouch stage 27 seed 502: DEAD    t=23s hearts=1 lost=1 stars=0 seen=1 det=0.5s z=53/216 23s:arrested@z53
+crouch stage 27 seed 503: DEAD    t=22s hearts=1 lost=1 stars=0 seen=1 det=1.7s z=48/216 22s:killed@z48
+crouch stage 28 seed 501: DEAD    t=35s hearts=1 lost=1 stars=0 seen=2 det=9.3s z=79/216 35s:arrested@z79
+crouch stage 28 seed 502: DEAD    t=42s hearts=1 lost=1 stars=0 seen=2 det=19s z=94/216 41s:killed@z94
+crouch stage 28 seed 503: DEAD    t=23s hearts=1 lost=1 stars=0 seen=1 det=2.7s z=50/216 23s:arrested@z50
+crouch stage 29 seed 501: DEAD    t=35s hearts=1 lost=1 stars=0 seen=1 det=3.6s z=79/216 35s:killed@z79
+crouch stage 29 seed 502: DEAD    t=21s hearts=1 lost=1 stars=0 seen=1 det=0.7s z=48/216 21s:arrested@z48
+crouch stage 29 seed 503: DEAD    t=22s hearts=1 lost=1 stars=0 seen=1 det=1.9s z=48/216 22s:arrested@z48
+errors []

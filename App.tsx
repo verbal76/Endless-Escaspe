@@ -7,6 +7,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { setAudioModeAsync } from 'expo-audio';
 import { Game } from './src/game/Game';
 import { boundedStep } from './src/util/async';
+import { setHapticsEnabled as setHapticsGate } from './src/util/haptics';
 import { useStore } from './src/state/store';
 import { installDebugLogger, logDebug } from './src/util/debug';
 import { getSavesLoadReport, loadSaves, loadSettings, saveSettings, setSavesWriteFailureListener } from './src/util/storage';
@@ -42,6 +43,7 @@ export default function App() {
       useStore.getState().setMasterVolume(s.masterVolume);
       useStore.getState().setMusicVolume(s.musicVolume);
       useStore.getState().setWeatherEnabled(s.weatherEnabled);
+      useStore.getState().setHapticsEnabled(s.hapticsEnabled);
       useStore.getState().setTutorialSeen(s.tutorialSeen);
       useStore.getState().setBossModeUnlocked(s.bossModeUnlocked);
       useStore.getState().setBossModeEnabled(s.bossModeEnabled);
@@ -57,6 +59,11 @@ export default function App() {
         autosave = startSettingsAutosave(useStore, saveSettings);
         setActiveSettingsAutosave(autosave);
       });
+    // The haptics module gate follows the store setting.
+    setHapticsGate(useStore.getState().hapticsEnabled);
+    const unsubHaptics = useStore.subscribe((st, prev) => {
+      if (st.hapticsEnabled !== prev.hapticsEnabled) setHapticsGate(st.hapticsEnabled);
+    });
     const appStateSub = AppState.addEventListener('change', (s) => {
       if (s !== 'active') autosave?.flush();
     });
@@ -111,6 +118,7 @@ export default function App() {
     return () => {
       disposed = true;
       appStateSub.remove();
+      unsubHaptics();
       autosave?.stop();
       setActiveSettingsAutosave(null);
       setSavesWriteFailureListener(null);

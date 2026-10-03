@@ -40,7 +40,7 @@ function fakeTimers() {
 }
 
 test('settings autosave: debounced, skips unchanged and unrelated state, flushes on demand', () => {
-  const store = fakeStore({ masterVolume: 0.7, musicVolume: 0.5, weatherEnabled: true, other: 0 });
+  const store = fakeStore({ masterVolume: 0.7, musicVolume: 0.5, weatherEnabled: true, hapticsEnabled: true, other: 0 });
   const t = fakeTimers();
   const writes: AutosaveFields[] = [];
   const a = startSettingsAutosave(store, (p) => writes.push(p), 400, t);
@@ -52,7 +52,7 @@ test('settings autosave: debounced, skips unchanged and unrelated state, flushes
   store.set({ masterVolume: 0.5 });
   assert.equal(t.count(), 1, 'one pending write while dragging');
   t.run();
-  assert.deepEqual(writes, [{ masterVolume: 0.5, musicVolume: 0.5, weatherEnabled: true }]);
+  assert.deepEqual(writes, [{ masterVolume: 0.5, musicVolume: 0.5, weatherEnabled: true, hapticsEnabled: true }]);
 
   store.set({ weatherEnabled: false });
   a.flush();
@@ -61,10 +61,15 @@ test('settings autosave: debounced, skips unchanged and unrelated state, flushes
   t.run();
   assert.equal(writes.length, 2, 'a flushed change is not written twice');
 
+  store.set({ hapticsEnabled: false });
+  a.flush();
+  assert.equal(writes.length, 3, 'the haptics toggle is saved too');
+  assert.equal(writes[2].hapticsEnabled, false);
+
   store.set({ musicVolume: 0.2 });
   store.set({ musicVolume: 0.5 });
   t.run();
-  assert.equal(writes.length, 2, 'a change undone before the write is skipped');
+  assert.equal(writes.length, 3, 'a change undone before the write is skipped');
 
   a.stop();
   store.set({ musicVolume: 0.1 });
@@ -72,7 +77,7 @@ test('settings autosave: debounced, skips unchanged and unrelated state, flushes
 });
 
 test('settings autosave: a throwing or rejecting save never reaches the store', () => {
-  const store = fakeStore({ masterVolume: 0.7, musicVolume: 0.5, weatherEnabled: true, other: 0 });
+  const store = fakeStore({ masterVolume: 0.7, musicVolume: 0.5, weatherEnabled: true, hapticsEnabled: true, other: 0 });
   const t = fakeTimers();
   let n = 0;
   const a = startSettingsAutosave(store, () => {

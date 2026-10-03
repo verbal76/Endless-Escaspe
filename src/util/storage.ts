@@ -56,6 +56,8 @@ export type Settings = {
   // the player can mute the soundtrack without losing siren / SFX.
   musicVolume: number;
   weatherEnabled: boolean;
+  // Vibration feedback (catches, crowbar, alarm, pickups).
+  hapticsEnabled: boolean;
   // True once the player has seen (or skipped) the intro tutorial,
   // so we don't replay it every cold launch. The "How to play"
   // entry on the start screen still re-shows it on demand.
@@ -75,6 +77,7 @@ const DEFAULT_SETTINGS: Settings = {
   masterVolume: 0.7,
   musicVolume: 0.5,
   weatherEnabled: true,
+  hapticsEnabled: true,
   tutorialSeen: false,
   bossModeUnlocked: false,
   bossModeEnabled: false,
@@ -99,6 +102,10 @@ export async function loadSettings(): Promise<Settings> {
           typeof parsed.weatherEnabled === 'boolean'
             ? parsed.weatherEnabled
             : DEFAULT_SETTINGS.weatherEnabled,
+        hapticsEnabled:
+          typeof parsed.hapticsEnabled === 'boolean'
+            ? parsed.hapticsEnabled
+            : DEFAULT_SETTINGS.hapticsEnabled,
         tutorialSeen:
           typeof parsed.tutorialSeen === 'boolean'
             ? parsed.tutorialSeen

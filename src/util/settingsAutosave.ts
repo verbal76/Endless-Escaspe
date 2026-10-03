@@ -11,6 +11,7 @@ export type AutosaveFields = {
   masterVolume: number;
   musicVolume: number;
   weatherEnabled: boolean;
+  hapticsEnabled: boolean;
 };
 
 type Source<S> = {
@@ -24,10 +25,14 @@ const pick = (s: AutosaveFields): AutosaveFields => ({
   masterVolume: s.masterVolume,
   musicVolume: s.musicVolume,
   weatherEnabled: s.weatherEnabled,
+  hapticsEnabled: s.hapticsEnabled,
 });
 
 const same = (a: AutosaveFields, b: AutosaveFields) =>
-  a.masterVolume === b.masterVolume && a.musicVolume === b.musicVolume && a.weatherEnabled === b.weatherEnabled;
+    a.masterVolume === b.masterVolume &&
+  a.musicVolume === b.musicVolume &&
+  a.weatherEnabled === b.weatherEnabled &&
+  a.hapticsEnabled === b.hapticsEnabled;
 
 export function startSettingsAutosave<S extends AutosaveFields>(
   store: Source<S>,

@@ -89,6 +89,8 @@ type Store = {
   // the AI gets a sense boost so the player doesn't get an easier
   // game by disabling effects. Persisted via AsyncStorage.
   weatherEnabled: boolean;
+  // Vibration on/off (pause panel). Persisted with the settings.
+  hapticsEnabled: boolean;
   // Visibility of the intro tutorial overlay. Set true on first
   // launch and from the start-screen "How to play" button; flips
   // back to false when the cutscene finishes or the player skips.
@@ -213,6 +215,7 @@ type Store = {
   setSegmentWeatherEnabled: (v: boolean) => void;
   setBestStars: (b: Record<number, number>) => void;
   setWeatherEnabled: (b: boolean) => void;
+  setHapticsEnabled: (b: boolean) => void;
   setShowTutorial: (b: boolean) => void;
   setHowToPlay: (v: 'home' | 'pause' | null) => void;
   setTutorialSeen: (b: boolean) => void;
@@ -261,6 +264,7 @@ export const useStore = create<Store>((set) => ({
   weather: 'clear',
   segmentWeatherEnabled: true,
   weatherEnabled: true,
+  hapticsEnabled: true,
   showTutorial: false,
   howToPlay: null,
   tutorialSeen: false,
@@ -359,6 +363,8 @@ export const useStore = create<Store>((set) => ({
     set((st) => ({ catchCounter: st.catchCounter + 1 })),
   setWeather: (w) => set((st) => (st.weather === w ? st : { weather: w })),
   setSegmentWeatherEnabled: (v) => set((st) => (st.segmentWeatherEnabled === v ? st : { segmentWeatherEnabled: v })),
+  setHapticsEnabled: (b) =>
+    set((st) => (st.hapticsEnabled === b ? st : { hapticsEnabled: b })),
   setWeatherEnabled: (b) =>
     set((st) => (st.weatherEnabled === b ? st : { weatherEnabled: b })),
   setTutorialSeen: (b) => set({ tutorialSeen: b }),

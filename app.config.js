@@ -15,6 +15,7 @@
 // config is just app.json.
 const INT = /^\d+$/;
 const SHA = /^[0-9a-f]{7,40}$/i;
+const CHANNEL = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 module.exports = ({ config }) => {
   const env = process.env;
@@ -23,9 +24,17 @@ module.exports = ({ config }) => {
   if (INT.test(env.EE_OTA_SEQUENCE || '')) release.otaSequence = Number(env.EE_OTA_SEQUENCE);
   const android = { ...config.android };
   if (INT.test(env.EE_BUILD_NUMBER || '')) android.versionCode = Number(env.EE_BUILD_NUMBER);
+  // EE_UPDATE_CHANNEL (eas.json build.<profile>.env) picks the update
+  // channel baked into a build; unset keeps app.json's `preview`, so
+  // every GitHub-built APK is unchanged. See docs/native-batch.md.
+  const updates = { ...config.updates };
+  if (CHANNEL.test(env.EE_UPDATE_CHANNEL || '')) {
+    updates.requestHeaders = { ...updates.requestHeaders, 'expo-channel-name': env.EE_UPDATE_CHANNEL };
+  }
   return {
     ...config,
     android,
+    updates,
     extra: { ...config.extra, release },
   };
 };

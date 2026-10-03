@@ -179,6 +179,35 @@ jobs:
       - name: Rename APK for upload
         run: cp "${{ steps.apk.outputs.path }}" "${{ steps.apk.outputs.name }}"
 
+      # Inspect the built APK itself (package, versionCode, targetSdk,
+      # permissions, signing, 16 KB alignment); fails the build on a
+      # violation. See scripts/ci/verify-apk.sh.
+      - name: Verify APK (artifact-level compliance)
+        run: bash scripts/ci/verify-apk.sh "${{ steps.apk.outputs.name }}" com.verbal76.endlessescaspe "${{ github.run_number }}" 36
+
+      # Can this APK install over the previous build? Same package AND same
+      # signing certificate. Compares against the published Build 13 asset.
+      - name: Compare signing certificate with Build 13
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          curl -fsSL -o build13.apk "https://github.com/${{ github.repository }}/releases/download/build-13/endless-escape-build-13.apk"
+          NEW=$("$BT/apksigner" verify --print-certs "${{ steps.apk.outputs.name }}" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          OLD=$("$BT/apksigner" verify --print-certs build13.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          {
+            echo "--- signing continuity vs Build 13"
+            echo "build13 cert sha256: $OLD"
+            echo "this    cert sha256: $NEW"
+            if [ -n "$NEW" ] && [ "$NEW" = "$OLD" ]; then echo "SAME CERTIFICATE: can update Build 13 in place"; else echo "DIFFERENT CERTIFICATE: cannot update Build 13 in place"; fi
+          } | tee -a apk-report.txt
+          rm -f build13.apk
+
+      - name: Upload APK report
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-report-${{ github.run_number }}
+          path: apk-report.txt
+          retention-days: 30
+
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
@@ -186,7 +215,7 @@ jobs:
           path: ${{ steps.apk.outputs.name }}
           if-no-files-found: error
           # The same file is attached to the GitHub release.
-          retention-days: 7
+          retention-days: 30
 
       # Publish a GitHub Release for every run (push AND manual
       # workflow_dispatch runs) so testers always have a stable URL for
@@ -200,6 +229,8 @@ jobs:
           tag_name: build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
           name: 'APK build #${{ github.run_number }}'
+          prerelease: ${{ github.ref != 'refs/heads/claude/game-review-suggestions-cjxiqh' }}
+          make_latest: ${{ github.ref == 'refs/heads/claude/game-review-suggestions-cjxiqh' }}
           body: |
             Auto-built from commit `${{ github.sha }}`.
 

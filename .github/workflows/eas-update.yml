@@ -5,6 +5,9 @@ name: EAS Update (OTA)
 # for the same commit:
 #   1. validate      typecheck, unit tests, native fingerprint gate and
 #                    an Android bundle export (ci.yml)
+#      still-newest  (cheap, between 1 and 2) stops the run before the
+#                    emulator if a newer publishable commit exists
+#                    (scripts/ci/publish-gate.mjs); publish repeats it.
 #   2. render-check  the release APK built from this commit draws its
 #                    textures on an Android emulator and survives a
 #                    background / foreground cycle (android-render-check.yml)
@@ -54,11 +57,39 @@ jobs:
   validate:
     name: Validate
     uses: ./.github/workflows/ci.yml
+    with:
+      ota: true
+
+  # Cheap (~30 s) exit before the 12-40 minute emulator job: if this
+  # commit is no longer the newest publishable commit of the branch, a
+  # newer push's own run will publish instead, so stop here rather than
+  # build and boot an emulator for an update that would be discarded.
+  # Lenient on purpose: if the branch head cannot be read, carry on (the
+  # publish job repeats the check strictly). Skipped dependents (render
+  # check, publish) make the run end green with a notice, not red.
+  still-newest:
+    name: Still the newest?
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      current: ${{ steps.head.outputs.current }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Still the newest publishable commit?
+        id: head
+        run: node scripts/ci/publish-gate.mjs newest --lenient
 
   render-check:
     name: Render check
-    needs: validate
+    needs: [validate, still-newest]
+    if: needs.still-newest.outputs.current == 'true'
     uses: ./.github/workflows/android-render-check.yml
+    with:
+      ota: true
 
   publish:
     name: Publish OTA bundle
@@ -83,13 +114,13 @@ jobs:
       EE_GIT_SHA: ${{ github.sha }}
     steps:
       - name: Check out repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # History for the "newest publishable commit" check below.
           fetch-depth: 0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'npm'
@@ -110,30 +141,13 @@ jobs:
       # (tests, docs, CI), no run of theirs publishes, so this one must.
       - name: Still the newest publishable commit?
         id: head
-        run: |
-          git fetch --no-tags --quiet origin "$GITHUB_REF"
-          HEAD_SHA=$(git rev-parse FETCH_HEAD)
-          echo "branch head: $HEAD_SHA  this run: $GITHUB_SHA"
-          if [ "$HEAD_SHA" = "$GITHUB_SHA" ]; then
-            echo "current=true" >> "$GITHUB_OUTPUT"
-          elif ! git merge-base --is-ancestor "$GITHUB_SHA" "$HEAD_SHA"; then
-            echo "::notice::Not publishing $GITHUB_SHA: it is no longer on the branch (head $HEAD_SHA)"
-            echo "current=false" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "$GITHUB_SHA" "$HEAD_SHA" -- . \
-              ':!package.json' ':!package-lock.json' ':!app.json' ':!app.config.js' ':!eas.json' \
-              ':!babel.config.js' ':!metro.config.js' ':!android' ':!ios' \
-              ':!assets/icon.png' ':!assets/adaptive-icon.png' ':!assets/splash-icon.png' ':!assets/adaptive-icon-background.png' \
-              ':!.github' ':!scripts' ':!tests' ':!docs' ':!*.md' ':!.gitignore'; then
-            echo "::notice::Newer commits only touch paths that don't publish; publishing $GITHUB_SHA"
-            echo "current=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::Not publishing $GITHUB_SHA: $HEAD_SHA carries newer app changes and publishes itself"
-            echo "current=false" >> "$GITHUB_OUTPUT"
-          fi
+        # Same script as the early still-newest job (strict here: a
+        # failure to read the head fails the job instead of publishing).
+        run: node scripts/ci/publish-gate.mjs newest
 
       - name: Set up EAS
         if: steps.head.outputs.current == 'true'
-        uses: expo/expo-github-action@v8
+        uses: expo/expo-github-action@v9
         with:
           # Pinned: verify-ota.mjs and the summary parse `--json`
           # output. 24.9.0 published OTA 121; bump deliberately.

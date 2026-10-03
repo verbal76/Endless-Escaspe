@@ -103,6 +103,9 @@ release metadata, music intensity and more.
 Two GitHub Actions workflows ship the game; `ci.yml` (typecheck, unit
 tests, native fingerprint gate, Android bundle export) runs on every
 pull request and every pushed branch, and never publishes anything.
+(On the publishing branch a push that starts `eas-update.yml` is
+validated by that workflow instead of twice; see `docs/ci.md` for the
+full pipeline map, gates, costs and the trigger truth table.)
 
 | Change | Workflow | Result |
 | --- | --- | --- |
@@ -117,7 +120,9 @@ docs, tests, scripts or workflows publish nothing. Editing
 
 An OTA is published only after, for the same commit:
 
-1. **validate** (`ci.yml`): typecheck, tests, fingerprint gate, bundle export;
+1. **validate** (`ci.yml`): typecheck, tests, fingerprint gate, bundle
+   export; then a cheap **still-newest** check that stops the run before
+   the emulator if a newer publishable commit is already on the branch;
 2. **render check** (`android-render-check.yml`, ~30-40 min): the release
    configuration is built for x86_64 and run on an Android emulator; it
    fails unless the in-app render audit reports every textured model

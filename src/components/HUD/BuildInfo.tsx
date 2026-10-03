@@ -13,7 +13,7 @@ import { color as ui, type as T, touch } from '../../ui/theme';
 // discovered and applied automatically, see util/updateFlow.ts) and COPY
 // DIAGNOSTICS, which hands the whole About report, as plain text, to the
 // Android share sheet (Copy, or send it to any app).
-export function BuildInfo() {
+export function BuildInfo({ hideShare = false }: { hideShare?: boolean } = {}) {
   const info = getReleaseInfo();
   const rows = technicalRows();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -42,14 +42,6 @@ export function BuildInfo() {
     else {
       setReady(true);
       setStatus('New update downloaded. Tap again to restart into it (a run in progress ends).');
-    }
-  };
-
-  const onShare = async () => {
-    try {
-      await Share.share({ message: composeAboutText(), title: 'Endless Escape - About / Diagnostics' });
-    } catch (e) {
-      setStatus(`Share failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -82,13 +74,7 @@ export function BuildInfo() {
             <Text style={styles.btnLabel}>{ready ? 'RESTART INTO UPDATE' : 'CHECK FOR UPDATE'}</Text>
           </Pressable>
         ) : null}
-        <Pressable
-          accessibilityLabel="Copy diagnostics: share or copy the About report as text"
-          onPress={onShare}
-          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
-        >
-          <Text style={styles.btnLabel}>COPY DIAGNOSTICS</Text>
-        </Pressable>
+        {hideShare ? null : <CopyDiagnosticsButton />}
       </View>
       {status ? <Text style={styles.status}>{status}</Text> : null}
     </View>
@@ -133,3 +119,29 @@ const styles = StyleSheet.create({
   btnLabel: { color: '#dff4ff', fontSize: T.caption, fontWeight: '900', letterSpacing: 1 },
   status: { color: 'rgba(255,255,255,0.85)', fontSize: T.caption, marginTop: 6 },
 });
+
+// COPY DIAGNOSTICS: the whole About report (identity, OTA, Play readiness,
+// device, technical rows) as plain text through the Android share sheet.
+export function CopyDiagnosticsButton() {
+  const [status, setStatus] = useState<string | null>(null);
+  const onShare = async () => {
+    try {
+      await Share.share({ message: composeAboutText(), title: 'Endless Escape - About / Diagnostics' });
+      setStatus(null);
+    } catch (e) {
+      setStatus(`Share failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+  return (
+    <View>
+      <Pressable
+        accessibilityLabel="Copy diagnostics: share or copy the About report as text"
+        onPress={onShare}
+        style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+      >
+        <Text style={styles.btnLabel}>COPY DIAGNOSTICS</Text>
+      </Pressable>
+      {status ? <Text style={styles.status}>{status}</Text> : null}
+    </View>
+  );
+}

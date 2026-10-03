@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BackHandler, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Pressable } from '../../ui/Pressable';
@@ -7,7 +7,7 @@ import { useStore } from '../../state/store';
 import { color as ui, fonts, radius, touch, type as T } from '../../ui/theme';
 import { buildAbout } from '../../util/aboutInfo';
 import { getAboutSources } from '../../util/releaseRuntime';
-import { BuildInfo } from './BuildInfo';
+import { BuildInfo, CopyDiagnosticsButton } from './BuildInfo';
 
 // Settings > About: what exactly is installed and running (app, package,
 // native build, OTA, Google Play readiness, device) plus COPY DIAGNOSTICS.
@@ -19,6 +19,7 @@ export function AboutPanel() {
   const phase = useStore((s) => s.updatePhase);
   const setAboutOpen = useStore((s) => s.setAboutOpen);
   const insets = useSafeAreaInsets();
+  const [showTech, setShowTech] = useState(false);
 
   // Android back closes the About view first (the settings modal's own
   // onRequestClose also handles it; this covers non-modal hosts).
@@ -71,9 +72,12 @@ export function AboutPanel() {
               ))}
             </View>
           ))}
+          <CopyDiagnosticsButton />
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>TECHNICAL</Text>
-            <BuildInfo />
+            <Pressable accessibilityRole="button" onPress={() => setShowTech((v) => !v)} style={styles.techToggle}>
+              <Text style={styles.sectionTitle}>{showTech ? 'TECHNICAL  \u25BE' : 'TECHNICAL  \u25B8'}</Text>
+            </Pressable>
+            {showTech ? <BuildInfo hideShare /> : null}
           </View>
         </ScrollView>
       </View>
@@ -125,6 +129,7 @@ const styles = StyleSheet.create({
   section: { gap: 3 },
   sectionTitle: { color: ui.gold, fontSize: T.small, fontWeight: '900', letterSpacing: 1.4, marginBottom: 2 },
   row: { paddingVertical: 2 },
+  techToggle: { minHeight: touch.min, justifyContent: 'center' },
   label: { color: ui.textMuted, fontSize: T.caption, fontWeight: '700', letterSpacing: 1 },
   value: { color: '#fff', fontSize: T.small, fontFamily: 'monospace', marginTop: 1, flexWrap: 'wrap' },
 });

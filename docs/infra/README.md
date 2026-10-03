@@ -14,3 +14,9 @@ OTA only after the owner releases the freeze (see docs on `claude/ledger-docs`: 
 
 Files: `play-identity.md` (A), `ota.md` (B + applying experience C), `about-screen.md` (D), `studio-splash.md` (E).
 Nothing was built, published, signed or submitted. Physical-device behaviour is NOT verified.
+
+## Follow-up round (blocker resolution)
+- Logo: exhaustive search, not found anywhere reachable -> see studio-splash.md (needs owner / portfolio manager supply). Splash stays disabled.
+- Package ID: classified A by repository evidence (Play Console UNVERIFIED -> owner confirms); rename NOT performed because the save-transfer path is not live/proven -> package-id.md.
+- Saves backup (export / import) implemented on this branch as the prerequisite: `src/util/saveExport.ts`, `saveBackup.ts`, Settings > Saves backup, tests/saveBackup.test.ts. HELD with the rest of PR #6.
+- Identity drift guard: tests/identity.test.ts.

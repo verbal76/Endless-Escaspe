@@ -23,6 +23,7 @@ import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
 import { composeBugReportUrl, composeFeatureRequestUrl, composeVitalsText, openSupportUrl } from '../../util/support';
 import { AboutPanel } from './AboutPanel';
+import { SaveBackup } from './SaveBackup';
 import { formatMenuLine } from '../../util/releaseInfo';
 import { getReleaseInfo } from '../../util/releaseRuntime';
 import { HowToPlay } from './HowToPlay';
@@ -383,6 +384,10 @@ export function SettingsScreen() {
                     <Text style={styles.feedbackLabel}>FEATURE REQUEST</Text>
                   </Pressable>
                 </View>
+
+                <Text style={styles.sectionHeading}>Saves backup</Text>
+                <Text style={styles.subLabel}>Copy your characters out before reinstalling, or restore them into another install.</Text>
+                <SaveBackup />
 
                 <Text style={styles.sectionHeading}>About</Text>
                 <Pressable

@@ -3,10 +3,10 @@ import {
   AppState,
   BackHandler,
   Image,
-  Linking,
   Modal,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -21,7 +21,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
-import { composeBugReportUrl, composeFeatureRequestUrl } from '../../util/support';
+import { composeBugReportUrl, composeFeatureRequestUrl, composeVitalsText, openSupportUrl } from '../../util/support';
 import { BuildInfo } from './BuildInfo';
 import { HowToPlay } from './HowToPlay';
 import { CARD_BORDER, CARD_PADDING, PANEL_MARGIN, pausePanelHeights } from '../../ui/pauseLayout';
@@ -194,14 +194,19 @@ export function SettingsScreen() {
     persistSettings();
   };
 
+  // No mail app (or it refused the link): offer the share sheet with
+  // the same diagnostics instead of failing silently.
+  const openOrShare = async (url: string, title: string) => {
+    if (await openSupportUrl(url)) return;
+    Share.share({ message: composeVitalsText(), title }).catch(() => undefined);
+  };
   const onReportBug = () => {
-    // openURL fails silently if no email client is installed; we just
-    // ignore the rejection rather than blocking the panel.
-    Linking.openURL(composeBugReportUrl()).catch(() => {});
+    void openOrShare(composeBugReportUrl(), 'Endless Escape - bug report');
   };
   const onFeatureRequest = () => {
-    Linking.openURL(composeFeatureRequestUrl()).catch(() => {});
+    void openOrShare(composeFeatureRequestUrl(), 'Endless Escape - feature request');
   };
+
 
   return (
     <>

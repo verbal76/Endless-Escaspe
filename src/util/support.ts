@@ -1,5 +1,6 @@
-import { Platform } from 'react-native';
-import { formatEntry, getEntries, getPreviousRun } from './debug';
+import { Linking, Platform } from 'react-native';
+import { composeMailtoReport, mailtoUrl } from './bugReport';
+import { formatEntry, getEntries, getPreviousRun, logDebug } from './debug';
 import { getReleaseInfo } from './releaseRuntime';
 import { formatDetailRows, formatInfoLines, formatMenuLine, formatVitalsText, type InfoRow } from './releaseInfo';
 import { getTextureStatus } from './textures';
@@ -39,28 +40,25 @@ export function composeVitalsText(): string {
 }
 
 export function composeBugReportUrl(): string {
-  // Last 30 entries each is enough to fit comfortably under most
-  // mailto: URL length caps (~8 KB on Android / iOS) while still
-  // capturing a useful trail. The previous-run slice is the
-  // crash-to-desktop catch: if the app died last session those
-  // entries are the lead-up.
-  const current = getEntries().slice(-30).map(formatEntry).join('\n');
-  const prev = (getPreviousRun() ?? []).slice(-30).map(formatEntry).join('\n');
-  const subject = `Endless Escape bug report — ${formatMenuLine(getReleaseInfo())}`;
-  const body = [
-    'Describe what happened above this line. Anything below is for context — leave it as-is.',
-    '',
-    '--- diagnostic info (auto-generated) ---',
-    buildInfoMultiline(),
-    '',
-    '--- previous run (pre-crash, last 30 entries) ---',
-    prev || '(no previous-run entries)',
-    '',
-    '--- current run (last 30 entries) ---',
-    current || '(no current-run entries)',
-  ].join('\n');
-  const params = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  return `mailto:${SUPPORT_EMAIL}?${params}`;
+  // The last 30 entries of each run, clipped and trimmed oldest-first
+  // so the whole URL stays within what mail apps accept (see
+  // util/bugReport.ts); the diagnostic block is always kept. The
+  // previous-run slice is the crash-to-desktop catch: if the app died
+  // last session those entries are the lead-up.
+  return composeMailtoReport({
+    to: SUPPORT_EMAIL,
+    subject: `Endless Escape bug report — ${formatMenuLine(getReleaseInfo())}`,
+    head: [
+      'Describe what happened above this line. Anything below is for context — leave it as-is.',
+      '',
+      '--- diagnostic info (auto-generated) ---',
+      buildInfoMultiline(),
+    ],
+    sections: [
+      { title: 'previous run (pre-crash)', entries: (getPreviousRun() ?? []).slice(-30).map(formatEntry), empty: '(no previous-run entries)' },
+      { title: 'current run', entries: getEntries().slice(-30).map(formatEntry), empty: '(no current-run entries)' },
+    ],
+  });
 }
 
 export function composeFeatureRequestUrl(): string {
@@ -71,6 +69,18 @@ export function composeFeatureRequestUrl(): string {
     '--- diagnostic info (auto-generated) ---',
     buildInfoMultiline(),
   ].join('\n');
-  const params = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  return `mailto:${SUPPORT_EMAIL}?${params}`;
+  return mailtoUrl(SUPPORT_EMAIL, subject, body);
+}
+
+// Opens a composed mailto: URL. Resolves false (and logs why) when no
+// app can take it (e.g. no email client), so the caller can offer the
+// COPY / SHARE INFO path instead of failing silently.
+export async function openSupportUrl(url: string): Promise<boolean> {
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch (e) {
+    logDebug('warn', '[support] could not open mail app', e);
+    return false;
+  }
 }

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
+import { PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
 
 // Scanning floodlight tower: vertical pole, head, downward translucent

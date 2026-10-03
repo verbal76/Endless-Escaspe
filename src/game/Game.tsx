@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { GLView } from 'expo-gl';
 import type { ExpoWebGLRenderingContext } from 'expo-gl';
@@ -187,7 +187,6 @@ import {
   type Weather,
   type WeatherKind,
 } from '../scenes/Weather';
-import { dustObstaclesWithSnow } from '../scenes/SnowCaps';
 import { applyStageLighting, getStageLighting, type StageLighting } from '../scenes/Lighting';
 import { createSiren, updateSiren, type SirenHandle } from '../scenes/Siren';
 import { createMusic, type MusicPlayer } from '../scenes/Music';
@@ -202,7 +201,7 @@ import {
 } from '../scenes/ThrownRock';
 import { TIPS, contextTip, levelTips, stageStartTips, type TipId } from '../util/stageTips';
 import { createSfx, playSfx, type Sfx } from '../scenes/Sfx';
-import { writeSaves, type Save } from '../util/storage';
+import { getSave, writeSaves, type Save } from '../util/storage';
 import { haptics } from '../util/haptics';
 import { scoreStars, timeTargetsFor } from '../util/scoring';
 import { applyRunResult, type RunResult } from '../util/economy';
@@ -225,8 +224,19 @@ import {
 
 export function Game() {
   const loopRef = useRef<LoopHandle | null>(null);
+  // Everything a GL context owns that outlives a frame: stopped and
+  // released when the context is recreated or the component unmounts.
+  const disposeRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => {
+    disposeRef.current?.();
+    disposeRef.current = null;
+  }, []);
 
   const onContextCreate = (gl: ExpoWebGLRenderingContext) => {
+    // A recreated context must not leave the previous loop and audio
+    // players running alongside the new ones.
+    disposeRef.current?.();
+    disposeRef.current = null;
     const r = createRenderer(gl);
 
     // ---- Mount-once entities ----------------------------------------
@@ -269,6 +279,8 @@ export function Game() {
     let noiseRadiusNow = 0;
     let noiseLoudness = 0;
     let crowbarTarget: { x: number; z: number } | null = null;
+    // Rising edge of "anyone chasing" for the spotted sting.
+    let prevAnyChase = false;
     // Reused per-frame detection outputs.
     const senseOut: DetectionResult = { visual: false, heard: false };
     const guardSenses = new Map<number, GuardSenses>();
@@ -288,11 +300,8 @@ export function Game() {
     const music: MusicPlayer = createMusic(musicLevel(useStore.getState()));
     // Danger -> music mix (calm / alert / chase with hysteresis).
     const musicIntensity = new MusicIntensity();
-    // Live-update the music volume whenever the slider moves. The
-    // returned unsubscribe is intentionally not called - the music
-    // is alive for the whole GLView lifetime, which matches the app's
-    // lifetime in this codebase.
-    void useStore.subscribe((st, prev) => {
+    // Live-update the music volume whenever the slider moves.
+    const unsubVolume = useStore.subscribe((st, prev) => {
       if (st.musicVolume !== prev.musicVolume || st.masterVolume !== prev.masterVolume) music.setVolume(musicLevel(st));
     });
     const projectiles = new ProjectileSystem(r.worldRoot);
@@ -519,9 +528,6 @@ export function Game() {
       if (s.endless) {
         spawnFences(secRoot, moodStageFor(level, s.mode, s.seed), s.weatherKind, len, razorWireEnabledFor(level), len, zStart === 0 ? null : zStart);
         secRoot.add(createTreeLine(zStart === 0 ? -10 : zStart, zStart === 0 ? len + 10 : len, s.seed + index));
-      }
-      if (s.weatherKind === 'snow') {
-        dustObstaclesWithSnow(s.procgen.obstacles().filter((o) => o.z >= zStart && o.z < zStart + len + CHUNK_LEN));
       }
       s.sections.push({ index, zStart, len, root: secRoot });
     };
@@ -871,7 +877,6 @@ export function Game() {
     // Idle splash-demo state. Drives the player figure on a slow
     // crouched ping-pong path while the start screen is up so the
     // backdrop reads as a living scene instead of a frozen still.
-    const DEMO_PERIOD = 14;
     let demoTime = 0;
 
     // Brief sparkle animation on collected pickups: instead of
@@ -938,7 +943,7 @@ export function Game() {
     const sessionSeen = new Set<string>();
     const seenTips = (): readonly string[] => {
       const st = useStore.getState();
-      const save = st.activeSaveName ? st.saves[st.activeSaveName] : null;
+      const save = getSave(st.saves, st.activeSaveName) ?? null;
       return save ? [...save.tipsSeen, ...sessionSeen] : [...sessionSeen];
     };
     // A tip counts as seen only once it has been on screen for
@@ -964,7 +969,7 @@ export function Game() {
       sessionSeen.add(id);
       const st = useStore.getState();
       const key = st.activeSaveName;
-      const save = key ? st.saves[key] : null;
+      const save = getSave(st.saves, key) ?? null;
       if (!key || !save || save.tipsSeen.includes(id)) return;
       const updated: Save = { ...save, tipsSeen: [...save.tipsSeen, id] };
       st.upsertSave(updated);
@@ -1150,6 +1155,9 @@ export function Game() {
       st.setLastDeathCause(cause);
       tracker.onCatch();
       playSfx(sfx, cause === 'killed' ? 'hurt' : 'caught', st.masterVolume);
+      // Haptic on the impact frame (not after the hit-stop).
+      if (remaining <= 0) haptics.caught();
+      else haptics.heartLost();
       // Trigger the shield+skull catch flash. CatchFlash subscribes
       // to catchCounter; bumping it here means every hit (soft or
       // run-ending) plays the same brief notification before the
@@ -1177,7 +1185,6 @@ export function Game() {
     const resolveCatch = (remaining: number) => {
       const st = useStore.getState();
       if (remaining <= 0) {
-        haptics.caught();
         // Boss-round failure: the round must be retried - losing
         // never advances the stage. Fresh hearts, same arena, timer
         // re-armed (resetSegment via the restart path). No boss perk:
@@ -1197,6 +1204,13 @@ export function Game() {
         st.clearBossPerk();
         perkChargedStage = -1;
         perkBonusThisStage = 0;
+        const deadKey = st.activeSaveName;
+        const deadSave = getSave(st.saves, deadKey);
+        if (deadKey && deadSave && deadSave.perkStages > 0) {
+          const u: Save = { ...deadSave, perkStages: 0 };
+          st.upsertSave(u);
+          writeSaves({ ...useStore.getState().saves, [deadKey]: u });
+        }
         // Final death (non-boss): mirror handleWin's stats build so
         // the death banner can render the same post-run summary the
         // win banner uses.
@@ -1205,7 +1219,6 @@ export function Game() {
         st.setRunState('caught');
         return;
       }
-      haptics.heartLost();
       // Soft restart inside the segment - keep run stats so the
       // end-of-segment board reflects all attempts in this run.
       // Campaign: back to the start line. Endless / Daily: the world
@@ -1285,7 +1298,7 @@ export function Game() {
     const payRun = (result: RunResult): { earned: number; total: number; save: Save | null } => {
       const st = useStore.getState();
       const key = st.activeSaveName;
-      const save = key ? st.saves[key] : null;
+      const save = getSave(st.saves, key) ?? null;
       if (!key || !save) return { earned: 0, total: 0, save: null };
       const { save: updated, earned } = applyRunResult(save, result);
       if (updated !== save) {
@@ -1361,13 +1374,16 @@ export function Game() {
       const after = useStore.getState();
       const key = after.activeSaveName;
       if (key) {
-        const existing = after.saves[key];
+        const existing = getSave(after.saves, key);
         if (existing) {
           const oldBest = existing.bestStars[justClearedStage] ?? 0;
           const newBest = Math.max(oldBest, stars);
           const updated: Save = {
             ...existing,
             stage: Math.max(existing.stage, justClearedStage + 1),
+            // The boss perk is saved at the resume point only when it
+            // moves forward: a replay of a lower stage never rewrites it.
+            perkStages: justClearedStage + 1 > existing.stage ? after.perkRemainingStages : existing.perkStages,
             bestStars:
               newBest > oldBest
                 ? { ...existing.bestStars, [justClearedStage]: newBest }
@@ -1381,6 +1397,7 @@ export function Game() {
 
       st.setRunState('cleared');
       haptics.cleared();
+      playSfx(sfx, 'stage_clear', st.masterVolume);
       // Hearts count for the *next* segment (post-Banner) routes
       // through grantStartingHearts so the boss perk's +1 buffer
       // applies + decays alongside the stage advance.
@@ -1429,8 +1446,10 @@ export function Game() {
         renderAuditIn = RENDER_AUDIT_DELAY_FRAMES;
         r.worldRoot.add(playerFigure.group);
       }
+      let restartedNow = false;
       if (st.restartCounter !== lastRestartCounter) {
         lastRestartCounter = st.restartCounter;
+        restartedNow = true;
         // Restart re-uses the current scene; heart count rolls
         // through grantStartingHearts so an active boss perk still
         // applies + decays on a mid-run restart.
@@ -1457,8 +1476,12 @@ export function Game() {
         if (lastRunState === 'idle') {
           perkChargedStage = -1;
           perkBonusThisStage = 0;
+          // A saved boss perk (startRun restored it) gives this stage
+          // its +1 heart, like a stage reached mid-run.
+          if (st.gameMode === 'campaign') grantStartingHearts(st.stage);
         }
         if (
+          !restartedNow &&
           st.segmentSeed === lastSegmentSeed &&
           st.stage === lastStage &&
           st.gameMode === lastMode &&
@@ -1512,6 +1535,7 @@ export function Game() {
         }
         noiseRadiusNow = 0;
         crowbarTarget = null;
+        prevAnyChase = false;
         st.setDangerLevel(0);
         const calmMix = musicIntensity.update(0, false, dt);
         music.setMix(calmMix.calmGain, calmMix.tensionGain, calmMix.rate);
@@ -1721,7 +1745,8 @@ export function Game() {
           const arc = createSwingArc(player.x, player.z, CROWBAR_RANGE);
           r.worldRoot.add(arc.mesh);
           swingArcs.push(arc);
-          haptics.pickupUse();
+          if (hit) haptics.crowbarHit();
+          else haptics.crowbarMiss();
           // Always play the swing whoosh; layer the bonk thump on top
           // when contact actually lands. The two cue different things
           // for the player: whoosh = "you swung", bonk = "you connected".
@@ -1900,9 +1925,10 @@ export function Game() {
       // looking for you now."
       const alarmHot = newAlarm >= 1.0;
       if (alarmHot && !scene.alarmWasFull) {
+        haptics.alarm();
+        playSfx(sfx, 'alarm', st.masterVolume);
         if (summonReinforcement(player.x, player.z)) {
           st.showToast('ALARM! A guard has been dispatched', 'warn');
-          haptics.heartLost();
         }
         // Every guard hears the alarm and converges on the sighting.
         for (const g of scene.guards) {
@@ -2133,6 +2159,8 @@ export function Game() {
       let anyChase = false;
       for (const g of scene.guards) if (g.state === 'chase') anyChase = true;
       for (const d of scene.dogs) if (d.state === 'chase') anyChase = true;
+      if (anyChase && !prevAnyChase) playSfx(sfx, 'spotted', st.masterVolume);
+      prevAnyChase = anyChase;
       const mix = musicIntensity.update(maxDetection, anyChase, dt);
       music.setMix(mix.calmGain, mix.tensionGain, mix.rate);
 
@@ -2384,8 +2412,38 @@ export function Game() {
       },
       onFatal: (err) => {
         logDebug('error', 'frame loop failing repeatedly', err instanceof Error ? err.message : String(err));
+        // Don't leave the player in a frozen game: offer a way out.
+        // The menu path rebuilds the world when the next run starts.
+        const st = useStore.getState();
+        if (st.runState === 'idle') return;
+        st.setPaused(true);
+        st.setGameModal({
+          title: 'Something went wrong',
+          body: 'The game hit an error and stopped this run. Your saved progress is safe. A bug report from the pause menu helps us fix it.',
+          actions: [
+            {
+              label: 'MAIN MENU',
+              variant: 'primary',
+              onPress: () => {
+                const s2 = useStore.getState();
+                s2.setGameModal(null);
+                s2.setPaused(false);
+                s2.setRunState('idle');
+              },
+            },
+          ],
+        });
       },
     });
+    const loop = loopRef.current;
+    disposeRef.current = () => {
+      loop.stop();
+      if (loopRef.current === loop) loopRef.current = null;
+      unsubVolume();
+      music.dispose();
+      sfx.dispose();
+      siren.dispose();
+    };
   };
 
   return (

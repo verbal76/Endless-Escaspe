@@ -1417,11 +1417,17 @@ export function Game() {
       // length, razor wire) catch up to the new stage. Restart re-
       // uses the existing scene by design - same seed, same world,
       // just back to spawn.
+      // Not while the stage-clear card is up: handleWin has already
+      // advanced the stage, and rebuilding now swapped the world behind
+      // the card and then again on NEXT STAGE (which changes the seed).
+      let rebuiltNow = false;
       if (
-        st.segmentSeed !== lastSegmentSeed ||
-        st.stage !== lastStage ||
-        st.gameMode !== lastMode
+        st.runState !== 'cleared' &&
+        (st.segmentSeed !== lastSegmentSeed ||
+          st.stage !== lastStage ||
+          st.gameMode !== lastMode)
       ) {
+        rebuiltNow = true;
         lastSegmentSeed = st.segmentSeed;
         lastStage = st.stage;
         lastMode = st.gameMode;
@@ -1446,10 +1452,8 @@ export function Game() {
         renderAuditIn = RENDER_AUDIT_DELAY_FRAMES;
         r.worldRoot.add(playerFigure.group);
       }
-      let restartedNow = false;
       if (st.restartCounter !== lastRestartCounter) {
         lastRestartCounter = st.restartCounter;
-        restartedNow = true;
         // Restart re-uses the current scene; heart count rolls
         // through grantStartingHearts so an active boss perk still
         // applies + decays on a mid-run restart.
@@ -1460,8 +1464,9 @@ export function Game() {
         // rebuilt from its seed (Endless / Daily streamed and trimmed
         // it; campaign pickups were collected) and the store empties
         // the bag, so items can't be farmed across restarts.
-        rebuildScene(st.stage, st.segmentSeed, st.gameMode);
+        if (!rebuiltNow) rebuildScene(st.stage, st.segmentSeed, st.gameMode);
         resetSegment();
+        rebuiltNow = true;
       }
       // Fresh transition into gameplay (typically from the start
       // screen's NEW RUN / CONTINUE / tutorial prompt path). The
@@ -1481,7 +1486,8 @@ export function Game() {
           if (st.gameMode === 'campaign') grantStartingHearts(st.stage);
         }
         if (
-          !restartedNow &&
+          // (a rebuild above this frame already made it fresh)
+          !rebuiltNow &&
           st.segmentSeed === lastSegmentSeed &&
           st.stage === lastStage &&
           st.gameMode === lastMode &&

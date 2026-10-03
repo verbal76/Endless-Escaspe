@@ -25,6 +25,7 @@ export function createNoiseRing(): NoiseRing {
     opacity: 0,
     depthWrite: false,
     side: THREE.DoubleSide,
+    forceSinglePass: true,
   });
   const mesh = new THREE.Mesh(RING_GEO, mat);
   mesh.rotation.x = -Math.PI / 2;
@@ -123,6 +124,7 @@ export function createTargetMarker(): TargetMarker {
     opacity: 0.6,
     depthWrite: false,
     side: THREE.DoubleSide,
+    forceSinglePass: true,
   });
   const mesh = new THREE.Mesh(RING_GEO, mat);
   mesh.rotation.x = -Math.PI / 2;

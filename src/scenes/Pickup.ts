@@ -26,6 +26,7 @@ const HALO_MAT = new THREE.MeshBasicMaterial({
   opacity: 0.45,
   depthWrite: false,
   side: THREE.DoubleSide,
+  forceSinglePass: true,
 });
 
 const CROWBAR_GEO = markShared(new THREE.BoxGeometry(0.85, 0.08, 0.08));

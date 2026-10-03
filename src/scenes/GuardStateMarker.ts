@@ -83,6 +83,7 @@ export function createGuardStateMarker(): GuardStateMarker {
     opacity: 0.35,
     depthWrite: false,
     side: THREE.DoubleSide,
+    forceSinglePass: true,
   });
 
   const stem = new THREE.Mesh(STEM_GEO, stemMat);

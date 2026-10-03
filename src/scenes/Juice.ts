@@ -136,7 +136,7 @@ export function createBurstPool(size: number = 4): BurstPool {
   for (let i = 0; i < size; i++) {
     const g = new THREE.Group();
     g.visible = false;
-    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd14a, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide });
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xffd14a, transparent: true, opacity: 0, depthWrite: false, side: THREE.DoubleSide, forceSinglePass: true });
     const ring = new THREE.Mesh(RING_GEO, ringMat);
     g.add(ring);
     const glintMat = new THREE.MeshBasicMaterial({ color: 0xfff2b0, transparent: true, opacity: 0, depthWrite: false });

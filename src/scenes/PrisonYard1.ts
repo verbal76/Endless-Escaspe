@@ -159,6 +159,7 @@ export function createFacingMarker(visionRange: number): THREE.Mesh {
     opacity: 0.30,
     depthWrite: false,
     side: THREE.DoubleSide,
+    forceSinglePass: true,
   });
   return new THREE.Mesh(geo, mat);
 }

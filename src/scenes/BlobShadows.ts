@@ -36,10 +36,17 @@ function blobTexture(): THREE.DataTexture {
 const BLOB_GEO = markShared(new THREE.PlaneGeometry(1, 1));
 BLOB_GEO.rotateX(-Math.PI / 2);
 
-let BLOB_MAT: THREE.MeshBasicMaterial | null = null;
-function blobMaterial(): THREE.MeshBasicMaterial {
-  if (BLOB_MAT) return BLOB_MAT;
-  BLOB_MAT = markShared(
+// One material for single (moving) shadows and one for the instanced
+// prop shadows: sharing one between Mesh and InstancedMesh made three
+// re-resolve its program on every switch between the two, every frame.
+const BLOB_MATS: { plain: THREE.MeshBasicMaterial | null; instanced: THREE.MeshBasicMaterial | null } = {
+  plain: null,
+  instanced: null,
+};
+function blobMaterial(kind: 'plain' | 'instanced'): THREE.MeshBasicMaterial {
+  const cached = BLOB_MATS[kind];
+  if (cached) return cached;
+  const mat = markShared(
     new THREE.MeshBasicMaterial({
       map: blobTexture(),
       transparent: true,
@@ -52,14 +59,15 @@ function blobMaterial(): THREE.MeshBasicMaterial {
       polygonOffsetUnits: -1,
     }),
   );
-  return BLOB_MAT;
+  BLOB_MATS[kind] = mat;
+  return mat;
 }
 
 const SHADOW_Y = 0.015;
 
 // A single moving shadow (player, guard, dog). Caller positions it.
 export function createBlobShadow(diameter: number): THREE.Mesh {
-  const m = new THREE.Mesh(BLOB_GEO, blobMaterial());
+  const m = new THREE.Mesh(BLOB_GEO, blobMaterial('plain'));
   m.scale.set(diameter, 1, diameter);
   m.position.y = SHADOW_Y;
   m.renderOrder = -1;
@@ -76,7 +84,7 @@ export function placeBlobShadow(m: THREE.Mesh, x: number, z: number) {
 // than their footprint.
 export function createPropShadows(obstacles: readonly Obstacle[]): THREE.InstancedMesh | null {
   if (obstacles.length === 0) return null;
-  const inst = new THREE.InstancedMesh(BLOB_GEO, blobMaterial(), obstacles.length);
+  const inst = new THREE.InstancedMesh(BLOB_GEO, blobMaterial('instanced'), obstacles.length);
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
   const up = new THREE.Vector3(0, 1, 0);

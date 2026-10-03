@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { twoSidedTransparentMesh } from './twoSided';
 import type { ModelFigure } from './ModelFigure';
 import { VISION_CONE_DEG } from '../util/geometry';
 import { markShared } from '../util/dispose';
@@ -76,7 +77,7 @@ function buildBeam(visionRange: number): THREE.Mesh {
   const geo = new THREE.ConeGeometry(baseR, visionRange, 16, 1, true);
   geo.translate(0, -visionRange / 2, 0);
   geo.rotateX(-Math.PI / 2);
-  return new THREE.Mesh(geo, BEAM_MAT);
+  return twoSidedTransparentMesh(geo, BEAM_MAT);
 }
 
 export function attachGuardEquipment(

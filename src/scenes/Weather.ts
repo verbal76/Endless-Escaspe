@@ -72,6 +72,7 @@ const LIGHTNING_MAT = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0,
   side: THREE.DoubleSide,
+  forceSinglePass: true,
   fog: false,
 });
 

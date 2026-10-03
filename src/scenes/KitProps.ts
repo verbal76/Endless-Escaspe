@@ -74,10 +74,16 @@ const DEFAULT_DEF: MaterialDef = { color: 0xb0b0b0, emissiveIntensity: 0.12 };
 // Lambert (per-vertex diffuse) instead of Standard PBR: the art is
 // flat low-poly, so the PBR maths bought nothing visible and cost
 // fragment time on mid-range phones.
+//
+// Plain meshes and InstancedMeshes get separate (identical) material
+// instances: three compiles a different program variant for instanced
+// draws and keys it on the material, so one material drawn both ways
+// had its program re-resolved on every switch, every frame.
 const SHARED_MATERIALS: Record<string, THREE.MeshLambertMaterial> = {};
 
-function materialFor(name: string): THREE.MeshLambertMaterial {
-  const cached = SHARED_MATERIALS[name];
+function materialFor(name: string, instanced = false): THREE.MeshLambertMaterial {
+  const cacheKey = instanced ? name + '#instanced' : name;
+  const cached = SHARED_MATERIALS[cacheKey];
   if (cached) return cached;
   const def = PALETTE[name] ?? DEFAULT_DEF;
   const tex = getPropTexture(name);
@@ -97,7 +103,7 @@ function materialFor(name: string): THREE.MeshLambertMaterial {
   // Tree bark / leaves are solid colours by design; everything else
   // in the kit is drawn from its Kenney texture.
   tagAuditMaterial(mat, 'props', name, !(name in SOLID_BY_DESIGN));
-  SHARED_MATERIALS[name] = mat;
+  SHARED_MATERIALS[cacheKey] = mat;
   return mat;
 }
 
@@ -165,7 +171,7 @@ export function createKitPropInstances(
   const subs = parseTemplate(kind);
   const group = new THREE.Group();
   for (const s of subs) {
-    const mats = s.materialNames.map((n) => materialFor(n));
+    const mats = s.materialNames.map((n) => materialFor(n, true));
     const inst = new THREE.InstancedMesh(s.geometry, mats.length > 1 ? mats : mats[0], matrices.length);
     for (let i = 0; i < matrices.length; i++) inst.setMatrixAt(i, matrices[i]);
     inst.instanceMatrix.needsUpdate = true;

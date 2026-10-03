@@ -82,6 +82,7 @@ const BIRD_MAT = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0.85,
   side: THREE.DoubleSide,
+  forceSinglePass: true,
   depthWrite: false,
 });
 

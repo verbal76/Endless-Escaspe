@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { twoSidedTransparentMesh } from './twoSided';
 import { PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
 
@@ -76,6 +77,9 @@ const BEAM_MAT = new THREE.ShaderMaterial({
 const FOOT_MAT = new THREE.ShaderMaterial({
   transparent: true,
   side: THREE.DoubleSide,
+  // Flat disk: the back-face pass of the default two-pass path draws
+  // nothing extra, it only re-resolves the program every frame.
+  forceSinglePass: true,
   depthWrite: false,
   uniforms: {
     uColor: { value: new THREE.Color(0xfff0a0) },
@@ -164,7 +168,7 @@ function buildTower(
   pivot.position.set(x, 0, z);
   worldRoot.add(pivot);
 
-  const beam = new THREE.Mesh(
+  const beam = twoSidedTransparentMesh(
     new THREE.ConeGeometry(BEAM_BASE_R, BEAM_LEN, 16, 1, true),
     BEAM_MAT,
   );

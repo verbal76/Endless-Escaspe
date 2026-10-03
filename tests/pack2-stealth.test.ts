@@ -16,7 +16,8 @@ import { createDog, updateDog, scareDog, DOG_CHASE_SPEED, DOG_GIVE_UP_DIST } fro
 import { applyDeadZone, JOYSTICK_DEAD_ZONE } from '../src/systems/InputSystem';
 import { buildNavGrid } from '../src/systems/NavGrid';
 import { NAV_CELL, NAV_INFLATE } from '../src/systems/ProcgenSystem';
-import { PLAYER_RUN_SPEED } from '../src/util/geometry';
+import { moveSpeed } from '../src/systems/PlayerController';
+const PLAYER_RUN_SPEED = moveSpeed('walk', true);
 import type { Obstacle } from '../src/types/world';
 import * as THREE from 'three';
 

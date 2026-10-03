@@ -11,9 +11,8 @@ export const PLAYER_RADIUS = 0.45;
 export const PLAYER_X_LIMIT = PLAY_HALF_W - PLAYER_RADIUS;
 export const COVER_RADIUS = 0.9;
 
-// Walk is the baseline. Run doubles it. Crouch is slower.
+// Walk is the baseline; crouch is slower (RUN doubles either: PlayerController.moveSpeed).
 export const PLAYER_WALK_SPEED = 3.5;
-export const PLAYER_RUN_SPEED = PLAYER_WALK_SPEED * 2;
 export const PLAYER_CROUCH_SPEED = PLAYER_WALK_SPEED * 0.65;
 
 // Detection model

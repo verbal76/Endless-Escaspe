@@ -23,6 +23,14 @@ function baseSpeedFor(stance: Player['stance']): number {
   return PLAYER_WALK_SPEED;
 }
 
+// Ground speed for a stance. RUN doubles whatever the stance speed is;
+// walking run is the fastest movement in the game. Exported so tests
+// (e.g. "a sprint outruns a dog") use the speed the game really uses.
+export function moveSpeed(stance: Player['stance'], running: boolean): number {
+  const base = baseSpeedFor(stance);
+  return running ? base * 2 : base;
+}
+
 // Stamina drain (per second while running) and regen (per second
 // while not). Drain rate is set so a full pool is exhausted after
 // ~3.3s of sprinting; regen takes ~6.6s to fully refill.
@@ -240,10 +248,7 @@ export function updatePlayer(
     p.stamina = Math.min(1, p.stamina + STAMINA_REGEN_PER_S * dt);
   }
 
-  const base = baseSpeedFor(p.stance);
-  // RUN doubles whatever the stance speed is. Even crawling can "run"
-  // (faster crawl); standing run is the fastest movement in the game.
-  const speed = p.isRunning ? base * 2 : base;
+  const speed = moveSpeed(p.stance, p.isRunning);
 
   // Joystick UP = +Z (deeper into the yard). Joystick RIGHT must map
   // to player-right on screen, but the camera looks down +Z so

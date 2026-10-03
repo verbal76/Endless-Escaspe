@@ -97,7 +97,38 @@ function textureFromEmbeddedPng(key: string): THREE.DataTexture | null {
   if (!b64) return null;
   const png = decodePng(base64ToBytes(b64));
   const tex = new THREE.DataTexture(png.rgba, png.width, png.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+  releasePixelsAfterUpload(tex, png.rgba, png.width, png.height, () => decodePng(base64ToBytes(b64)).rgba);
   return configure(tex, key) as THREE.DataTexture;
+}
+
+// The decoded RGBA (13 MiB for all sheets) is only needed while the GL
+// texture is being created; texImage2D copies it. Drop the JS copy once
+// the texture is uploaded, and decode it again on demand if a texture
+// sharing this image is ever uploaded again (a clone with different
+// sampling, or a new GL context / renderer after the surface was
+// re-created) - three reads image.data only at upload time.
+export function releasePixelsAfterUpload(
+  tex: THREE.DataTexture,
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  redecode: () => Uint8Array,
+) {
+  let data: Uint8Array | null = pixels;
+  tex.image = {
+    width,
+    height,
+    get data(): Uint8Array {
+      if (!data) data = redecode();
+      return data;
+    },
+    set data(v: Uint8Array) {
+      data = v;
+    },
+  } as unknown as typeof tex.image;
+  tex.onUpdate = () => {
+    data = null;
+  };
 }
 
 async function loadAssetTexture(

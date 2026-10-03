@@ -48,6 +48,57 @@ function concat(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
+function unfilter(raw: Uint8Array, px: Uint8Array, height: number, stride: number, bpp: number) {
+  for (let y = 0; y < height; y++) {
+    const f = raw[y * (stride + 1)];
+    const lo = y * (stride + 1) + 1;
+    const out = y * stride;
+    const up = out - stride;
+    const first = y === 0;
+    if (f === 0) {
+      px.set(raw.subarray(lo, lo + stride), out);
+    } else if (f === 1) {
+      for (let x = 0; x < bpp; x++) px[out + x] = raw[lo + x];
+      for (let x = bpp; x < stride; x++) px[out + x] = (raw[lo + x] + px[out + x - bpp]) & 255;
+    } else if (f === 2) {
+      if (first) px.set(raw.subarray(lo, lo + stride), out);
+      else for (let x = 0; x < stride; x++) px[out + x] = (raw[lo + x] + px[up + x]) & 255;
+    } else if (f === 3) {
+      if (first) {
+        for (let x = 0; x < bpp; x++) px[out + x] = raw[lo + x];
+        for (let x = bpp; x < stride; x++) px[out + x] = (raw[lo + x] + (px[out + x - bpp] >> 1)) & 255;
+      } else {
+        for (let x = 0; x < bpp; x++) px[out + x] = (raw[lo + x] + (px[up + x] >> 1)) & 255;
+        for (let x = bpp; x < stride; x++) px[out + x] = (raw[lo + x] + ((px[out + x - bpp] + px[up + x]) >> 1)) & 255;
+      }
+    } else if (f === 4) {
+      if (first) {
+        // Paeth with no row above degenerates to "left".
+        for (let x = 0; x < bpp; x++) px[out + x] = raw[lo + x];
+        for (let x = bpp; x < stride; x++) px[out + x] = (raw[lo + x] + px[out + x - bpp]) & 255;
+      } else {
+        // No left neighbour: Paeth picks "up".
+        for (let x = 0; x < bpp; x++) px[out + x] = (raw[lo + x] + px[up + x]) & 255;
+        for (let x = bpp; x < stride; x++) {
+          const a = px[out + x - bpp];
+          const b = px[up + x];
+          const c = px[up + x - bpp];
+          let pa = b - c;
+          let pb = a - c;
+          let pc = pa + pb;
+          if (pa < 0) pa = -pa;
+          if (pb < 0) pb = -pb;
+          if (pc < 0) pc = -pc;
+          px[out + x] = (raw[lo + x] + (pa <= pb && pa <= pc ? a : pb <= pc ? b : c)) & 255;
+        }
+      }
+    } else {
+      // Unknown filter type: bytes as stored (what the old decoder did).
+      px.set(raw.subarray(lo, lo + stride), out);
+    }
+  }
+}
+
 export function decodePng(buf: Uint8Array): DecodedPng {
   const sig = [137, 80, 78, 71, 13, 10, 26, 10];
   for (let i = 0; i < 8; i++) if (buf[i] !== sig[i]) throw new Error('not a PNG');
@@ -83,40 +134,29 @@ export function decodePng(buf: Uint8Array): DecodedPng {
   const raw = unzlibSync(concat(idat));
   const stride = width * channels;
   const px = new Uint8Array(stride * height);
-  for (let y = 0; y < height; y++) {
-    const f = raw[y * (stride + 1)];
-    const lineOff = y * (stride + 1) + 1;
-    const outOff = y * stride;
-    const prevOff = outOff - stride;
-    for (let x = 0; x < stride; x++) {
-      const a = x >= channels ? px[outOff + x - channels] : 0;
-      const b = y > 0 ? px[prevOff + x] : 0;
-      const c = x >= channels && y > 0 ? px[prevOff + x - channels] : 0;
-      let v = raw[lineOff + x];
-      if (f === 1) v += a;
-      else if (f === 2) v += b;
-      else if (f === 3) v += (a + b) >> 1;
-      else if (f === 4) {
-        const p = a + b - c;
-        const pa = Math.abs(p - a);
-        const pb = Math.abs(p - b);
-        const pc = Math.abs(p - c);
-        v += pa <= pb && pa <= pc ? a : pb <= pc ? b : c;
-      }
-      px[outOff + x] = v & 255;
-    }
-  }
+  // Unfilter. One loop per filter type with the "no left / no up
+  // neighbour" edges peeled off, so the per-byte work is a couple of
+  // typed-array reads - this runs on the interpreter (Hermes) at boot
+  // for ~4 MB of pixels.
+  unfilter(raw, px, height, stride, channels);
   const n = width * height;
   const rgba: Uint8Array<ArrayBuffer> = new Uint8Array(n * 4);
   if (colorType === 3) {
     const pal = palette as Uint8Array;
-    for (let i = 0; i < n; i++) {
-      const idx = px[i];
-      rgba[i * 4] = pal[idx * 3];
-      rgba[i * 4 + 1] = pal[idx * 3 + 1];
-      rgba[i * 4 + 2] = pal[idx * 3 + 2];
-      rgba[i * 4 + 3] = trns && idx < trns.length ? trns[idx] : 255;
+    // Palette -> packed RGBA lookup, then one store per pixel.
+    const lut = new Uint32Array(256);
+    const lutBytes = new Uint8Array(lut.buffer);
+    const entries = Math.min(256, Math.floor(pal.length / 3));
+    for (let i = 0; i < 256; i++) {
+      const k = i < entries ? i : 0;
+      lutBytes[i * 4] = pal[k * 3];
+      lutBytes[i * 4 + 1] = pal[k * 3 + 1];
+      lutBytes[i * 4 + 2] = pal[k * 3 + 2];
+      lutBytes[i * 4 + 3] = trns && i < trns.length ? trns[i] : 255;
+      if (i >= entries) lutBytes[i * 4] = lutBytes[i * 4 + 1] = lutBytes[i * 4 + 2] = 0;
     }
+    const out32 = new Uint32Array(rgba.buffer);
+    for (let i = 0; i < n; i++) out32[i] = lut[px[i]];
   } else if (colorType === 6) {
     rgba.set(px);
   } else if (colorType === 2) {

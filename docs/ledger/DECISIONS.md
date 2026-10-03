@@ -32,7 +32,8 @@
 ## Hold-period branches (all non-OTA)
 | Branch | Purpose |
 |---|---|
-| claude/ledger-docs | this documentation tree |
-| claude/hold-scenarios | deterministic browser scenarios as repo tests (scripts/scenarios) |
-| claude/hold-ci-hardening | workflow efficiency / deprecation fixes (not merged into the live branch) |
-| claude/hold-native-batch | consolidated native/release batch preparation (not merged; do not push to live) |
+| claude/ledger-docs (PR #2) | this documentation tree. Docs only; safe to merge after the freeze (paths-ignored by the OTA workflow) |
+| claude/hold-scenarios (PR #3) @ 1c962e5 | deterministic browser scenarios as repo tests (scripts/scenarios). Safe to merge after the freeze (paths-ignored) |
+| claude/hold-ci-hardening (PR #4) @ 5e8b92f | workflow efficiency / action bumps. Merge after the freeze; first run checklist at the end of its docs/ci.md. Touches scripts/ci so it starts one standalone emulator render check, no OTA |
+| claude/hold-native-batch (PR #5) @ 7131cdb | native batch 0.3.0 preparation. DO NOT MERGE before: (a) any 0.2.1 OTA that must reach Build 13 users (e.g. saves export/import UI) is published; (b) the owner authorizes the native cycle. Merging auto-builds an APK and moves later OTAs to runtime 0.3.0 |
+All PRs are drafts whose base is the live branch only to show a clean diff. CI (ci.yml) is green on all four heads.

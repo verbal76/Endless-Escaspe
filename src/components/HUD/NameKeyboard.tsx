@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { color as ui, type as T } from '../../ui/theme';
+import { color as ui, type as T, touch } from '../../ui/theme';
 
 // Compact in-app keyboard for name entry. Replaces the system soft
 // keyboard, which on landscape Android phones takes ~half the
@@ -130,7 +130,9 @@ const styles = StyleSheet.create({
     flex: 0.5,
   },
   key: {
-    height: 36,
+    // Full touch-target height; the name screen budgets 4 rows of
+    // this on a 360 dp-tall phone.
+    height: touch.min,
     borderRadius: 6,
     borderWidth: 1,
     alignItems: 'center',

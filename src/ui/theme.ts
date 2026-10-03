@@ -102,6 +102,9 @@ export const type = {
   hero: 62,
 } as const;
 
+// Minimum touch target (dp) for anything tappable on the menus.
+export const touch = { min: 44 } as const;
+
 export const radius = {
   sm: 8,
   md: 12,

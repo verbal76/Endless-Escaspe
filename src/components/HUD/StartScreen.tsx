@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
   Pressable,
@@ -7,12 +7,16 @@ import {
   Text,
   useWindowDimensions,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   FadeIn,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSequence,
   withTiming,
   Easing,
 } from 'react-native-reanimated';
@@ -31,10 +35,12 @@ import { NameKeyboard } from './NameKeyboard';
 import { startScreenBack, type StartMode } from '../../util/startNav';
 import { getReleaseInfo } from '../../util/releaseRuntime';
 import { formatMenuLine } from '../../util/releaseInfo';
-import { OUTFITS, type OutfitId } from '../../util/outfits';
+import { OUTFITS, type Outfit, type OutfitId } from '../../util/outfits';
 import { equipOutfit, purchaseOutfit } from '../../util/economy';
 import { dailySeed, utcDayKey } from '../../util/daily';
-import { buttonFill, color as ui, type as T, fonts } from '../../ui/theme';
+import { buttonFill, color as ui, type as T, fonts, touch } from '../../ui/theme';
+import { formatLastPlayed, menuPanelFrame } from '../../ui/menuLayout';
+import { buyConfirmCopy, notEnoughCoinsBody, outfitStateLine } from '../../ui/shopCopy';
 
 const TITLE = 'ENDLESS ESCAPE';
 
@@ -142,6 +148,90 @@ function FigurePickButton({
   );
 }
 
+// The small figure (36x56) shrunk to a 24x36 thumbnail for list rows
+// and the profile header.
+function MiniFigure({ skin }: { skin: PlayerSkin }) {
+  return (
+    <View style={styles.miniFigure}>
+      <View style={styles.miniFigureScale}>
+        <PrisonerFigure skin={skin} size="sm" />
+      </View>
+    </View>
+  );
+}
+
+// Panel behind the name / continue / outfits / profile screens. A real
+// container (not a decorative backdrop): its content is laid out inside
+// it, so nothing runs past its edges or under the settings gear.
+function MenuPanel({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const f = menuPanelFrame(width, height, insets);
+  return (
+    <View style={[styles.panel, { left: f.left, right: f.right, top: f.top, bottom: f.bottom }, style]}>
+      {children}
+    </View>
+  );
+}
+
+function outfitSwatch(o: Outfit) {
+  return o.tint !== null ? `#${o.tint.toString(16).padStart(6, '0')}` : o.model === 'g' ? '#9aa0a8' : '#f2c14a';
+}
+
+function OutfitCell({
+  outfit,
+  coins,
+  owned,
+  equipped,
+  pulse,
+  onPress,
+}: {
+  outfit: Outfit;
+  coins: number;
+  owned: boolean;
+  equipped: boolean;
+  // Bumped after a purchase: the cell pops once.
+  pulse: number;
+  onPress: () => void;
+}) {
+  const scale = useSharedValue(1);
+  useEffect(() => {
+    if (pulse > 0) {
+      scale.value = withSequence(
+        withTiming(1.06, { duration: 140, easing: Easing.out(Easing.quad) }),
+        withTiming(1, { duration: 220, easing: Easing.inOut(Easing.quad) }),
+      );
+    }
+  }, [pulse, scale]);
+  const pop = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+  const line = outfitStateLine(outfit.price, coins, owned, equipped);
+  return (
+    <Animated.View style={pop}>
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.outfitCell,
+          equipped && styles.outfitCellEquipped,
+          pressed && styles.boardCellDown,
+        ]}
+      >
+        <View style={[styles.outfitSwatch, { backgroundColor: outfitSwatch(outfit) }]} />
+        <Text style={styles.outfitName} numberOfLines={1}>{outfit.name}</Text>
+        <Text
+          style={[
+            styles.outfitState,
+            !owned && line.affordable && styles.outfitPrice,
+            !line.affordable && styles.outfitPriceShort,
+          ]}
+          numberOfLines={1}
+        >
+          {line.text}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 type Mode = StartMode;
 
 export function StartScreen() {
@@ -173,6 +263,11 @@ export function StartScreen() {
   // from activeSaveName so we can browse a save's star board without
   // committing to load it until the player taps a stage / PLAY.
   const [profileKey, setProfileKey] = useState<string | null>(null);
+  // Outfit that was just bought (its cell pops once).
+  const [pulse, setPulse] = useState<{ id: OutfitId; seq: number } | null>(null);
+  const boardRef = useRef<ScrollView>(null);
+  const { height: windowHeight } = useWindowDimensions();
+  const compact = windowHeight < 400;
 
   // List view sorted most-recent-first so the player's likely target
   // is at the top of the list.
@@ -382,30 +477,58 @@ export function StartScreen() {
     st.resetForSegment(kind === 'daily' ? dailySeed(day) : (Math.random() * 0x7fffffff) | 0);
   };
 
-  const onBuyOrEquip = (s: Save, id: OutfitId) => {
-    const key = saveKeyFromName(s.name);
-    let updated: Save | null = null;
-    if (s.outfits.includes(id)) {
-      updated = equipOutfit(s, id);
-    } else {
-      const r = purchaseOutfit(s, id);
-      if (r.ok) updated = r.save;
-      else {
-        setGameModal({
-          title: r.reason === 'funds' ? 'Not enough coins' : 'Can\'t buy that',
-          body:
-            r.reason === 'funds'
-              ? 'Earn coins by clearing stages (more stars pay more) and by going the distance in Endless and Daily runs.'
-              : 'That outfit is not available.',
-          actions: [{ label: 'OK', variant: 'primary', onPress: () => setGameModal(null) }],
-        });
-        return;
-      }
-    }
-    if (!updated) return;
+  const commitSave = (key: string, updated: Save) => {
     upsertSave(updated);
     writeSaves({ ...useStore.getState().saves, [key]: updated });
     if (useStore.getState().activeSaveName === key) useStore.getState().setPlayerOutfit(updated.outfit);
+  };
+
+  // Owned outfits equip on tap. Buying asks first (coins are earned
+  // slowly; a stray tap used to spend them), and a shortfall says how
+  // many more coins are needed.
+  const onBuyOrEquip = (s: Save, id: OutfitId) => {
+    const key = saveKeyFromName(s.name);
+    if (s.outfits.includes(id)) {
+      commitSave(key, equipOutfit(s, id));
+      return;
+    }
+    const outfit = OUTFITS.find((o) => o.id === id);
+    if (!outfit) return;
+    const showFail = (reason: 'funds' | 'owned' | 'unknown', coins: number) =>
+      setGameModal({
+        title: reason === 'funds' ? 'Not enough coins' : 'Can\'t buy that',
+        body: reason === 'funds' ? notEnoughCoinsBody(outfit.price, coins) : 'That outfit is not available.',
+        actions: [{ label: 'OK', variant: 'primary', onPress: () => setGameModal(null) }],
+      });
+    if (s.coins < outfit.price) {
+      showFail('funds', s.coins);
+      return;
+    }
+    const copy = buyConfirmCopy(outfit.name, outfit.price, s.coins);
+    setGameModal({
+      title: copy.title,
+      body: copy.body,
+      actions: [
+        { label: 'CANCEL', variant: 'cancel', onPress: () => setGameModal(null) },
+        {
+          label: 'BUY',
+          variant: 'primary',
+          onPress: () => {
+            setGameModal(null);
+            // Live read: the save may have changed while the dialog was up.
+            const live = getSave(useStore.getState().saves, key);
+            if (!live) return;
+            const r = purchaseOutfit(live, id);
+            if (!r.ok) {
+              if (r.reason !== 'owned') showFail(r.reason, live.coins);
+              return;
+            }
+            commitSave(key, r.save);
+            setPulse((p) => ({ id, seq: (p?.seq ?? 0) + 1 }));
+          },
+        },
+      ],
+    });
   };
 
   const onOpenProfile = (s: Save) => {
@@ -543,59 +666,61 @@ export function StartScreen() {
       if (nameError) setNameError(null);
     };
 
+    const canStart = nameDraft.trim().length > 0;
     return (
       <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
-        <View pointerEvents="none" style={styles.panelBg} />
-        <View style={styles.nameTopRow}>
-          {pickedSkin ? (
-            <View style={styles.namePreviewWrapCompact}>
-              <PrisonerFigure skin={pickedSkin} size="sm" />
-            </View>
-          ) : null}
-          <View style={styles.nameDisplay}>
-            <Text style={styles.taglineCompact}>Name your save</Text>
-            <Text
-              style={[
-                styles.nameValueText,
-                nameDraft.length === 0 && styles.nameValuePlaceholder,
+        <MenuPanel style={styles.namePanel}>
+          {/* One row: BACK | name | START, so the keyboard keeps full-size
+              keys on 360 dp-tall phones. START and the keyboard's DONE
+              are the same action and are enabled together. */}
+          <View style={styles.nameTopRow}>
+            <Pressable
+              onPress={goBackHome}
+              style={({ pressed }) => [
+                styles.bigBtnCompact,
+                styles.bigBtnSecondary,
+                pressed && styles.bigBtnDown,
               ]}
-              numberOfLines={1}
             >
-              {nameDraft.length > 0 ? nameDraft : 'Enter a name'}
-            </Text>
+              <Text style={[styles.bigBtnLabelCompact, styles.bigBtnLabelOnDark]}>BACK</Text>
+            </Pressable>
+            <View style={styles.nameDisplay}>
+              {/* The error replaces the caption (same line), so it never
+                  pushes the keyboard down. */}
+              <Text style={[styles.taglineCompact, nameError ? styles.errorText : null]} numberOfLines={1}>
+                {nameError ?? 'Name your save'}
+              </Text>
+              <Text
+                style={[
+                  styles.nameValueText,
+                  nameDraft.length === 0 && styles.nameValuePlaceholder,
+                ]}
+                numberOfLines={1}
+              >
+                {nameDraft.length > 0 ? nameDraft : 'Enter a name'}
+              </Text>
+            </View>
+            <Pressable
+              onPress={onConfirmName}
+              disabled={!canStart}
+              accessibilityState={{ disabled: !canStart }}
+              style={({ pressed }) => [
+                styles.bigBtnCompact,
+                styles.bigBtnPrimary,
+                !canStart && styles.bigBtnDisabled,
+                pressed && styles.bigBtnDown,
+              ]}
+            >
+              <Text style={styles.bigBtnLabelCompact}>START</Text>
+            </Pressable>
           </View>
-        </View>
-        {nameError ? <Text style={styles.errorText}>{nameError}</Text> : null}
-        <View style={styles.nameBtnRowCompact}>
-          <Pressable
-            onPress={goBackHome}
-            style={({ pressed }) => [
-              styles.bigBtnCompact,
-              styles.bigBtnSecondary,
-              pressed && styles.bigBtnDown,
-            ]}
-          >
-            <Text style={[styles.bigBtnLabelCompact, styles.bigBtnLabelOnDark]}>BACK</Text>
-          </Pressable>
-          <Pressable
-            onPress={onConfirmName}
-            style={({ pressed }) => [
-              styles.bigBtnCompact,
-              styles.bigBtnPrimary,
-              pressed && styles.bigBtnDown,
-            ]}
-          >
-            <Text style={styles.bigBtnLabelCompact}>START</Text>
-          </Pressable>
-        </View>
-        <View style={styles.nameKeyboardWrap}>
           <NameKeyboard
             onKey={appendChar}
             onBackspace={backspace}
             onDone={onConfirmName}
-            doneEnabled={nameDraft.trim().length > 0}
+            doneEnabled={canStart}
           />
-        </View>
+        </MenuPanel>
       </Animated.View>
     );
   }
@@ -642,53 +767,63 @@ export function StartScreen() {
   }
 
   if (mode === 'continue') {
+    const now = Date.now();
     return (
       <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
-        <View pointerEvents="none" style={styles.panelBg} />
-        <TitleRow />
-        <Text style={styles.tagline}>Continue a run</Text>
-        <ScrollView
-          style={styles.saveList}
-          contentContainerStyle={styles.saveListContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {sortedSaves.map((s) => (
-            <View key={saveKeyFromName(s.name)} style={styles.saveRow}>
-              <Pressable
-                onPress={() => onOpenProfile(s)}
-                style={({ pressed }) => [
-                  styles.saveRowMain,
-                  pressed && styles.saveRowMainDown,
-                ]}
-              >
-                <PrisonerFigure skin={s.skin} size="sm" />
-                <View style={styles.saveRowText}>
-                  <Text style={styles.saveName}>{s.name}</Text>
-                  <Text style={styles.saveStage}>
-                    Stage {s.stage}
-                    {totalStars(s) > 0 ? `  ·  ${totalStars(s)}★` : ''}
-                  </Text>
-                </View>
-              </Pressable>
-              <Pressable
-                onPress={() => onDeleteSave(s)}
-                hitSlop={8}
-                style={({ pressed }) => [
-                  styles.deleteBtn,
-                  pressed && styles.deleteBtnDown,
-                ]}
-              >
-                <Text style={styles.deleteGlyph}>×</Text>
-              </Pressable>
-            </View>
-          ))}
-        </ScrollView>
-        <Pressable
-          onPress={goBackHome}
-          style={({ pressed }) => [styles.linkBtn, pressed && styles.linkBtnDown]}
-        >
-          <Text style={styles.linkLabel}>BACK</Text>
-        </Pressable>
+        <MenuPanel>
+          <View style={styles.screenHeader}>
+            <Text style={styles.screenHeading}>CONTINUE</Text>
+            <Text style={styles.screenHeaderNote}>
+              {sortedSaves.length} {sortedSaves.length === 1 ? 'character' : 'characters'}
+            </Text>
+          </View>
+          <ScrollView
+            style={styles.saveList}
+            contentContainerStyle={styles.saveListContent}
+            showsVerticalScrollIndicator
+            persistentScrollbar
+          >
+            {sortedSaves.map((s) => (
+              <View key={saveKeyFromName(s.name)} style={styles.saveRow}>
+                <Pressable
+                  onPress={() => onOpenProfile(s)}
+                  style={({ pressed }) => [
+                    styles.saveRowMain,
+                    pressed && styles.saveRowMainDown,
+                  ]}
+                >
+                  <MiniFigure skin={s.skin} />
+                  <View style={styles.saveRowText}>
+                    <Text style={styles.saveName} numberOfLines={1}>{s.name}</Text>
+                    <Text style={styles.saveStage} numberOfLines={1}>
+                      Stage {s.stage}
+                      {totalStars(s) > 0 ? `  ·  ${totalStars(s)}★` : ''}
+                      {`  ·  ${s.coins} coins`}
+                      <Text style={styles.saveWhen}>{`  ·  ${formatLastPlayed(s.updatedAt, now)}`}</Text>
+                    </Text>
+                  </View>
+                </Pressable>
+                <Pressable
+                  onPress={() => onDeleteSave(s)}
+                  accessibilityLabel={`Delete ${s.name}`}
+                  hitSlop={8}
+                  style={({ pressed }) => [
+                    styles.deleteBtn,
+                    pressed && styles.deleteBtnDown,
+                  ]}
+                >
+                  <Text style={styles.deleteGlyph}>×</Text>
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+          <Pressable
+            onPress={goBackHome}
+            style={({ pressed }) => [styles.linkBtn, styles.linkBtnInPanel, pressed && styles.linkBtnDown]}
+          >
+            <Text style={styles.linkLabel}>BACK</Text>
+          </Pressable>
+        </MenuPanel>
       </Animated.View>
     );
   }
@@ -698,43 +833,31 @@ export function StartScreen() {
     if (!owner) return null;
     return (
       <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
-        <View pointerEvents="none" style={styles.panelBg} />
-        <Text style={styles.outfitTitle}>OUTFITS</Text>
-        <Text style={styles.outfitCoins}>{owner.coins} coins  ·  cosmetic only</Text>
-        <View style={styles.outfitGrid}>
-          {OUTFITS.map((o) => {
-            const owned = owner.outfits.includes(o.id);
-            const equipped = owner.outfit === o.id;
-            return (
-              <Pressable
-                key={o.id}
-                onPress={() => onBuyOrEquip(owner, o.id)}
-                style={({ pressed }) => [
-                  styles.outfitCell,
-                  equipped && styles.outfitCellEquipped,
-                  pressed && styles.boardCellDown,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.outfitSwatch,
-                    { backgroundColor: o.tint !== null ? `#${o.tint.toString(16).padStart(6, '0')}` : o.model === 'g' ? '#9aa0a8' : '#f2c14a' },
-                  ]}
+        <MenuPanel style={styles.outfitPanel}>
+          <Text style={styles.outfitTitle}>OUTFITS</Text>
+          <Text style={styles.outfitCoins}>{owner.coins} coins  ·  cosmetic only</Text>
+          <ScrollView style={styles.outfitScroll} contentContainerStyle={styles.outfitScrollContent}>
+            <View style={styles.outfitGrid}>
+              {OUTFITS.map((o) => (
+                <OutfitCell
+                  key={o.id}
+                  outfit={o}
+                  coins={owner.coins}
+                  owned={owner.outfits.includes(o.id)}
+                  equipped={owner.outfit === o.id}
+                  pulse={pulse?.id === o.id ? pulse.seq : 0}
+                  onPress={() => onBuyOrEquip(owner, o.id)}
                 />
-                <Text style={styles.outfitName}>{o.name}</Text>
-                <Text style={styles.outfitState}>
-                  {equipped ? 'WEARING' : owned ? 'TAP TO WEAR' : `${o.price} coins`}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-        <Pressable
-          onPress={() => setMode('profile')}
-          style={({ pressed }) => [styles.bigBtn, styles.bigBtnSecondary, pressed && styles.bigBtnDown]}
-        >
-          <Text style={[styles.bigBtnLabel, styles.bigBtnLabelOnDark]}>BACK</Text>
-        </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+          <Pressable
+            onPress={() => setMode('profile')}
+            style={({ pressed }) => [styles.bigBtn, styles.bigBtnSecondary, pressed && styles.bigBtnDown]}
+          >
+            <Text style={[styles.bigBtnLabel, styles.bigBtnLabelOnDark]}>BACK</Text>
+          </Pressable>
+        </MenuPanel>
       </Animated.View>
     );
   }
@@ -752,36 +875,43 @@ export function StartScreen() {
 
   return (
     <Animated.View entering={FadeIn.duration(180)} pointerEvents="box-none" style={styles.root}>
-      <View pointerEvents="none" style={styles.panelBg} />
-      <View style={styles.profileHeader}>
-        <View style={styles.profileFigureFrame}>
-          <PrisonerFigure skin={profile.skin} size="sm" />
+      <MenuPanel>
+        {/* Row 1: who. */}
+        <View style={styles.profileHeader}>
+          <View style={styles.profileFigureFrame}>
+            <MiniFigure skin={profile.skin} />
+          </View>
+          <View style={styles.profileHeaderText}>
+            <Text style={styles.profileName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+              {profile.name}
+            </Text>
+            <Text style={styles.profileSubtitle} numberOfLines={1}>
+              {clearedStages === 0
+                ? 'No stages cleared yet'
+                : `${clearedStages} stage${clearedStages === 1 ? '' : 's'} cleared  ·  ${totalStars(profile)}★`}
+              {`  ·  ${profile.coins} coins`}
+            </Text>
+          </View>
         </View>
-        <View style={styles.profileHeaderText}>
-          <Text style={styles.profileName}>{profile.name}</Text>
-          <Text style={styles.profileSubtitle}>
-            {clearedStages === 0
-              ? 'No stages cleared yet'
-              : `${clearedStages} stage${clearedStages === 1 ? '' : 's'} cleared  ·  ${totalStars(profile)}★`}
-            {`  ·  ${profile.coins} coins`}
-          </Text>
-        </View>
-      <View style={styles.modeRow}>
+
+        {/* Row 2: the other ways to play with this character. Hints
+            are dropped on short screens to leave the board room. */}
+        <View style={styles.modeRow}>
           <Pressable
             onPress={() => beginEndlessForSave(profile, 'endless')}
             style={({ pressed }) => [styles.modeBtn, pressed && styles.bigBtnDown]}
           >
-            <Text style={styles.modeLabel}>ENDLESS</Text>
-            <Text style={styles.modeHint}>No finish. Harder every 120 m.</Text>
-            <Text style={styles.modeSub}>best {profile.endlessBest} m</Text>
+            <Text style={styles.modeLabel} numberOfLines={1}>ENDLESS</Text>
+            {!compact && <Text style={styles.modeHint} numberOfLines={2}>No finish. Harder every 120 m.</Text>}
+            <Text style={styles.modeSub} numberOfLines={1}>best {profile.endlessBest} m</Text>
           </Pressable>
           <Pressable
             onPress={() => beginEndlessForSave(profile, 'daily')}
             style={({ pressed }) => [styles.modeBtn, pressed && styles.bigBtnDown]}
           >
-            <Text style={styles.modeLabel}>DAILY RUN</Text>
-            <Text style={styles.modeHint}>Same yard for everyone today.</Text>
-            <Text style={styles.modeSub}>
+            <Text style={styles.modeLabel} numberOfLines={1}>DAILY RUN</Text>
+            {!compact && <Text style={styles.modeHint} numberOfLines={2}>Same yard for everyone today.</Text>}
+            <Text style={styles.modeSub} numberOfLines={1}>
               {profile.daily?.day === utcDayKey(new Date()) ? `today ${profile.daily.best} m` : 'new today'}
             </Text>
           </Pressable>
@@ -789,71 +919,76 @@ export function StartScreen() {
             onPress={() => setMode('outfits')}
             style={({ pressed }) => [styles.modeBtn, pressed && styles.bigBtnDown]}
           >
-            <Text style={styles.modeLabel}>OUTFITS</Text>
-            <Text style={styles.modeHint}>Looks only.</Text>
-            <Text style={styles.modeSub}>{profile.coins} coins</Text>
+            <Text style={styles.modeLabel} numberOfLines={1}>OUTFITS</Text>
+            {!compact && <Text style={styles.modeHint} numberOfLines={2}>Looks only.</Text>}
+            <Text style={styles.modeSub} numberOfLines={1}>{profile.coins} coins</Text>
           </Pressable>
         </View>
 
-      </View>
+        {/* Row 3: the stage board takes whatever height is left and
+            opens scrolled to the end, where the NEXT stage is. */}
+        <ScrollView
+          ref={boardRef}
+          style={styles.boardList}
+          contentContainerStyle={styles.boardListContent}
+          showsVerticalScrollIndicator
+          persistentScrollbar
+          onContentSizeChange={() => boardRef.current?.scrollToEnd({ animated: false })}
+        >
+          <View style={styles.boardGrid}>
+            {boardStages.map((n) => {
+              const stars = profile.bestStars[n] ?? 0;
+              const isNext = n === profile.stage;
+              const isCleared = n < profile.stage;
+              return (
+                <Pressable
+                  key={n}
+                  onPress={() => beginRunForSave(profile, n)}
+                  style={({ pressed }) => [
+                    styles.boardCell,
+                    isNext && styles.boardCellNext,
+                    isCleared && styles.boardCellCleared,
+                    pressed && styles.boardCellDown,
+                  ]}
+                >
+                  <Text style={styles.boardStageNum}>{n}</Text>
+                  <Text style={styles.boardStars} numberOfLines={1}>
+                    {stars > 0
+                      ? STAR_FILLED.repeat(stars) + STAR_EMPTY.repeat(3 - stars)
+                      : isNext
+                        ? 'NEXT'
+                        : '— — —'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </ScrollView>
 
-      <ScrollView
-        style={styles.boardList}
-        contentContainerStyle={styles.boardListContent}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.boardGrid}>
-          {boardStages.map((n) => {
-            const stars = profile.bestStars[n] ?? 0;
-            const isNext = n === profile.stage;
-            const isCleared = n < profile.stage;
-            return (
-              <Pressable
-                key={n}
-                onPress={() => beginRunForSave(profile, n)}
-                style={({ pressed }) => [
-                  styles.boardCell,
-                  isNext && styles.boardCellNext,
-                  isCleared && styles.boardCellCleared,
-                  pressed && styles.boardCellDown,
-                ]}
-              >
-                <Text style={styles.boardStageNum}>{n}</Text>
-                <Text style={styles.boardStars}>
-                  {stars > 0
-                    ? STAR_FILLED.repeat(stars) + STAR_EMPTY.repeat(3 - stars)
-                    : isNext
-                      ? 'NEXT'
-                      : '— — —'}
-                </Text>
-              </Pressable>
-            );
-          })}
+        {/* Row 4: actions. */}
+        <View style={styles.profileBtnRow}>
+          <Pressable
+            onPress={() => setMode('continue')}
+            style={({ pressed }) => [
+              styles.bigBtn,
+              styles.bigBtnSecondary,
+              pressed && styles.bigBtnDown,
+            ]}
+          >
+            <Text style={[styles.bigBtnLabel, styles.bigBtnLabelOnDark]}>BACK</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => beginRunForSave(profile)}
+            style={({ pressed }) => [
+              styles.bigBtn,
+              styles.bigBtnPrimary,
+              pressed && styles.bigBtnDown,
+            ]}
+          >
+            <Text style={styles.bigBtnLabel}>PLAY STAGE {profile.stage}</Text>
+          </Pressable>
         </View>
-      </ScrollView>
-
-      <View style={styles.profileBtnRow}>
-        <Pressable
-          onPress={() => setMode('continue')}
-          style={({ pressed }) => [
-            styles.bigBtn,
-            styles.bigBtnSecondary,
-            pressed && styles.bigBtnDown,
-          ]}
-        >
-          <Text style={[styles.bigBtnLabel, styles.bigBtnLabelOnDark]}>BACK</Text>
-        </Pressable>
-        <Pressable
-          onPress={() => beginRunForSave(profile)}
-          style={({ pressed }) => [
-            styles.bigBtn,
-            styles.bigBtnPrimary,
-            pressed && styles.bigBtnDown,
-          ]}
-        >
-          <Text style={styles.bigBtnLabel}>PLAY STAGE {profile.stage}</Text>
-        </Pressable>
-      </View>
+      </MenuPanel>
     </Animated.View>
   );
 }
@@ -887,19 +1022,43 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     flexWrap: 'wrap',
   },
-  // Panel behind the name / continue / outfits / profile screens, so
-  // their content sits on a surface instead of floating over the 3D
-  // scene. Decorative only (absolute, no layout change).
-  panelBg: {
+  // MenuPanel: positioned from menuLayout.menuPanelFrame.
+  panel: {
     position: 'absolute',
-    top: 10,
-    bottom: 10,
-    left: '6%',
-    right: '6%',
     backgroundColor: ui.panelSoft,
     borderRadius: 18,
     borderWidth: 1,
     borderColor: 'rgba(255, 209, 74, 0.35)',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  miniFigure: {
+    width: 24,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  miniFigureScale: {
+    transform: [{ scale: 0.64 }],
+  },
+  screenHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    marginBottom: 6,
+  },
+  screenHeading: {
+    color: ui.gold,
+    fontFamily: fonts.display,
+    fontSize: T.heading,
+    letterSpacing: 1.5,
+  },
+  screenHeaderNote: {
+    color: ui.textMuted,
+    fontSize: T.caption,
+    fontWeight: '700',
+    letterSpacing: 1,
   },
   titleWord: {
     color: ui.gold,
@@ -949,10 +1108,15 @@ const styles = StyleSheet.create({
   bigBtn: {
     paddingHorizontal: 28,
     paddingVertical: 12,
+    minHeight: touch.min,
     borderRadius: 28,
     borderWidth: 2,
     minWidth: 140,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bigBtnDisabled: {
+    opacity: 0.45,
   },
   bigBtnPrimary: buttonFill('primary'),
   // Solid dark fill + light-blue rim + white label: readable over any
@@ -1110,15 +1274,22 @@ const styles = StyleSheet.create({
   // so they still fit when the OS keyboard slides up. The non-
   // compact versions stay around for any future surface that needs
   // the larger size.
+  namePanel: {
+    justifyContent: 'center',
+  },
   nameTopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    marginBottom: 8,
+    marginBottom: 6,
+    width: '100%',
+    maxWidth: 560,
+    alignSelf: 'center',
   },
   nameDisplay: {
-    minWidth: 220,
-    alignItems: 'flex-start',
+    flex: 1,
+    minWidth: 0,
+    alignItems: 'center',
   },
   nameValueText: {
     color: '#fff',
@@ -1131,11 +1302,7 @@ const styles = StyleSheet.create({
     color: ui.textMuted,
     fontWeight: '600',
   },
-  nameKeyboardWrap: {
-    width: '100%',
-    marginTop: 10,
-    paddingHorizontal: 12,
-  },
+
   taglineCompact: {
     color: ui.textBody,
     fontSize: T.caption,
@@ -1144,15 +1311,7 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     ...overSceneShadow,
   },
-  namePreviewWrapCompact: {
-    marginBottom: 8,
-    padding: 4,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 209, 74, 0.95)',
-    backgroundColor: 'rgba(50, 38, 20, 0.85)',
-    transform: [{ scale: 0.8 }],
-  },
+
   nameInput: {
     width: 260,
     paddingHorizontal: 14,
@@ -1183,27 +1342,21 @@ const styles = StyleSheet.create({
   },
   errorText: {
     color: '#ff8a8a',
-    fontSize: T.caption,
-    fontWeight: '700',
-    marginTop: 8,
   },
   nameBtnRow: {
     flexDirection: 'row',
     gap: 12,
     marginTop: 14,
   },
-  nameBtnRowCompact: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 10,
-  },
+
   bigBtnCompact: {
-    paddingHorizontal: 22,
-    paddingVertical: 9,
+    paddingHorizontal: 18,
+    minHeight: touch.min,
     borderRadius: 22,
     borderWidth: 2,
-    minWidth: 112,
+    minWidth: 100,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   bigBtnLabelCompact: {
     color: ui.onGold,
@@ -1214,13 +1367,14 @@ const styles = StyleSheet.create({
 
   // Continue list
   saveList: {
+    flex: 1,
     width: '100%',
-    maxWidth: 460,
-    maxHeight: 220,
+    maxWidth: 520,
+    alignSelf: 'center',
   },
   saveListContent: {
-    paddingVertical: 4,
-    gap: 8,
+    paddingVertical: 2,
+    gap: 6,
   },
   saveRow: {
     flexDirection: 'row',
@@ -1235,9 +1389,10 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 12,
     gap: 12,
+    minHeight: 48,
   },
   saveRowMainDown: {
     backgroundColor: 'rgba(255, 209, 74, 0.10)',
@@ -1255,8 +1410,12 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 209, 74, 0.85)',
     fontSize: T.caption,
     fontWeight: '700',
-    letterSpacing: 1.0,
-    marginTop: 2,
+    letterSpacing: 0.6,
+    marginTop: 1,
+  },
+  saveWhen: {
+    color: ui.textMuted,
+    fontWeight: '600',
   },
   deleteBtn: {
     width: 44,
@@ -1275,27 +1434,29 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
 
-  // Profile / star board
+  // Profile / star board: header row, mode row, board (flex), CTAs.
   profileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 10,
-    paddingHorizontal: 6,
+    gap: 10,
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   profileFigureFrame: {
-    padding: 6,
-    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
     borderWidth: 2,
     borderColor: 'rgba(255, 209, 74, 0.95)',
     backgroundColor: 'rgba(50, 38, 20, 0.85)',
   },
   profileHeaderText: {
-    flexShrink: 1,
+    flex: 1,
+    minWidth: 0,
   },
   profileName: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: T.title,
     fontWeight: '900',
     letterSpacing: 1.0,
   },
@@ -1303,13 +1464,15 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 209, 74, 0.85)',
     fontSize: T.caption,
     fontWeight: '700',
-    letterSpacing: 1.0,
-    marginTop: 2,
+    letterSpacing: 0.8,
+    marginTop: 1,
   },
   boardList: {
+    flex: 1,
+    minHeight: 64,
     width: '100%',
-    maxWidth: 520,
-    maxHeight: 200,
+    maxWidth: 560,
+    alignSelf: 'center',
   },
   boardListContent: {
     paddingVertical: 4,
@@ -1355,20 +1518,24 @@ const styles = StyleSheet.create({
   },
   profileBtnRow: {
     flexDirection: 'row',
+    justifyContent: 'center',
     gap: 12,
-    marginTop: 12,
+    marginTop: 8,
   },
   modeRow: {
     flexDirection: 'row',
     gap: 8,
-    marginLeft: 18,
+    marginBottom: 8,
   },
   modeBtn: {
-    minWidth: 104,
+    flex: 1,
+    minWidth: 0,
+    minHeight: touch.min,
     paddingVertical: 4,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     borderRadius: 14,
     alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: ui.control,
     borderWidth: 1,
     borderColor: ui.controlBorder,
@@ -1388,7 +1555,19 @@ const styles = StyleSheet.create({
     color: ui.textBody,
     fontSize: T.caption,
     textAlign: 'center',
-    maxWidth: 150,
+  },
+  outfitPanel: {
+    alignItems: 'center',
+  },
+  outfitScroll: {
+    flex: 1,
+    alignSelf: 'stretch',
+  },
+  outfitScrollContent: {
+    flexGrow: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 4,
   },
   outfitTitle: {
     color: ui.gold,
@@ -1398,15 +1577,15 @@ const styles = StyleSheet.create({
   outfitCoins: {
     color: ui.textMuted,
     fontSize: T.caption,
-    marginBottom: 10,
+    marginBottom: 4,
   },
+  // Three across at most (3 x 2 grid, no 4 + 2 orphans on wide phones).
   outfitGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 8,
-    maxWidth: 640,
-    marginBottom: 12,
+    maxWidth: 150 * 3 + 8 * 2,
   },
   outfitCell: {
     width: 150,
@@ -1438,12 +1617,24 @@ const styles = StyleSheet.create({
     color: ui.textMuted,
     fontSize: T.caption,
   },
+  outfitPrice: {
+    color: ui.gold,
+    fontWeight: '700',
+  },
+  outfitPriceShort: {
+    color: ui.textDisabled,
+  },
 
   // Back link
   linkBtn: {
     marginTop: 14,
-    paddingVertical: 8,
+    minHeight: touch.min,
     paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  linkBtnInPanel: {
+    marginTop: 4,
+    alignSelf: 'center',
   },
   linkBtnDown: {
     opacity: 0.6,

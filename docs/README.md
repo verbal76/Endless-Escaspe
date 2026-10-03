@@ -12,7 +12,7 @@ without the original conversation. Start here:
 6. `audits/` - graphics audit and tutorial/instruction audit (tutorial revision shipped in OTA 119; graphics V1-V12 in OTA 118-120).
 7. `proposals/` - decided-but-unimplemented designs (Daily replay rewards).
 8. `release/` - music licensing audit, Play Store readiness, owner-only actions.
-9. `evidence/` - raw repro scripts used by the reviews (`repro/`), and the original browser scenario packs (`scenarios-as-was/`).
+9. `evidence/` - raw repro scripts (TypeScript ones are stored as `*.ts.txt` so the repo typecheck ignores them; rename to `.ts` to run) used by the reviews (`repro/`), and the original browser scenario packs (`scenarios-as-was/`).
    Scripts reference a scratch build (`__ee` debug hook injected into a copy of Game.tsx) - see scripts/scenarios on
    claude/hold-scenarios for the maintained, deterministic version.
 10. `history/` - earlier-phase reports (OTA 115/116 baseline, punch list, first findings list).

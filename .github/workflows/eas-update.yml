@@ -84,6 +84,9 @@ jobs:
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
+        with:
+          # History for the "newest publishable commit" check below.
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -99,18 +102,32 @@ jobs:
       - name: Native fingerprint gate
         run: node scripts/check-native-fingerprint.mjs
 
-      # The render check took ~40 minutes; if newer commits landed
-      # meanwhile, they publish themselves. Publishing this one now
-      # (or from a re-run of an old run) would roll devices back.
-      - name: Still the branch head?
+      # The render check takes ~40 minutes. If the branch moved on
+      # meanwhile with a change that publishes (outside paths-ignore),
+      # that commit's own run publishes it, so this one stands down -
+      # publishing it now (or from a re-run of an old run) would roll
+      # devices back. If the newer commits only touch ignored paths
+      # (tests, docs, CI), no run of theirs publishes, so this one must.
+      - name: Still the newest publishable commit?
         id: head
         run: |
-          HEAD_SHA=$(git ls-remote origin "$GITHUB_REF" | cut -f1)
+          git fetch --no-tags --quiet origin "$GITHUB_REF"
+          HEAD_SHA=$(git rev-parse FETCH_HEAD)
           echo "branch head: $HEAD_SHA  this run: $GITHUB_SHA"
           if [ "$HEAD_SHA" = "$GITHUB_SHA" ]; then
             echo "current=true" >> "$GITHUB_OUTPUT"
+          elif ! git merge-base --is-ancestor "$GITHUB_SHA" "$HEAD_SHA"; then
+            echo "::notice::Not publishing $GITHUB_SHA: it is no longer on the branch (head $HEAD_SHA)"
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$GITHUB_SHA" "$HEAD_SHA" -- . \
+              ':!package.json' ':!package-lock.json' ':!app.json' ':!app.config.js' ':!eas.json' \
+              ':!babel.config.js' ':!metro.config.js' ':!android' ':!ios' \
+              ':!assets/icon.png' ':!assets/adaptive-icon.png' ':!assets/splash-icon.png' ':!assets/adaptive-icon-background.png' \
+              ':!.github' ':!scripts' ':!tests' ':!docs' ':!*.md' ':!.gitignore'; then
+            echo "::notice::Newer commits only touch paths that don't publish; publishing $GITHUB_SHA"
+            echo "current=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Not publishing $GITHUB_SHA: the branch has moved on to $HEAD_SHA"
+            echo "::notice::Not publishing $GITHUB_SHA: $HEAD_SHA carries newer app changes and publishes itself"
             echo "current=false" >> "$GITHUB_OUTPUT"
           fi
 

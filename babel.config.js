@@ -3,6 +3,7 @@
 // behaviour - babel.config.js is in the path-trigger list and a
 // touch here is the cheapest way to ask for a build on demand.
 //   build #1 (2025-05-08) - GitHub-hosted Gradle smoke test
+//   (2026-10-03) API-36 native qualification build on claude/api36-native-qualification
 //
 // No explicit 'react-native-worklets/plugin': babel-preset-expo
 // (>= 54) adds it itself whenever react-native-worklets is installed

@@ -18,6 +18,9 @@ on:
       - claude/endless-escape-game-android-gRlFH
       - Github-APK-Transition-Escap
       - claude/game-review-suggestions-cjxiqh
+      # Isolated API-36 native qualification line (this branch only; its
+      # runtime 0.3.0 never reaches the live OTA train). See docs/native-qualification.md.
+      - claude/api36-native-qualification
     paths:
       - 'package.json'
       - 'package-lock.json'

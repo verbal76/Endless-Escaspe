@@ -1,6 +1,12 @@
 {
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
-    "strict": true
+    "strict": true,
+    // The unit tests run the sources with Node's type stripping, which
+    // only removes type syntax: type-only imports must say `type`, and
+    // TS-only runtime syntax (enums, namespaces, parameter properties)
+    // is not allowed. These make tsc enforce that.
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true
   }
 }

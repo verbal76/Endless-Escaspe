@@ -678,3 +678,16 @@ export function writeSaves(saves: SavesMap): Promise<boolean> {
     }
   });
 }
+
+// Raw stored strings for the saves backup export (util/saveBackup.ts):
+// the saves file the game would load (primary, else the backup copy when
+// the primary has no playable data) and the settings file.
+export async function readRawForBackup(): Promise<{ savesRaw: string | null; settingsRaw: string | null }> {
+  const read = (k: string) => AsyncStorage.getItem(k).catch(() => null);
+  const [primary, backup, settingsRaw] = await Promise.all([read(KEY_SAVES), read(KEY_SAVES_BACKUP), read(KEY_SETTINGS)]);
+  const playable = (raw: string | null) => {
+    const p = parseSavesFull(raw);
+    return !!p && Object.keys(p.saves).length + Object.keys(p.passthrough).length > 0;
+  };
+  return { savesRaw: playable(primary) ? primary : playable(backup) ? backup : primary, settingsRaw };
+}

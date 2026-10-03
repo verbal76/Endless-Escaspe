@@ -31,7 +31,7 @@ import {
   createWinLine,
 } from '../scenes/PrisonYard1';
 import { useStore, type GameMode, type RunStats } from '../state/store';
-import type { Guard } from '../types/world';
+import type { Guard, Player } from '../types/world';
 import { input, resetInput } from '../systems/InputSystem';
 import { animatePickup } from '../scenes/Pickup';
 import {
@@ -246,6 +246,15 @@ export function Game() {
     // gets torn down + reconstructed by buildScene().
 
     const player = createPlayer();
+    // Sim position before the latest fixed step: render draws the player
+    // (and aims the camera) between it and the current one by the loop's
+    // alpha, so motion is smooth at any display rate.
+    let prevPX = player.x;
+    let prevPZ = player.z;
+    // A move longer than this between two steps is a teleport (respawn,
+    // reset, demo wrap): drawn at once, not streaked across the yard.
+    const TELEPORT_DIST = 2;
+    const playerView = { x: player.x, z: player.z } as Player;
     let playerSkin = useStore.getState().playerSkin;
     let playerOutfit = useStore.getState().playerOutfit;
     let playerFigure = createPlayerFigure(playerSkin, playerOutfit);
@@ -780,6 +789,9 @@ export function Game() {
       }
       const keepFrom = s.sections.length > 0 ? Math.min(player.z - 50, s.sections[0].zStart) : player.z - 50;
       s.procgen.trimBefore(keepFrom);
+      // Build the next section's chunks one per frame, well before they
+      // are needed, instead of all at once on the frame they are.
+      s.procgen.prefetch((s.nextSection + 1) * ENDLESS_SECTION_LEN + CHUNK_LEN, 1);
     };
 
     // ---- Initial scene ----------------------------------------------
@@ -1406,6 +1418,8 @@ export function Game() {
     };
 
     const update = (dt: number) => {
+      prevPX = player.x;
+      prevPZ = player.z;
       const st = useStore.getState();
 
       // Detect external state transitions (segment seed change from
@@ -2226,10 +2240,13 @@ export function Game() {
     // Wall-clock delta between rendered frames, for purely visual
     // smoothing that must not assume 60 fps.
     let lastRenderMs = 0;
-    const render = (_alpha: number) => {
+    const render = (alpha: number) => {
       const nowMs = Date.now();
       const renderDt = lastRenderMs ? Math.min(0.1, (nowMs - lastRenderMs) / 1000) : 1 / 60;
       lastRenderMs = nowMs;
+      const jump = Math.abs(player.x - prevPX) + Math.abs(player.z - prevPZ) > TELEPORT_DIST;
+      const drawX = jump ? player.x : prevPX + (player.x - prevPX) * alpha;
+      const drawZ = jump ? player.z : prevPZ + (player.z - prevPZ) * alpha;
 
       // Idle bob/spin on every uncollected pickup. Cheap; only the
       // mesh transform is touched.
@@ -2258,8 +2275,8 @@ export function Game() {
         time: animTime,
         hidden: player.isHidden,
       });
-      setFigurePosition(playerFigure, player.x, player.z);
-      placeBlobShadow(playerShadow, player.x, player.z);
+      setFigurePosition(playerFigure, drawX, drawZ);
+      placeBlobShadow(playerShadow, drawX, drawZ);
       for (let i = 0; i < scene.dogs.length; i++) {
         placeBlobShadow(scene.dogShadows[i], scene.dogs[i].x, scene.dogs[i].z);
       }
@@ -2340,7 +2357,7 @@ export function Game() {
         scene.weatherKind === 'rain' ? 0x8a8174 : 0xcbbfa6,
       );
       updateBursts(bursts, renderDt);
-      updateNoiseRing(noiseRing, player.x, player.z, noiseRadiusNow, noiseLoudness, animTime, renderDt);
+      updateNoiseRing(noiseRing, drawX, drawZ, noiseRadiusNow, noiseLoudness, animTime, renderDt);
       updateTargetMarker(crowbarMarker, crowbarTarget, animTime);
 
       for (let i = 0; i < scene.guards.length; i++) {
@@ -2365,8 +2382,13 @@ export function Game() {
         scene.ground.position.z = 400 + Math.round(player.z / 4) * 4;
         followBackdrop(backdrop, player.z);
       }
-      updateBackdropFar(backdrop, player.x, player.z);
-      updateCameraRig(r.camera, player, 1 / 60);
+      updateBackdropFar(backdrop, drawX, drawZ);
+      // Hide far chunks (props, pickups, their shadows) - the bulk of
+      // the draw calls on long stages and in Endless.
+      scene.procgen.updateVisibility(player.z);
+      playerView.x = drawX;
+      playerView.z = drawZ;
+      updateCameraRig(r.camera, playerView, renderDt);
       // Catch shake: small sin-driven offset on top of the rig pose,
       // scaled by the remaining fraction of SHAKE_DURATION so the
       // kick eases out. Frequency intentionally non-integer to avoid
@@ -2410,6 +2432,12 @@ export function Game() {
     loopRef.current = startLoop({
       update,
       render,
+      // Paused over a frozen scene: redraw at a quarter rate. (The idle
+      // menu animates the splash demo, so it keeps full rate.)
+      isStatic: () => {
+        const st = useStore.getState();
+        return st.paused && st.runState === 'playing' && shakeRemaining <= 0;
+      },
       onError: (err, phase) => {
         const t = Date.now();
         if (t - lastFrameErrorAt < 1000) return;

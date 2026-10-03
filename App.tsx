@@ -6,6 +6,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { setAudioModeAsync } from 'expo-audio';
 import { Game } from './src/game/Game';
+import { UpdateApplier, UpdateApplyingOverlay } from './src/components/HUD/UpdateApplying';
+import { StudioSplash } from './src/ui/StudioSplash';
+import { STUDIO_SPLASH_SOURCE } from './src/ui/studioSplashSource';
+import { splashPlan } from './src/util/studioSplash';
 import { boundedStep } from './src/util/async';
 import { setHapticsEnabled as setHapticsGate } from './src/util/haptics';
 import { useStore } from './src/state/store';
@@ -24,6 +28,13 @@ export default function App() {
   // be resolved before the renderer reads texture.image - otherwise
   // the GL upload silently falls back to a 1-pixel default.
   const [texturesReady, setTexturesReady] = useState(false);
+  // Opening studio card (shown once per launch, never on resume; boot
+  // below keeps running underneath it). Off until the canonical logo is
+  // added - see src/ui/studioSplashSource.ts.
+  const [splashDone, setSplashDone] = useState(!splashPlan(STUDIO_SPLASH_SOURCE).show);
+  // OTA activation runs only where expo-updates is active (native
+  // release builds); never on web / dev builds.
+  const updatesEnabled = getReleaseInfo().source !== 'disabled';
 
   useEffect(() => {
     activateKeepAwakeAsync('endless-escaspe');
@@ -129,7 +140,9 @@ export default function App() {
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <StatusBar style="light" hidden />
-        {texturesReady ? (
+        {!splashDone && STUDIO_SPLASH_SOURCE !== null ? (
+          <StudioSplash source={STUDIO_SPLASH_SOURCE} onDone={() => setSplashDone(true)} />
+        ) : texturesReady ? (
           <Game />
         ) : (
           // Boot screen while textures / font / saves load (bounded to a
@@ -139,6 +152,8 @@ export default function App() {
             <ActivityIndicator color="#ffd14a" />
           </View>
         )}
+        {updatesEnabled ? <UpdateApplier /> : null}
+        <UpdateApplyingOverlay />
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );

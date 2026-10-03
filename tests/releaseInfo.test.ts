@@ -141,15 +141,18 @@ test('release extra is found in every manifest shape and junk is rejected', () =
 
 test('app.config.js stamps CI metadata and is a no-op locally', () => {
   const require = createRequire(import.meta.url);
-  const make = require('../app.config.js') as (a: { config: any }) => any;
+  const make = require('../app.config.js') as ((a: { config: any }) => any) & { readSdkLevels: (r: string) => { targetSdk: number | null } };
   const appJson = require('../app.json').expo;
+  // The only locally-derived release field: the Android target SDK of the
+  // React Native template (never a CI-only value like commit / sequence).
+  const targetSdk = make.readSdkLevels(process.cwd()).targetSdk;
   const saved = { ...process.env };
   try {
     delete process.env.EE_BUILD_NUMBER;
     delete process.env.EE_GIT_SHA;
     delete process.env.EE_OTA_SEQUENCE;
     const local = make({ config: appJson });
-    assert.deepEqual(local.extra.release, {});
+    assert.deepEqual(local.extra.release, { targetSdk });
     assert.equal(local.android.versionCode, undefined);
     assert.equal(local.updates.requestHeaders['expo-channel-name'], 'preview');
     assert.equal(local.runtimeVersion.policy, 'appVersion');
@@ -168,7 +171,7 @@ test('app.config.js stamps CI metadata and is a no-op locally', () => {
     process.env.EE_OTA_SEQUENCE = '';
     const junk = make({ config: appJson });
     assert.equal(junk.android.versionCode, undefined);
-    assert.deepEqual(junk.extra.release, {});
+    assert.deepEqual(junk.extra.release, { targetSdk });
   } finally {
     process.env = saved;
   }

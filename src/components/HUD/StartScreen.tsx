@@ -38,7 +38,7 @@ import { formatMenuLine } from '../../util/releaseInfo';
 import { OUTFITS, type Outfit, type OutfitId } from '../../util/outfits';
 import { equipOutfit, purchaseOutfit } from '../../util/economy';
 import { dailySeed, utcDayKey } from '../../util/daily';
-import { buttonFill, color as ui, type as T, fonts, touch } from '../../ui/theme';
+import { buttonFill, buttonPressed, color as ui, type as T, fonts, touch } from '../../ui/theme';
 import { formatLastPlayed, menuPanelFrame } from '../../ui/menuLayout';
 import { buyConfirmCopy, notEnoughCoinsBody, outfitStateLine } from '../../ui/shopCopy';
 
@@ -1125,9 +1125,8 @@ const styles = StyleSheet.create({
   bigBtnLabelOnDark: {
     color: ui.text,
   },
-  bigBtnDown: {
-    opacity: 0.75,
-  },
+  // Shared pressed feedback (theme.buttonPressed).
+  bigBtnDown: buttonPressed,
   bigBtnLabel: {
     color: ui.onGold,
     fontFamily: fonts.display,
@@ -1358,9 +1357,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Same display face as the other menu buttons.
   bigBtnLabelCompact: {
     color: ui.onGold,
-    fontWeight: '900',
+    fontFamily: fonts.display,
     letterSpacing: 1.4,
     fontSize: T.small,
   },

@@ -44,8 +44,10 @@ console.log(JSON.stringify(report, null, 2));
 const problems = [];
 if (manifest.id !== mine.id) problems.push(`server serves ${manifest.id}, not the update just published (${mine.id})`);
 if (manifest.runtimeVersion !== String(runtime)) problems.push(`runtime ${manifest.runtimeVersion} != ${runtime}`);
-if (String(release.otaSequence) !== String(process.env.EE_OTA_SEQUENCE)) problems.push(`otaSequence ${release.otaSequence} != ${process.env.EE_OTA_SEQUENCE}`);
-if (release.gitSha !== String(process.env.EE_GIT_SHA).toLowerCase()) problems.push(`gitSha ${release.gitSha} != ${process.env.EE_GIT_SHA}`);
+// The publish job always sets both; ota-rollback.yml sets neither (a
+// republished update keeps the original update's metadata).
+if (process.env.EE_OTA_SEQUENCE && String(release.otaSequence) !== String(process.env.EE_OTA_SEQUENCE)) problems.push(`otaSequence ${release.otaSequence} != ${process.env.EE_OTA_SEQUENCE}`);
+if (process.env.EE_GIT_SHA && release.gitSha !== String(process.env.EE_GIT_SHA).toLowerCase()) problems.push(`gitSha ${release.gitSha} != ${process.env.EE_GIT_SHA}`);
 if (problems.length) {
   console.error(problems.join('\n'));
   process.exit(1);

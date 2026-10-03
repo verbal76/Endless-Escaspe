@@ -100,21 +100,33 @@ release metadata, music intensity and more.
 
 ## Builds and over-the-air updates
 
-Two GitHub Actions workflows ship the game. Each runs typecheck and the
-unit tests first and refuses to publish on failure. A third,
-`android-render-check.yml`, builds the release configuration for x86_64,
-runs it on an Android emulator and fails unless the in-app render audit
-reports every textured model drawn with its texture and the GPU texels
-matching the source PNGs.
+Two GitHub Actions workflows ship the game; `ci.yml` (typecheck, unit
+tests, native fingerprint gate, Android bundle export) runs on every
+pull request and every pushed branch, and never publishes anything.
 
 | Change | Workflow | Result |
 | --- | --- | --- |
-| Native: `package.json`, `app.json`, `app.config.js`, icons, splash, Gradle config | `apk-build.yml` | Release-variant APK, published as GitHub Release `build-N` |
+| Native: `package.json`, `package-lock.json`, `app.json`, `app.config.js`, icons, splash, Gradle config | `apk-build.yml` | Release-variant APK, published as GitHub Release `build-N`, tagged at the built commit |
 | JS / assets only | `eas-update.yml` | EAS Update on channel `preview` (OTA sequence = run number) |
 
-Both trigger on pushes to `claude/endless-escape-game-android-gRlFH`,
-`Github-APK-Transition-Escap` and `claude/game-review-suggestions-cjxiqh`,
-and can be run manually.
+Both trigger on pushes to `claude/game-review-suggestions-cjxiqh` (the
+only branch that publishes OTAs; `apk-build.yml` also still lists the
+two older branches) and can be run manually. Pushes that only touch
+docs, tests, scripts or workflows publish nothing. Editing
+`apk-build.yml` alone does not build an APK (run it manually to test).
+
+An OTA is published only after, for the same commit:
+
+1. **validate** (`ci.yml`): typecheck, tests, fingerprint gate, bundle export;
+2. **render check** (`android-render-check.yml`, ~30-40 min): the release
+   configuration is built for x86_64 and run on an Android emulator; it
+   fails unless the in-app render audit reports every textured model
+   drawn with its texture, the GPU texels match the source PNGs, the app
+   reports this commit, and it survives a background / foreground cycle;
+3. **publish**: the fingerprint gate again, a check that the commit is
+   still the branch head (a re-run of an old run never rolls devices
+   back), `eas update`, then `scripts/verify-ota.mjs`. All publishes and
+   rollbacks to `preview` share one queue and are never cancelled midway.
 
 - APKs are `assembleRelease` builds (JS bundle embedded, `expo-updates`
   active), signed with the Expo template's debug keystore so they can be
@@ -126,6 +138,17 @@ and can be run manually.
   `version` whenever a change adds or alters native code that the JS
   relies on (a new native module, an SDK upgrade); icon, splash and
   display-name changes need a new APK but not a new runtime.
+- **Native fingerprint gate.** `scripts/check-native-fingerprint.mjs`
+  hashes the native layer with `@expo/fingerprint` (Android; ignoring the
+  per-run `versionCode` / `extra.release` stamps and the version itself)
+  and compares it with the hash recorded for app.json's `version` in
+  `scripts/native-fingerprint.json`. CI and the OTA publish fail on a
+  mismatch, so JS that needs native code the installed APKs lack is
+  never published. For a native change: bump `version`, run
+  `node scripts/check-native-fingerprint.mjs --record`, commit both and
+  let `apk-build.yml` build the new runtime's APK (it prints the
+  fingerprint in its log and release notes). `--record` refuses to
+  overwrite the hash of an existing version.
 - Keep every Expo package on the SDK's version (`npx expo install
   --check`). A mismatched native module compiles but fails at runtime:
   expo-audio's `expo-asset: "*"` peer dependency once pulled in SDK 55's
@@ -141,6 +164,26 @@ and can be run manually.
   the latest update exactly as an installed APK would (same runtime and
   channel) and fails the job unless the served update is the one just
   published, carrying the expected OTA sequence and commit.
+
+### Rolling back an OTA
+
+Publishing never deletes anything, and a rollback is itself a new
+update (devices pick it up on their next launch, like any OTA).
+
+1. Find the update group IDs: the "Record published update" summary of
+   each OTA run, or `eas update:list --branch preview --platform android`.
+2. Roll back with **Actions → OTA rollback → Run workflow**
+   (`ota-rollback.yml`, same queue as publishing, then `verify-ota.mjs`):
+   - `undo-latest` + the bad (latest) group: runs
+     `eas update:rollback <group> --platform android --non-interactive`,
+     which republishes the group published before it (or, if there is
+     none, tells devices to run their embedded bundle);
+   - `republish` + a known-good group: runs
+     `eas update:republish --group <group> --platform android --message "..." --non-interactive`.
+3. Locally the same commands work with `EXPO_TOKEN` set (eas-cli 24.9.0,
+   the version CI pins). A republished update keeps the original's
+   commit and OTA number in Build / Update Info.
+4. Fix forward on the branch afterwards: the next push publishes again.
 
 ### What's running on a device
 

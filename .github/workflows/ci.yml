@@ -1,0 +1,60 @@
+name: CI
+
+# Fast checks for every pull request and every pushed branch; also the
+# `validate` stage of eas-update.yml (workflow_call), so the commit that
+# gets published passed exactly these checks.
+
+on:
+  pull_request:
+  push:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # github.workflow is the caller's name under workflow_call, so a
+  # standalone run never cancels the validate stage of an OTA run.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Typecheck, tests, native fingerprint, Android bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      # Fails when the native layer changed without a runtime (app.json
+      # version) bump; see scripts/check-native-fingerprint.mjs.
+      - name: Native fingerprint gate
+        run: node scripts/check-native-fingerprint.mjs
+
+      # The same Metro export `eas update` runs, without publishing:
+      # catches resolution / transform / asset errors before any
+      # publish or APK build.
+      - name: Android bundle export (smoke)
+        env:
+          EXPO_NO_TELEMETRY: '1'
+          CI: '1'
+        run: |
+          npx expo export --platform android --output-dir "$RUNNER_TEMP/export-android"
+          ls -la "$RUNNER_TEMP/export-android/_expo/static/js/android/"

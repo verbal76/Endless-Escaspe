@@ -1,0 +1,85 @@
+name: OTA rollback
+
+# Manual rollback of the `preview` channel (README "Rolling back an
+# OTA"). Republishing creates a NEW update (new id, newer createdAt)
+# that carries the chosen group's bundle, so devices move to it on
+# their next launch; nothing is deleted.
+#   undo-latest  `eas update:rollback <group>`: <group> must be the
+#                latest update group of its branch + runtime; the group
+#                published before it is republished (or, if there is
+#                none, devices are told to run the APK's embedded bundle).
+#   republish    `eas update:republish --group <group>`: republish that
+#                exact group on its own branch.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'undo-latest (group = the bad, latest group) or republish (group = the good group to restore)'
+        type: choice
+        options: [undo-latest, republish]
+        required: true
+      group:
+        description: 'Update group ID (from the OTA run summary or `eas update:list --branch preview`)'
+        type: string
+        required: true
+      message:
+        description: 'Update message (optional)'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    name: Roll back preview channel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Same queue as eas-update.yml publishes: never interleave.
+    concurrency:
+      group: eas-update-preview
+      cancel-in-progress: false
+    env:
+      ACTION: ${{ inputs.action }}
+      GROUP: ${{ inputs.group }}
+      MESSAGE: ${{ inputs.message }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Set up EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: 24.9.0
+          token: ${{ secrets.EAS }}
+
+      - name: Roll back
+        env:
+          EXPO_TOKEN: ${{ secrets.EAS }}
+        run: |
+          if ! [[ "$GROUP" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+            echo "::error::'$GROUP' is not an update group ID"; exit 1
+          fi
+          if [ "$ACTION" = undo-latest ]; then
+            eas update:rollback "$GROUP" --platform android ${MESSAGE:+--message "$MESSAGE"} --non-interactive --json > update.json
+          else
+            eas update:republish --group "$GROUP" --platform android --message "${MESSAGE:-Rollback: republish group $GROUP}" --non-interactive --json > update.json
+          fi
+          cat update.json
+
+      # Same check as after a publish, minus the OTA sequence / commit
+      # (a republished update keeps the original's metadata). A roll
+      # back to the embedded bundle is not an update and fails here:
+      # check it on a device instead.
+      - name: Verify the rollback is served to installed APKs
+        run: node scripts/verify-ota.mjs

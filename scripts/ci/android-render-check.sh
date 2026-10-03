@@ -26,19 +26,70 @@ if ! adb install -r -g app.apk; then
 fi
 launch() { adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null; }
 
-adb logcat -c
-launch
-sleep 90
-adb exec-out screencap -p > "$OUT/launch1.png"
-adb logcat -d > "$OUT/logcat-launch1.txt"
-adb shell am force-stop "$PKG"
-sleep 3
+# Poll logcat instead of sleeping a fixed time. A launch is done once
+# the render audit has reached its verdict (a clean audit, or the last
+# of its 1 + 3 attempts, see RENDER_AUDIT_RETRIES in Game.tsx) or the
+# app crashed. The timeouts are ceilings for slow emulators, not the
+# expected duration.
+POLL=5
+audit_settled() {
+  local f=$1 audits
+  grep -q "FATAL EXCEPTION" "$f" && return 0
+  audits=$(grep -c '\[render-audit\] {' "$f")
+  if [ "$audits" -ge 1 ] && grep '\[render-audit\] {' "$f" | grep -q '"problems":\[\]'; then
+    return 0
+  fi
+  [ "$audits" -ge 4 ]
+}
+# wait_for_audit <logcat file> <timeout s>: dumps logcat into the file
+# until audit_settled or the timeout (the checker then reports what is
+# missing).
+wait_for_audit() {
+  local f=$1 limit=$2 waited=0
+  while :; do
+    adb logcat -d > "$f"
+    if audit_settled "$f"; then
+      echo "launch settled after ~${waited}s ($f)"
+      return 0
+    fi
+    if [ "$waited" -ge "$limit" ]; then
+      echo "TIMEOUT: no render-audit verdict within ${limit}s ($f)"
+      return 1
+    fi
+    sleep "$POLL"
+    waited=$((waited + POLL))
+  done
+}
+# The package of the activity in the foreground (empty if unknown).
+resumed_pkg() {
+  adb shell dumpsys activity activities 2>/dev/null | tr -d '\r' \
+    | grep -m1 -E 'mResumedActivity|topResumedActivity' | grep -oE '[A-Za-z0-9_.]+/' | head -1 | tr -d '/'
+}
+app_in_front() { [ "$(resumed_pkg)" = "$PKG" ]; }
+app_not_in_front() { ! app_in_front; }
+app_running() { [ -n "$(adb shell pidof "$PKG" | tr -d '\r')" ]; }
+app_stopped() { ! app_running; }
+# wait_until <timeout s> <function>: polls every second.
+wait_until() {
+  local limit=$1 fn=$2 waited=0
+  until "$fn"; do
+    [ "$waited" -ge "$limit" ] && return 1
+    sleep 1
+    waited=$((waited + 1))
+  done
+}
 
 adb logcat -c
 launch
-sleep 120
+wait_for_audit "$OUT/logcat-launch1.txt" 240
+adb exec-out screencap -p > "$OUT/launch1.png"
+adb shell am force-stop "$PKG"
+wait_until 15 app_stopped || echo "note: process still listed 15s after force-stop"
+
+adb logcat -c
+launch
+wait_for_audit "$OUT/logcat-launch2.txt" 300
 adb exec-out screencap -p > "$OUT/launch2.png"
-adb logcat -d > "$OUT/logcat-launch2.txt"
 
 echo "--- device ---"
 adb shell getprop ro.product.cpu.abilist
@@ -60,9 +111,14 @@ echo "--- background / foreground ---"
 pid_before=$(adb shell pidof "$PKG" | tr -d '\r')
 adb logcat -c
 adb shell input keyevent KEYCODE_HOME
-sleep 8
+wait_until 20 app_not_in_front || echo "note: could not confirm the app went to the background"
 launch
-sleep 15
+wait_until 30 app_in_front || echo "note: could not confirm the app came back to the foreground"
+# Watch the resumed app for a few seconds; stop early on a crash.
+for _ in 1 2 3 4 5; do
+  sleep 2
+  adb logcat -d | grep -q "FATAL EXCEPTION" && break
+done
 adb exec-out screencap -p > "$OUT/resumed.png"
 adb logcat -d > "$OUT/logcat-resume.txt"
 pid_after=$(adb shell pidof "$PKG" | tr -d '\r')

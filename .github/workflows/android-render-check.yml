@@ -15,19 +15,25 @@ name: Android render check
 
 on:
   workflow_dispatch:
+  # eas-update.yml calls this check for every commit it would publish
+  # and publishes only if it passes (same commit, same run).
+  workflow_call:
+  # Standalone runs only for changes to the check itself (those are
+  # paths-ignored by eas-update.yml); app changes are covered by the
+  # OTA pipeline's call above.
   push:
     branches:
       - claude/game-review-suggestions-cjxiqh
     paths:
-      - 'src/**'
-      - 'App.tsx'
-      - 'index.ts'
-      - 'assets/**'
       - 'scripts/ci/**'
       - '.github/workflows/android-render-check.yml'
 
 concurrency:
-  group: android-render-check-${{ github.ref }}
+  # Under workflow_call github.workflow is the caller's name, so a
+  # standalone run never cancels the gate of an OTA run (and a newer
+  # OTA run does cancel the older one's check: that one would not be
+  # published anyway).
+  group: android-render-check-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -66,6 +72,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
+
+      # Pre-install the pinned NDK with retries (a corrupt on-demand
+      # download inside Gradle failed run 16).
+      - name: Install NDK
+        run: bash scripts/ci/install-ndk.sh
 
       - name: Generate android/ project (expo prebuild)
         run: npx expo prebuild --platform android --clean
@@ -114,3 +125,4 @@ jobs:
           name: android-render-check
           path: render-check/
           if-no-files-found: ignore
+          retention-days: 14

@@ -1,0 +1,386 @@
+{
+ "boot": {
+  "n": 20,
+  "snap": [
+   {
+    "l": "siren(data-wav)",
+    "vol": 0,
+    "paused": true,
+    "loop": true,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "pickup_grab.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "pickup_grab.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "crowbar_swing.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "crowbar_hit.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "smoke_pop.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "gunshot.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "gunshot.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "gunshot.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "aim_click.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "aim_click.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "caught.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "hurt.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "ui_tap.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "throw.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "throw_land.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "throw_land.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "pocketEscapeRemix.mp3",
+    "vol": 0,
+    "paused": true,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "voxelSneakParade.mp3",
+    "vol": 0.35,
+    "paused": false,
+    "loop": false,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   },
+   {
+    "l": "polysneakPursuit.mp3",
+    "vol": 0,
+    "paused": false,
+    "loop": true,
+    "rate": 1,
+    "t": 0,
+    "src": true
+   }
+  ],
+  "plays": {
+   "voxelSneakParade.mp3": 1,
+   "polysneakPursuit.mp3": 1
+  },
+  "store": {
+   "masterVolume": 0.7,
+   "musicVolume": 0.5
+  }
+ },
+ "after60": {
+  "n": 20,
+  "plays": {
+   "voxelSneakParade.mp3": 1,
+   "polysneakPursuit.mp3": 1,
+   "throw.mp3": 11,
+   "smoke_pop.mp3": 10,
+   "throw_land.mp3": 10,
+   "crowbar_swing.mp3": 12,
+   "caught.mp3": 3
+  },
+  "failed": [],
+  "byLabel": {
+   "siren(data-wav)": 1,
+   "pickup_grab.mp3": 2,
+   "crowbar_swing.mp3": 1,
+   "crowbar_hit.mp3": 1,
+   "smoke_pop.mp3": 1,
+   "gunshot.mp3": 3,
+   "aim_click.mp3": 2,
+   "caught.mp3": 1,
+   "hurt.mp3": 1,
+   "ui_tap.mp3": 1,
+   "throw.mp3": 1,
+   "throw_land.mp3": 2,
+   "pocketEscapeRemix.mp3": 1,
+   "voxelSneakParade.mp3": 1,
+   "polysneakPursuit.mp3": 1
+  }
+ },
+ "slider": [
+  {
+   "step": 0.013,
+   "storeMaster": 0,
+   "music": [
+    {
+     "l": "pocketEscapeRemix.mp3",
+     "vol": 0,
+     "paused": false,
+     "loop": false,
+     "rate": 1,
+     "t": 26.24,
+     "src": true
+    },
+    {
+     "l": "voxelSneakParade.mp3",
+     "vol": 0.35,
+     "paused": true,
+     "loop": false,
+     "rate": 1,
+     "t": 64.48,
+     "src": true
+    },
+    {
+     "l": "polysneakPursuit.mp3",
+     "vol": 0,
+     "paused": false,
+     "loop": true,
+     "rate": 1,
+     "t": 82.78,
+     "src": true
+    }
+   ]
+  },
+  {
+   "step": 0.0071,
+   "storeMaster": 0.004200000000000367,
+   "music": [
+    {
+     "l": "pocketEscapeRemix.mp3",
+     "vol": 0.0092,
+     "paused": false,
+     "loop": false,
+     "rate": 1,
+     "t": 56.56,
+     "src": true
+    },
+    {
+     "l": "voxelSneakParade.mp3",
+     "vol": 0.35,
+     "paused": true,
+     "loop": false,
+     "rate": 1,
+     "t": 64.48,
+     "src": true
+    },
+    {
+     "l": "polysneakPursuit.mp3",
+     "vol": 0,
+     "paused": false,
+     "loop": true,
+     "rate": 1,
+     "t": 113.12,
+     "src": true
+    }
+   ]
+  },
+  {
+   "step": 0.0193,
+   "storeMaster": 0,
+   "music": [
+    {
+     "l": "pocketEscapeRemix.mp3",
+     "vol": 0.0026,
+     "paused": false,
+     "loop": false,
+     "rate": 1,
+     "t": 69.76,
+     "src": true
+    },
+    {
+     "l": "voxelSneakParade.mp3",
+     "vol": 0.35,
+     "paused": true,
+     "loop": false,
+     "rate": 1,
+     "t": 64.48,
+     "src": true
+    },
+    {
+     "l": "polysneakPursuit.mp3",
+     "vol": 0,
+     "paused": false,
+     "loop": true,
+     "rate": 1,
+     "t": 126.32,
+     "src": true
+    }
+   ]
+  }
+ ],
+ "paused": [
+  {
+   "l": "siren(data-wav)",
+   "vol": 0,
+   "paused": true,
+   "loop": true,
+   "rate": 1,
+   "t": 0,
+   "src": true
+  },
+  {
+   "l": "pocketEscapeRemix.mp3",
+   "vol": 0.35,
+   "paused": false,
+   "loop": false,
+   "rate": 1,
+   "t": 72.04,
+   "src": true
+  },
+  {
+   "l": "voxelSneakParade.mp3",
+   "vol": 0.35,
+   "paused": true,
+   "loop": false,
+   "rate": 1,
+   "t": 64.48,
+   "src": true
+  },
+  {
+   "l": "polysneakPursuit.mp3",
+   "vol": 0,
+   "paused": false,
+   "loop": true,
+   "rate": 1,
+   "t": 128.59,
+   "src": true
+  }
+ ],
+ "menu": [
+  {
+   "l": "pocketEscapeRemix.mp3",
+   "vol": 0.35,
+   "paused": false,
+   "loop": false,
+   "rate": 1,
+   "t": 73.87,
+   "src": true
+  },
+  {
+   "l": "polysneakPursuit.mp3",
+   "vol": 0,
+   "paused": false,
+   "loop": true,
+   "rate": 1,
+   "t": 130.39,
+   "src": true
+  }
+ ],
+ "errors": [],
+ "audioLogs": []
+}

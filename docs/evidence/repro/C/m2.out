@@ -1,0 +1,177 @@
+{
+ "audit": {
+  "frames": [
+   {
+    "i": 0,
+    "ms": 100,
+    "readPixels": 0
+   },
+   {
+    "i": 1,
+    "ms": 91.6,
+    "readPixels": 0
+   },
+   {
+    "i": 2,
+    "ms": 803,
+    "readPixels": 60
+   },
+   {
+    "i": 3,
+    "ms": 5.6,
+    "readPixels": 0
+   },
+   {
+    "i": 4,
+    "ms": 6.3,
+    "readPixels": 0
+   },
+   {
+    "i": 5,
+    "ms": 4,
+    "readPixels": 0
+   },
+   {
+    "i": 6,
+    "ms": 2.9,
+    "readPixels": 0
+   },
+   {
+    "i": 7,
+    "ms": 2.6,
+    "readPixels": 0
+   }
+  ],
+  "totalReadPixels": 60,
+  "fbos": 10
+ },
+ "breakdown": {
+  "calls": 950,
+  "tris": 308526,
+  "visibleDrawables": 577,
+  "top": [
+   [
+    "props|Mesh|BufferGeometry|MeshLambertMaterial",
+    323
+   ],
+   [
+    "guards|Mesh|BufferGeometry|MeshLambertMaterial",
+    36
+   ],
+   [
+    "|Mesh|BoxGeometry|MeshLambertMaterial",
+    30
+   ],
+   [
+    "|Mesh|CylinderGeometry|MeshLambertMaterial",
+    27
+   ],
+   [
+    "|Mesh|PlaneGeometry|MeshBasicMaterial(T)",
+    25
+   ],
+   [
+    "vehicles|Mesh|BufferGeometry|MeshLambertMaterial",
+    24
+   ],
+   [
+    "|Mesh|SphereGeometry|MeshBasicMaterial(T)",
+    18
+   ],
+   [
+    "|Mesh|ConeGeometry|ShaderMaterial(T)",
+    16
+   ],
+   [
+    "dogs|Mesh|BufferGeometry|MeshLambertMaterial",
+    16
+   ],
+   [
+    "|Mesh|BufferGeometry|MeshBasicMaterial(T)",
+    12
+   ],
+   [
+    "|Mesh|RingGeometry|MeshBasicMaterial(T)",
+    10
+   ],
+   [
+    "|Mesh|SphereGeometry|MeshLambertMaterial",
+    10
+   ],
+   [
+    "|Mesh|CircleGeometry|ShaderMaterial(T)",
+    10
+   ],
+   [
+    "player|Mesh|BufferGeometry|MeshLambertMaterial",
+    6
+   ],
+   [
+    "|Mesh|BufferGeometry|MeshLambertMaterial",
+    6
+   ],
+   [
+    "|Mesh|BufferGeometry|MeshBasicMaterial",
+    2
+   ],
+   [
+    "|Mesh|PlaneGeometry|MeshLambertMaterial",
+    2
+   ],
+   [
+    "|Mesh|SphereGeometry|MeshBasicMaterial",
+    1
+   ],
+   [
+    "ground|Mesh|PlaneGeometry|MeshLambertMaterial",
+    1
+   ],
+   [
+    "|Points|BufferGeometry|PointsMaterial(T)",
+    1
+   ],
+   [
+    "|Mesh|TorusGeometry|MeshLambertMaterial",
+    1
+   ]
+  ]
+ },
+ "firstUse": {
+  "res": [
+   {
+    "label": "baseline",
+    "frameMs": 3,
+    "newPrograms": 0
+   },
+   {
+    "label": "smoke bomb",
+    "frameMs": 3.3,
+    "newPrograms": 0
+   },
+   {
+    "label": "crowbar swing",
+    "frameMs": 3.6,
+    "newPrograms": 0
+   },
+   {
+    "label": "rock throw",
+    "frameMs": 4.8,
+    "newPrograms": 0
+   },
+   {
+    "label": "catch",
+    "frameMs": 1.9,
+    "newPrograms": 0
+   }
+  ],
+  "programs": 17
+ }
+}
+errors [] [
+  'warning: [.WebGL-0x244c00115c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels',
+  'warning: [.WebGL-0x244c00115c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels',
+  'log: [render-audit] {"groups":{"player":{"meshes":6,"textured":6,"flat":0,"notUploaded":0},"guards":{"meshes":12,"textured":12,"flat":0,"notUploaded":0},"vehicles":{"meshes":18,"textured":18,"flat":0,"notUploaded":0},"dogs":{"meshes":0,"textured":0,"flat":0,"notUploaded":0},"props":{"meshes":306,"textured":306,"flat":0,"notUploaded":0},"ground":{"meshes":1,"textured":1,"flat":0,"notUploaded":0}},"gpu":[{"key":"character-d","status":"ok"},{"key":"prop-grass","status":"ok"},{"key":"prop-metal_wall","status":"ok"},{"key":"prop-wall","status":"ok"},{"key":"prop-roof","status":"ok"},{"key":"prop-concrete","status":"ok"},{"key":"vehicle-colormap","status":"ok"},{"key":"prop-signs","status":"ok"},{"key":"prop-dirt","status":"ok"},{"key":"character-j","status":"ok"}],"problems":[]}',
+  'warning: [.WebGL-0x244c00115c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels',
+  'warning: [.WebGL-0x244c00115c00]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)',
+  'log: [render-audit] {"groups":{"player":{"meshes":6,"textured":6,"flat":0,"notUploaded":0},"guards":{"meshes":24,"textured":24,"flat":0,"notUploaded":0},"vehicles":{"meshes":60,"textured":60,"flat":0,"notUploaded":0},"dogs":{"meshes":0,"textured":0,"flat":0,"notUploaded":0},"props":{"meshes":352,"textured":352,"flat":0,"notUploaded":0},"ground":{"meshes":1,"textured":1,"flat":0,"notUploaded":0}},"gpu":[{"key":"character-d","status":"ok"},{"key":"prop-grass","status":"ok"},{"key":"prop-concrete","status":"ok"},{"key":"prop-dirt","status":"ok"},{"key":"prop-metal_wall","status":"ok"},{"key":"prop-wall","status":"ok"},{"key":"prop-roof","status":"ok"},{"key":"prop-signs","status":"ok"},{"key":"vehicle-colormap","status":"ok"},{"key":"character-j","status":"ok"}],"problems":[]}'
+]

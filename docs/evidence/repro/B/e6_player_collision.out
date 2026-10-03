@@ -1,0 +1,21 @@
+stage 1 seed 147: {"frames":7555,"penFrames":0,"maxPen":0,"oob":0,"maxZ":120,"segEnd":120,"end":"cleared","worst":[]}
+stage 1 seed 154: {"frames":8509,"penFrames":14,"maxPen":0.023,"oob":0,"maxZ":120,"segEnd":120,"end":"cleared","worst":["-8.55,91.74 pen=0.013","-8.55,91.75 pen=0.023"]}
+stage 1 seed 161: {"frames":8265,"penFrames":58,"maxPen":0.024,"oob":0,"maxZ":120,"segEnd":120,"end":"cleared","worst":["8.55,27.37 pen=0.018","8.55,27.37 pen=0.024"]}
+stage 1 seed 168: {"frames":7876,"penFrames":33,"maxPen":0.02,"oob":0,"maxZ":119.9,"segEnd":120,"end":"cleared","worst":["8.55,24.16 pen=0.020"]}
+stage 9 seed 147: {"frames":9000,"penFrames":19,"maxPen":0.097,"oob":0,"maxZ":174.6,"segEnd":192,"end":"playing","worst":["8.55,8.33 pen=0.083","8.55,8.36 pen=0.097"]}
+stage 9 seed 154: {"frames":9000,"penFrames":167,"maxPen":0.074,"oob":0,"maxZ":154,"segEnd":192,"end":"playing","worst":["-8.55,153.88 pen=0.015","-8.55,153.97 pen=0.074"]}
+stage 9 seed 161: {"frames":9000,"penFrames":0,"maxPen":0,"oob":0,"maxZ":144.3,"segEnd":192,"end":"playing","worst":[]}
+stage 9 seed 168: {"frames":9000,"penFrames":13,"maxPen":0.029,"oob":0,"maxZ":157,"segEnd":192,"end":"playing","worst":["-8.55,120.66 pen=0.019","-8.55,120.68 pen=0.029"]}
+stage 13 seed 147: {"frames":9000,"penFrames":19,"maxPen":0.092,"oob":0,"maxZ":169.2,"segEnd":216,"end":"playing","worst":["8.55,8.33 pen=0.077","8.55,8.35 pen=0.092"]}
+stage 13 seed 154: {"frames":9000,"penFrames":467,"maxPen":0.078,"oob":0,"maxZ":130,"segEnd":216,"end":"playing","worst":["-8.55,129.98 pen=0.077","-8.55,129.98 pen=0.078"]}
+stage 13 seed 161: {"frames":9000,"penFrames":0,"maxPen":0,"oob":0,"maxZ":155.7,"segEnd":216,"end":"playing","worst":[]}
+stage 13 seed 168: {"frames":9000,"penFrames":16,"maxPen":0.023,"oob":0,"maxZ":133.9,"segEnd":216,"end":"playing","worst":["-8.55,133.85 pen=0.023"]}
+stage 19 seed 147: {"frames":9000,"penFrames":0,"maxPen":0,"oob":0,"maxZ":158.7,"segEnd":216,"end":"playing","worst":[]}
+stage 19 seed 154: {"frames":9000,"penFrames":0,"maxPen":0,"oob":0,"maxZ":154.1,"segEnd":216,"end":"playing","worst":[]}
+stage 19 seed 161: {"frames":9000,"penFrames":0,"maxPen":0,"oob":0,"maxZ":152.1,"segEnd":216,"end":"playing","worst":[]}
+stage 19 seed 168: {"frames":9000,"penFrames":198,"maxPen":0.046,"oob":0,"maxZ":123.5,"segEnd":216,"end":"playing","worst":["-8.55,123.48 pen=0.024","-8.55,123.50 pen=0.046"]}
+stage 26 seed 147: {"frames":9000,"penFrames":0,"maxPen":0,"oob":0,"maxZ":158.7,"segEnd":216,"end":"playing","worst":[]}
+stage 26 seed 154: {"frames":9000,"penFrames":0,"maxPen":0,"oob":0,"maxZ":154.1,"segEnd":216,"end":"playing","worst":[]}
+stage 26 seed 161: {"frames":9000,"penFrames":0,"maxPen":0,"oob":0,"maxZ":152.1,"segEnd":216,"end":"playing","worst":[]}
+stage 26 seed 168: {"frames":9000,"penFrames":198,"maxPen":0.046,"oob":0,"maxZ":123.5,"segEnd":216,"end":"playing","worst":["-8.55,123.48 pen=0.024","-8.55,123.50 pen=0.046"]}
+errors []

@@ -1,0 +1,246 @@
+src files: 99  reachable from index.ts: 99
+ORPHANS (src not reachable from app):
+
+src files directly imported by tests: 39  transitively: 51
+NOT loaded by any test (even transitively):
+   src/game/Renderer.ts
+   src/game/Loop.ts
+   src/game/CameraRig.ts
+   src/scenes/SmokeCloud.ts
+   src/scenes/SwingArc.ts
+   src/scenes/Footprints.ts
+   src/scenes/Camera.ts
+   src/components/HUD/Joystick.tsx
+   src/components/HUD/ActionButtons.tsx
+   src/components/HUD/RunButton.tsx
+   src/components/HUD/LookButtons.tsx
+   src/components/HUD/Hearts.tsx
+   src/components/HUD/StaminaBar.tsx
+   src/components/HUD/AlarmBar.tsx
+   src/ui/icons.tsx
+   src/components/HUD/Banner.tsx
+   src/components/HUD/NameKeyboard.tsx
+   src/util/releaseRuntime.ts
+   src/components/HUD/StartScreen.tsx
+   src/components/HUD/AlarmOverlay.tsx
+   src/util/support.ts
+   src/components/HUD/BuildInfo.tsx
+   src/components/HUD/HowToPlay.tsx
+   src/ui/iconData.ts
+   src/components/HUD/SettingsScreen.tsx
+   src/components/HUD/PickupBag.tsx
+   src/components/HUD/CatchFlash.tsx
+   src/components/HUD/EventFlash.tsx
+   src/components/HUD/Tutorial.tsx
+   src/components/HUD/Toast.tsx
+   src/components/HUD/DistanceHud.tsx
+   src/components/HUD/EdgeVignette.tsx
+   src/scenes/Juice.ts
+   src/scenes/StealthCues.ts
+   src/components/HUD/BossTimer.tsx
+   src/scenes/RadialMeter.ts
+   src/scenes/ThreatArrow.ts
+   src/scenes/LightTower.ts
+   src/scenes/GuardEquipment.ts
+   src/scenes/GuardStateMarker.ts
+   src/scenes/SnowCaps.ts
+   src/util/siren.ts
+   src/scenes/Siren.ts
+   src/scenes/Music.ts
+   src/scenes/ThrownRock.ts
+   src/scenes/Sfx.ts
+   src/util/haptics.ts
+   src/game/Game.tsx
+Loaded only transitively (no direct test import):
+   src/util/math.ts
+   src/systems/Navigator.ts
+   src/util/debug.ts
+   src/util/textures.ts
+   src/scenes/KitProps.ts
+   src/scenes/Vehicle.ts
+   src/scenes/Pickup.ts
+   src/scenes/BlobShadows.ts
+   src/scenes/ModelFigure.ts
+   src/util/outfits.ts
+   src/ui/theme.ts
+   src/components/HUD/GameModal.tsx
+
+UNUSED EXPORTS (no reference outside own file; tests counted separately):
+   src/game/Renderer.ts GameRenderer  (used inside file)
+   src/util/collision.ts circleHitObb (tests only) (used inside file)
+   src/util/collision.ts lineOfSightClear  (used inside file)
+   src/util/collision.ts segmentHitsObstacle  (used inside file)
+   src/util/collision.ts Circle  (used inside file)
+   src/util/collision.ts Obb  (used inside file)
+   src/util/geometry.ts getVisionRange  (DEAD)
+   src/util/geometry.ts LANES  (DEAD)
+   src/util/geometry.ts LANE_WIDTH  (DEAD)
+   src/util/geometry.ts OBSTACLE_RADIUS  (DEAD)
+   src/util/geometry.ts PLAYER_RUN_SPEED (tests only) (DEAD)
+   src/util/geometry.ts PLAYER_PRONE_SPEED  (DEAD)
+   src/util/geometry.ts PLAYER_LATERAL_SPEED  (DEAD)
+   src/util/geometry.ts GUARD_PATROL_SPEED  (DEAD)
+   src/util/geometry.ts GUARD_CHASE_SPEED  (DEAD)
+   src/util/geometry.ts VISION_RANGE_BASE  (used inside file)
+   src/util/geometry.ts VISION_RANGE_PER_STAGE  (used inside file)
+   src/util/geometry.ts VISION_RANGE  (DEAD)
+   src/util/geometry.ts LIGHT_VISION_BONUS  (DEAD)
+   src/util/geometry.ts NOISE_RANGE_RUN  (DEAD)
+   src/util/geometry.ts NOISE_RANGE_WALK  (DEAD)
+   src/util/geometry.ts DETECTION_DECAY  (DEAD)
+   src/systems/NavGrid.ts buildNavGrid (tests only) (DEAD)
+   src/systems/Navigator.ts Mover  (used inside file)
+   src/systems/Navigator.ts NavOptions  (used inside file)
+   src/types/world.ts GuardState  (used inside file)
+   src/systems/InputSystem.ts InputState  (used inside file)
+   src/systems/InputSystem.ts JOYSTICK_DEAD_ZONE (tests only) (used inside file)
+   src/util/debug.ts LogLevel  (used inside file)
+   src/util/debug.ts LogEntry  (used inside file)
+   src/util/png.ts DecodedPng  (used inside file)
+   src/util/textureSource.ts androidResourceName (tests only) (used inside file)
+   src/util/textureSource.ts TextureSource  (used inside file)
+   src/util/textures.ts TextureStatus  (used inside file)
+   src/util/textureProbes.ts TextureProbe  (used inside file)
+   src/util/renderAudit.ts glTexelReader  (used inside file)
+   src/util/renderAudit.ts checkTexture (tests only) (used inside file)
+   src/util/renderAudit.ts auditScene (tests only) (used inside file)
+   src/util/renderAudit.ts AuditGroup  (used inside file)
+   src/util/renderAudit.ts AUDIT_GROUPS  (used inside file)
+   src/util/renderAudit.ts GroupAudit  (used inside file)
+   src/util/renderAudit.ts GpuStatus  (used inside file)
+   src/util/renderAudit.ts GpuCheck  (used inside file)
+   src/util/renderAudit.ts TexelReader  (used inside file)
+   src/scenes/Vehicle.ts VehicleKind  (used inside file)
+   src/scenes/Obstacles.ts buildTreeGroup  (used inside file)
+   src/scenes/Obstacles.ts blocksLineOfSight  (DEAD)
+   src/scenes/Obstacles.ts meshYaw (tests only) (used inside file)
+   src/systems/ProcgenSystem.ts createWalkability (tests only) (used inside file)
+   src/systems/ProcgenSystem.ts generateChunk (tests only) (used inside file)
+   src/systems/ProcgenSystem.ts ChunkSpec  (used inside file)
+   src/systems/ProcgenSystem.ts DEFAULT_CHUNK_SPEC  (used inside file)
+   src/systems/ProcgenSystem.ts Walkability  (used inside file)
+   src/systems/ProcgenSystem.ts ChunkOptions (tests only) (used inside file)
+   src/systems/ProcgenSystem.ts NAV_CELL (tests only) (used inside file)
+   src/systems/ProcgenSystem.ts NAV_INFLATE (tests only) (used inside file)
+   src/systems/ProcgenSystem.ts SPAWN_X (tests only) (used inside file)
+   src/systems/ProcgenSystem.ts SPAWN_Z (tests only) (used inside file)
+   src/systems/ProcgenSystem.ts PLAYFIELD_BACK_Z  (used inside file)
+   src/systems/PlayerController.ts STAMINA_RECOVER_AT (tests only) (used inside file)
+   src/systems/GuardAI.ts belief (tests only) (used inside file)
+   src/systems/GuardAI.ts TH_FIRE  (used inside file)
+   src/systems/GuardAI.ts BULLET_BLOCK_HEIGHT  (used inside file)
+   src/systems/GuardAI.ts GuardFireFn  (used inside file)
+   src/systems/DetectionSystem.ts isMoving  (used inside file)
+   src/systems/DetectionSystem.ts guardCanSee (tests only) (used inside file)
+   src/systems/DetectionSystem.ts COVER_HEIGHT_STANDING  (used inside file)
+   src/systems/DetectionSystem.ts NON_VISUAL_CAP (tests only) (used inside file)
+   src/systems/DetectionSystem.ts DetectionTuning (tests only) (used inside file)
+   src/scenes/ModelFigure.ts ModelKind  (used inside file)
+   src/scenes/ModelFigure.ts ModelFigurePoseInput  (used inside file)
+   src/util/outfits.ts Outfit  (used inside file)
+   src/scenes/PrisonYard1.ts skinHex  (DEAD)
+   src/scenes/PrisonYard1.ts createFacingMarker  (DEAD)
+   src/scenes/PrisonYard1.ts BlockyFigure  (DEAD)
+   src/scenes/PrisonYard1.ts PLAYER_COLOR  (DEAD)
+   src/scenes/PrisonYard1.ts GUARD_COLOR  (DEAD)
+   src/scenes/PrisonYard1.ts SKIN_BEIGE  (used inside file)
+   src/scenes/PrisonYard1.ts SKIN_BROWN  (used inside file)
+   src/scenes/PrisonYard1.ts GuardConfig  (used inside file)
+   src/util/economy.ts endlessReward  (used inside file)
+   src/util/economy.ts dailyReward  (used inside file)
+   src/util/economy.ts COINS_PER_STAR (tests only) (used inside file)
+   src/util/economy.ts FIRST_CLEAR_BONUS (tests only) (used inside file)
+   src/util/economy.ts ENDLESS_METRES_PER_COIN  (used inside file)
+   src/util/economy.ts DAILY_METRES_PER_COIN  (used inside file)
+   src/util/economy.ts DAILY_PARTICIPATION_BONUS  (used inside file)
+   src/util/economy.ts MAX_COINS  (used inside file)
+   src/util/economy.ts PurchaseResult  (used inside file)
+   src/util/storage.ts parseSaves (tests only) (used inside file)
+   src/util/storage.ts Settings  (used inside file)
+   src/util/storage.ts PlayerSkin  (used inside file)
+   src/ui/theme.ts gold  (used inside file)
+   src/ui/theme.ts panel  (used inside file)
+   src/ui/theme.ts white  (DEAD)
+   src/ui/theme.ts danger  (used inside file)
+   src/ui/theme.ts info  (used inside file)
+   src/ui/theme.ts success  (used inside file)
+   src/ui/theme.ts ButtonVariant  (used inside file)
+   src/ui/theme.ts button  (used inside file)
+   src/components/HUD/GameModal.tsx GameModalVariant  (used inside file)
+   src/components/HUD/GameModal.tsx GameModalAction  (used inside file)
+   src/util/progression.ts AITier  (used inside file)
+   src/util/progression.ts ChunkDensity  (used inside file)
+   src/state/store.ts Inventory  (used inside file)
+   src/state/store.ts RunSummary  (used inside file)
+   src/scenes/SmokeCloud.ts pointInAnySmoke  (DEAD)
+   src/scenes/SmokeCloud.ts SMOKE_LIFETIME  (used inside file)
+   src/scenes/SmokeCloud.ts SMOKE_RADIUS  (used inside file)
+   src/scenes/SwingArc.ts SWING_ARC_LIFETIME  (used inside file)
+   src/scenes/Footprints.ts FOOTPRINT_LIFETIME  (used inside file)
+   src/scenes/Footprints.ts Footprint  (used inside file)
+   src/scenes/Footprints.ts FootprintField  (used inside file)
+   src/scenes/Dog.ts updateDog (tests only) (used inside file)
+   src/scenes/Dog.ts SMELL_RADIUS  (used inside file)
+   src/scenes/Dog.ts DOG_CHASE_SPEED (tests only) (used inside file)
+   src/scenes/Dog.ts DOG_GIVE_UP_DIST (tests only) (used inside file)
+   src/scenes/Dog.ts DOG_CHASE_BURST_S  (used inside file)
+   src/scenes/Dog.ts DOG_TRIGGER_STANDING  (used inside file)
+   src/scenes/Dog.ts DOG_TRIGGER_CROUCHED  (used inside file)
+   src/scenes/Dog.ts DOG_CONFUSED_S  (used inside file)
+   src/scenes/Dog.ts DOG_FLEE_S  (used inside file)
+   src/scenes/Dog.ts DOG_HIT_RADIUS  (used inside file)
+   src/scenes/Dog.ts DogState  (used inside file)
+   src/scenes/Dog.ts DogWorld  (used inside file)
+   src/scenes/Lighting.ts moodByName  (DEAD)
+   src/scenes/Lighting.ts applyLighting  (used inside file)
+   src/scenes/Lighting.ts MoodName  (used inside file)
+   src/scenes/Lighting.ts LightRig  (used inside file)
+   src/scenes/Fence.ts fenceColorFor  (used inside file)
+   src/scenes/Fence.ts spawnArenaFences  (DEAD)
+   src/scenes/Fence.ts FENCE_TOUCH_EPS  (used inside file)
+   src/scenes/Fence.ts ArenaFence  (used inside file)
+   src/scenes/Camera.ts CAM_RANGE  (used inside file)
+   src/scenes/Camera.ts CAM_HALF_ANGLE_RAD  (used inside file)
+   src/util/scoring.ts TimeTargets  (used inside file)
+   src/util/scoring.ts DEFAULT_TIME_TARGETS  (used inside file)
+   src/util/scoring.ts TIME_REF_SPEED  (used inside file)
+   src/util/scoring.ts TIME_FACTOR_3  (used inside file)
+   src/util/scoring.ts TIME_FACTOR_2  (used inside file)
+   src/util/releaseInfo.ts readReleaseExtra (tests only) (used inside file)
+   src/util/releaseInfo.ts parseSha (tests only) (used inside file)
+   src/util/releaseInfo.ts parseSequence (tests only) (used inside file)
+   src/util/releaseInfo.ts formatOtaSequence  (used inside file)
+   src/util/releaseInfo.ts shortId  (used inside file)
+   src/util/releaseInfo.ts ReleaseSources (tests only) (used inside file)
+   src/util/releaseInfo.ts UNAVAILABLE (tests only) (used inside file)
+   src/util/releaseRuntime.ts UpdateCheckResult  (used inside file)
+   src/util/daily.ts fnv1a (tests only) (used inside file)
+   src/util/daily.ts DAILY_RULES_VERSION (tests only) (used inside file)
+   src/ui/fonts.ts FontStatus  (used inside file)
+   src/util/support.ts SUPPORT_EMAIL  (used inside file)
+   src/components/HUD/HowToPlay.tsx HOW_TO_PLAY  (used inside file)
+   src/ui/pauseLayout.ts TITLE_BLOCK  (used inside file)
+   src/scenes/Juice.ts DustField  (used inside file)
+   src/scenes/Juice.ts BurstPool  (used inside file)
+   src/scenes/StealthCues.ts NoiseRing  (used inside file)
+   src/scenes/StealthCues.ts TargetMarker  (used inside file)
+   src/scenes/RadialMeter.ts RADIAL_DOTS  (used inside file)
+   src/scenes/RadialMeter.ts RadialMeter  (used inside file)
+   src/scenes/LightTower.ts LIGHT_FOOTPRINT_R  (used inside file)
+   src/scenes/GuardStateMarker.ts GuardStateMarkerKind  (used inside file)
+   src/scenes/Backdrop.ts Backdrop  (used inside file)
+   src/util/musicIntensity.ts MusicState  (used inside file)
+   src/util/musicIntensity.ts MusicMix  (used inside file)
+   src/util/musicIntensity.ts ALERT_ENTER (tests only) (used inside file)
+   src/util/musicIntensity.ts ALERT_EXIT (tests only) (used inside file)
+   src/util/musicIntensity.ts CHASE_ENTER  (used inside file)
+   src/util/musicIntensity.ts CHASE_EXIT  (used inside file)
+   src/util/musicIntensity.ts ALERT_HOLD_S (tests only) (used inside file)
+   src/util/musicIntensity.ts CHASE_HOLD_S (tests only) (used inside file)
+   src/util/musicIntensity.ts FADE_S (tests only) (used inside file)
+   src/scenes/ThrownRock.ts THROW_DISTANCE  (used inside file)
+   src/scenes/ThrownRock.ts THROW_TIME  (used inside file)
+   src/scenes/ThrownRock.ts ThrownRock  (used inside file)
+   src/scenes/Sfx.ts SfxName  (used inside file)
+   src/util/runStats.ts SEEN_THRESHOLD  (used inside file)
+   src/util/runStats.ts DETECTED_THRESHOLD  (used inside file)

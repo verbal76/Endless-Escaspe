@@ -1,0 +1,40 @@
+{
+ "a": {
+  "fix": false,
+  "programResolvesPerFrame": 48,
+  "renderMsAvg": 3.46,
+  "calls": 704,
+  "top": [
+   [
+    "MeshBasicMaterial(T)",
+    36
+   ],
+   [
+    "MeshBasicMaterial+map(T)",
+    8
+   ],
+   [
+    "MeshLambertMaterial:woodBarkDark",
+    2
+   ],
+   [
+    "MeshLambertMaterial:leafsDark",
+    2
+   ]
+  ]
+ },
+ "b": {
+  "fix": true,
+  "programResolvesPerFrame": 36,
+  "renderMsAvg": 3.3,
+  "calls": 704,
+  "top": [
+   [
+    "MeshBasicMaterial(T)",
+    36
+   ]
+  ]
+ }
+}
+[]
+DONE

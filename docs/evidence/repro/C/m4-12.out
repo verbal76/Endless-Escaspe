@@ -1,0 +1,144 @@
+{
+ "frames": 1200,
+ "update": {
+  "p50": 0.3,
+  "p95": 0.7,
+  "p99": 1.4,
+  "max": 5.4
+ },
+ "render": {
+  "p50": 3.5,
+  "p95": 7.8,
+  "p99": 12.5,
+  "max": 608.4
+ },
+ "total": {
+  "p50": 3.9,
+  "p95": 8.6,
+  "p99": 13.9,
+  "max": 608.7
+ },
+ "callsMax": 724,
+ "notifiesPerSec": 30.6,
+ "keyChangesPerSec": {
+  "hearts": 0.1,
+  "running": 0.4,
+  "stamina": 19,
+  "toast": 0.2,
+  "stance": 0.1,
+  "detection": 9.6,
+  "dangerLevel": 1.1,
+  "lastDeathCause": 0.1,
+  "catchCounter": 0.1
+ },
+ "endZ": 21,
+ "catches": 0,
+ "hearts": 8,
+ "allocTotalMiB": 323.98,
+ "allocPerFrameKiB": 276.5,
+ "heapBefore": 12.9,
+ "heapAfter": 14.7,
+ "topAlloc": [
+  [
+   "Io@798:322723",
+   "69647 KiB"
+  ],
+  [
+   "getParameters@798:349762",
+   "37426 KiB"
+  ],
+  [
+   "Lo@798:322520",
+   "32282 KiB"
+  ],
+  [
+   "join@-1:-1",
+   "28733 KiB"
+  ],
+  [
+   "g@798:347225",
+   "23325 KiB"
+  ],
+  [
+   "Kl@798:356628",
+   "18896 KiB"
+  ],
+  [
+   "Po@798:321751",
+   "11055 KiB"
+  ],
+  [
+   "next@-1:-1",
+   "10673 KiB"
+  ],
+  [
+   "push@-1:-1",
+   "9287 KiB"
+  ],
+  [
+   "We@798:443634",
+   "8912 KiB"
+  ],
+  [
+   "determinant@798:56544",
+   "7876 KiB"
+  ],
+  [
+   "sort@-1:-1",
+   "7289 KiB"
+  ],
+  [
+   "push@798:357439",
+   "6785 KiB"
+  ],
+  [
+   "assign@-1:-1",
+   "5359 KiB"
+  ],
+  [
+   "et@798:449418",
+   "5290 KiB"
+  ],
+  [
+   "$l@798:356850",
+   "4361 KiB"
+  ],
+  [
+   "qt@787:15567",
+   "3586 KiB"
+  ],
+  [
+   "o@870:1784",
+   "3456 KiB"
+  ],
+  [
+   "Je@798:446943",
+   "2714 KiB"
+  ],
+  [
+   "e.anyObstacleHitsCircle@870:897",
+   "2484 KiB"
+  ],
+  [
+   "e.navigateToward@873:301",
+   "2432 KiB"
+  ],
+  [
+   "setup@798:295697",
+   "1887 KiB"
+  ],
+  [
+   "getProgramCacheKey@798:355600",
+   "1837 KiB"
+  ],
+  [
+   "invert@798:57175",
+   "1716 KiB"
+  ],
+  [
+   "Ze@798:446518",
+   "1672 KiB"
+  ]
+ ]
+}
+[]

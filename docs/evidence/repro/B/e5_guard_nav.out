@@ -1,0 +1,22 @@
+stage 1 seed 3039: {"guards":2,"orders":24,"reached":24,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 1 seed 4052: {"guards":2,"orders":24,"reached":24,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 1 seed 5065: {"guards":2,"orders":24,"reached":24,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 4 seed 3039: {"guards":3,"orders":36,"reached":36,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 4 seed 4052: {"guards":3,"orders":36,"reached":36,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 4 seed 5065: {"guards":3,"orders":36,"reached":34,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 7 seed 3039: {"guards":4,"orders":48,"reached":48,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 7 seed 4052: {"guards":4,"orders":48,"reached":48,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 7 seed 5065: {"guards":4,"orders":48,"reached":48,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 12 seed 3039: {"guards":4,"orders":48,"reached":48,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 12 seed 4052: {"guards":4,"orders":48,"reached":47,"noProgress":1,"insidePropFrames":0,"outsideFrames":0,"stuckAt":["g3@-3.6,142.6->-3.4,113.2"],"run":"playing"}
+stage 12 seed 5065: {"guards":4,"orders":48,"reached":48,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 16 seed 3039: {"guards":5,"orders":60,"reached":59,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 16 seed 4052: {"guards":5,"orders":60,"reached":60,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 16 seed 5065: {"guards":5,"orders":60,"reached":60,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 22 seed 3039: {"guards":6,"orders":72,"reached":71,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 22 seed 4052: {"guards":6,"orders":72,"reached":71,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 22 seed 5065: {"guards":6,"orders":72,"reached":72,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 27 seed 3039: {"guards":6,"orders":72,"reached":72,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 27 seed 4052: {"guards":6,"orders":72,"reached":69,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+stage 27 seed 5065: {"guards":6,"orders":72,"reached":68,"noProgress":0,"insidePropFrames":0,"outsideFrames":0,"stuckAt":[],"run":"playing"}
+errors []

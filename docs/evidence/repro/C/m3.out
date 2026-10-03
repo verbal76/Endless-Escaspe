@@ -1,0 +1,71 @@
+[
+ {
+  "stage": 1,
+  "mode": "campaign",
+  "calls": 411,
+  "est": 395,
+  "multiMatExtra": 123,
+  "dsTransparentExtra": 11,
+  "bands": {
+   "<30m": 120,
+   "30-60": 63,
+   "60-120": 77,
+   "120-250": 124,
+   ">250": 11
+  },
+  "tris": 96012,
+  "segLen": 120
+ },
+ {
+  "stage": 15,
+  "mode": "campaign",
+  "calls": 754,
+  "est": 733,
+  "multiMatExtra": 227,
+  "dsTransparentExtra": 21,
+  "bands": {
+   "<30m": 155,
+   "30-60": 91,
+   "60-120": 152,
+   "120-250": 240,
+   ">250": 95
+  },
+  "tris": 311948,
+  "segLen": 216
+ },
+ {
+  "stage": 29,
+  "mode": "campaign",
+  "calls": 956,
+  "est": 935,
+  "multiMatExtra": 341,
+  "dsTransparentExtra": 28,
+  "bands": {
+   "<30m": 226,
+   "30-60": 100,
+   "60-120": 191,
+   "120-250": 287,
+   ">250": 131
+  },
+  "tris": 310550,
+  "segLen": 216
+ },
+ {
+  "stage": 1,
+  "mode": "endless",
+  "calls": 707,
+  "est": 676,
+  "multiMatExtra": 190,
+  "dsTransparentExtra": 28,
+  "bands": {
+   "<30m": 124,
+   "30-60": 53,
+   "60-120": 86,
+   "120-250": 241,
+   ">250": 172
+  },
+  "tris": 121243,
+  "segLen": 144
+ }
+]
+[]

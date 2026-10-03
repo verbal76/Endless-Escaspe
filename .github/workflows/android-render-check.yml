@@ -1,0 +1,128 @@
+name: Android render check
+
+# Builds the release APK configuration from the commit under test for
+# x86_64 (identical JS, assets, native modules and release settings to
+# the phone APK; only the CPU architecture differs - the phone APK's ARM
+# libraries don't load under the emulator's ARM translation), runs it
+# on an Android emulator and fails unless the game actually draws its
+# textures: the in-app render audit (src/util/renderAudit.ts) must
+# report the player, guards, props and ground drawn with their textures
+# and texels read back from the GPU must match the source PNGs. Browser
+# checks can't catch Android-only asset / GL paths; this can.
+#
+# The freshly built APK runs its embedded bundle (any served OTA is
+# older), so this covers the embedded-launch asset path.
+
+on:
+  workflow_dispatch:
+  # eas-update.yml calls this check for every commit it would publish
+  # and publishes only if it passes (same commit, same run).
+  workflow_call:
+  # Standalone runs only for changes to the check itself (those are
+  # paths-ignored by eas-update.yml); app changes are covered by the
+  # OTA pipeline's call above.
+  push:
+    branches:
+      - claude/game-review-suggestions-cjxiqh
+    paths:
+      - 'scripts/ci/**'
+      - '.github/workflows/android-render-check.yml'
+
+concurrency:
+  # Under workflow_call github.workflow is the caller's name, so a
+  # standalone run never cancels the gate of an OTA run (and a newer
+  # OTA run does cancel the older one's check: that one would not be
+  # published anyway).
+  group: android-render-check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  render-check:
+    name: Release APK renders textures (emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Same release metadata stamping as apk-build.yml, so the [release]
+    # log line identifies this commit.
+    env:
+      EE_GIT_SHA: ${{ github.sha }}
+      EXPECT_SHA: ${{ github.sha }}
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk/2[0-6]* /opt/ghc /usr/local/.ghcup /usr/share/swift /opt/hostedtoolcache/CodeQL /usr/local/share/boost || true
+          df -h /
+
+      - name: Set up Java (Temurin 17)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # Pre-install the pinned NDK with retries (a corrupt on-demand
+      # download inside Gradle failed run 16).
+      - name: Install NDK
+        run: bash scripts/ci/install-ndk.sh
+
+      - name: Generate android/ project (expo prebuild)
+        run: npx expo prebuild --platform android --clean
+        env:
+          EXPO_NO_TELEMETRY: '1'
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-
+
+      - name: Build release APK (x86_64)
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease --no-daemon -Dorg.gradle.jvmargs="-Xmx4g" -PreactNativeArchitectures=x86_64
+          cp "$(find app/build/outputs/apk/release -name '*.apk' -print -quit)" ../app.apk
+          ls -l ../app.apk
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run the APK and check the render audit
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          disk-size: 6G
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          disable-animations: true
+          script: bash scripts/ci/android-render-check.sh
+
+      - name: Upload logcat and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-render-check
+          path: render-check/
+          if-no-files-found: ignore
+          retention-days: 14

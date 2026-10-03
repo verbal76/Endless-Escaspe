@@ -1,5 +1,7 @@
 import React, { useEffect } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, StyleSheet, View } from 'react-native';
+import { Pressable } from '../../ui/Pressable';
+import { Text } from '../../ui/Text';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -7,6 +9,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useStore } from '../../state/store';
+import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts } from '../../ui/theme';
 
 // Branded confirm / alert modal matching the dark UI of the rest of
 // the game. Replaces every Alert.alert call so OS-style popup
@@ -57,7 +60,17 @@ export function GameModal({ config: configProp }: { config?: GameModalConfig | n
   if (!config) return null;
 
   return (
-    <Modal visible transparent animationType="fade">
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      // Android back = the dialog's cancel action (or its only action);
+      // a dialog without one ignores back rather than closing silently.
+      onRequestClose={() => {
+        const back = config.actions.find((a) => a.variant === 'cancel') ?? (config.actions.length === 1 ? config.actions[0] : undefined);
+        back?.onPress();
+      }}
+    >
       <View style={styles.backdrop}>
         <Animated.View style={[styles.card, cardStyle]}>
           <Text style={styles.title}>{config.title}</Text>
@@ -118,21 +131,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1d24',
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 210, 90, 0.55)',
+    borderColor: 'rgba(255, 209, 74, 0.55)',
     paddingHorizontal: 22,
     paddingVertical: 22,
   },
   title: {
-    color: '#ffd14a',
-    fontSize: 20,
-    fontWeight: '900',
+    color: ui.gold,
+    fontSize: T.title,
+    fontFamily: fonts.display,
     letterSpacing: 1.5,
     marginBottom: 10,
     textAlign: 'center',
   },
   body: {
     color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 14,
+    fontSize: T.body,
     lineHeight: 20,
     textAlign: 'center',
     marginBottom: 18,
@@ -153,33 +166,17 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
   },
-  btnPrimary: {
-    backgroundColor: 'rgba(255, 210, 90, 0.92)',
-    borderColor: 'rgba(255, 230, 140, 1)',
-  },
-  btnDanger: {
-    backgroundColor: 'rgba(255, 70, 70, 0.85)',
-    borderColor: 'rgba(255, 110, 110, 0.9)',
-  },
-  btnCancel: {
-    backgroundColor: 'rgba(80, 90, 110, 0.55)',
-    borderColor: 'rgba(160, 170, 190, 0.55)',
-  },
-  btnPressed: {
-    opacity: 0.7,
-  },
+  // Shared button system (theme.ts).
+  btnPrimary: buttonFill('primary'),
+  btnDanger: buttonFill('danger'),
+  btnCancel: buttonFill('secondary'),
+  btnPressed: buttonPressed,
   btnLabel: {
     fontWeight: '900',
     letterSpacing: 1.5,
-    fontSize: 13,
+    fontSize: T.small,
   },
-  btnLabelPrimary: {
-    color: '#1b1206',
-  },
-  btnLabelDanger: {
-    color: '#fff',
-  },
-  btnLabelCancel: {
-    color: 'rgba(255,255,255,0.85)',
-  },
+  btnLabelPrimary: buttonLabel('primary'),
+  btnLabelDanger: buttonLabel('danger'),
+  btnLabelCancel: buttonLabel('secondary'),
 });

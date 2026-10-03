@@ -1,4 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+// Namespace import: AppState is looked up defensively (the unit-test
+// stub of react-native has no AppState).
+import * as ReactNative from 'react-native';
 
 // Crash-resistant ring-buffer logger. Two storage slots:
 //   debug:current   - this run's log, written on every entry (debounced)
@@ -12,13 +15,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // crash-to-desktop trail the user wants in their bug reports.
 //
 // Persistence is debounced by ~200 ms to keep AsyncStorage off the
-// hot path; the global-error handler force-flushes synchronously so
-// the very last entries before a JS-level crash are captured.
+// hot path. Error-level entries, the app going to the background and
+// the global-error handler write immediately instead.
+//
+// Limitation (honest version): AsyncStorage has no synchronous write,
+// so no flush here is guaranteed to land. For a fatal JS error the
+// handler starts the write and holds the default (crashing) handler
+// back for up to FATAL_FLUSH_WAIT_MS so the native write can finish;
+// if the process dies sooner, or the crash is native (OOM, a native
+// module, the OS killing the app), the last entries since the previous
+// flush - at most ~200 ms of logging - are lost. The background flush
+// covers the common "killed while backgrounded" case.
 
 const KEY_CURRENT = 'debug:current';
 const KEY_PREVIOUS = 'debug:previous';
 const MAX_ENTRIES = 120;
 const FLUSH_DELAY_MS = 200;
+// How long a fatal error waits for the crash trail to be written
+// before handing over to the default handler.
+const FATAL_FLUSH_WAIT_MS = 250;
 
 export type LogLevel = 'log' | 'warn' | 'error';
 export type LogEntry = { t: number; level: LogLevel; msg: string };
@@ -38,16 +53,43 @@ function stringify(v: unknown): string {
   }
 }
 
-function flush() {
-  flushTimer = null;
-  // Fire-and-forget: a slow AsyncStorage write shouldn't stall the
-  // game loop. The next entry will queue another flush.
-  AsyncStorage.setItem(
-    KEY_CURRENT,
-    JSON.stringify(entries.slice(-MAX_ENTRIES)),
-  ).catch(() => {
-    // ignore - persistence is best-effort
-  });
+// Writes are chained so an older snapshot can never land after a
+// newer one.
+let writeChain: Promise<void> = Promise.resolve();
+let flushFailures = 0;
+let lastImmediateFlush = 0;
+
+function flush(): Promise<void> {
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  const snapshot = JSON.stringify(entries.slice(-MAX_ENTRIES));
+  // Not awaited by the game loop: a slow AsyncStorage write shouldn't
+  // stall a frame. The next entry will queue another flush.
+  writeChain = writeChain
+    .then(() => AsyncStorage.setItem(KEY_CURRENT, snapshot))
+    .then(
+      () => {
+        flushFailures = 0;
+      },
+      () => {
+        // Persistence is best-effort; count failures so the in-memory
+        // log (shown in bug reports from this session) says so, without
+        // logging every retry.
+        flushFailures++;
+        if (flushFailures === 1) {
+          entries.push({ t: Date.now(), level: 'warn', msg: '[debug] crash-trail write failed' });
+        }
+      },
+    );
+  return writeChain;
+}
+
+// Write the log now (e.g. before reloading into an update). Resolves
+// when the write settled; never rejects.
+export function flushDebugLog(): Promise<void> {
+  return flush();
 }
 
 function scheduleFlush() {
@@ -67,7 +109,14 @@ export function logDebug(level: LogLevel, ...parts: unknown[]) {
   if (entries.length > MAX_ENTRIES * 2) {
     entries = entries.slice(-MAX_ENTRIES);
   }
-  scheduleFlush();
+  // Errors are what a crash trail is for: write them without the
+  // debounce, at most once a second (a library spamming console.error
+  // every frame must not turn into a storage write every frame).
+  const now = Date.now();
+  if (level === 'error' && now - lastImmediateFlush >= 1000) {
+    lastImmediateFlush = now;
+    void flush();
+  } else scheduleFlush();
 }
 
 export function getEntries(): LogEntry[] {
@@ -105,8 +154,9 @@ export async function installDebugLogger(): Promise<void> {
       await AsyncStorage.setItem(KEY_PREVIOUS, prev);
     }
     await AsyncStorage.removeItem(KEY_CURRENT);
-  } catch {
-    // best-effort
+  } catch (e) {
+    // Best-effort; note it in this session's log.
+    entries.push({ t: Date.now(), level: 'warn', msg: `[debug] rotating previous log failed: ${stringify(e)}` });
   }
 
   // Mirror console.error / console.warn into the buffer so library
@@ -125,8 +175,9 @@ export async function installDebugLogger(): Promise<void> {
   };
 
   // Capture uncaught JS errors via React Native's global error
-  // trampoline. We force a synchronous-ish flush so the very last
-  // entries make it to disk before the app tears down.
+  // trampoline. The entry is written at once; for a fatal error the
+  // default handler (which tears the app down in release builds) is
+  // held back until that write settles or FATAL_FLUSH_WAIT_MS passes.
   type ErrorUtilsLike = {
     getGlobalHandler?: () => (err: Error, isFatal?: boolean) => void;
     setGlobalHandler?: (h: (err: Error, isFatal?: boolean) => void) => void;
@@ -134,21 +185,45 @@ export async function installDebugLogger(): Promise<void> {
   const eu = (globalThis as { ErrorUtils?: ErrorUtilsLike }).ErrorUtils;
   if (eu?.setGlobalHandler) {
     const prevHandler = eu.getGlobalHandler?.();
+    let fatalPending = false;
     eu.setGlobalHandler((err, isFatal) => {
       logDebug(
         'error',
-        `[${isFatal ? 'fatal' : 'soft'}] ${err.message}`,
-        err.stack ?? '',
+        `[${isFatal ? 'fatal' : 'soft'}] ${err?.message ?? String(err)}`,
+        err?.stack ?? '',
       );
-      // Cancel the pending debounce + write right now so the crash
-      // log isn't lost waiting for the timer.
-      if (flushTimer) {
-        clearTimeout(flushTimer);
-        flushTimer = null;
+      // Write now, whatever the debounce / rate limit decided.
+      void flush();
+      if (!prevHandler) return;
+      if (!isFatal || fatalPending) {
+        prevHandler(err, isFatal);
+        return;
       }
-      flush();
-      if (prevHandler) prevHandler(err, isFatal);
+      fatalPending = true;
+      let handed = false;
+      const handOver = () => {
+        if (handed) return;
+        handed = true;
+        prevHandler(err, isFatal);
+      };
+      writeChain.then(handOver, handOver);
+      setTimeout(handOver, FATAL_FLUSH_WAIT_MS);
     });
+  }
+
+  // Backgrounding is when Android may kill the process without any JS
+  // running again: write the trail now.
+  const appState = (ReactNative as { AppState?: { addEventListener?: (t: 'change', cb: (s: string) => void) => unknown } })
+    .AppState;
+  if (appState?.addEventListener) {
+    try {
+      appState.addEventListener('change', (next) => {
+        logDebug('log', `app state -> ${next}`);
+        if (next !== 'active') void flush();
+      });
+    } catch {
+      // No AppState on this platform; the debounced flush still runs.
+    }
   }
 
   logDebug('log', 'logger installed');

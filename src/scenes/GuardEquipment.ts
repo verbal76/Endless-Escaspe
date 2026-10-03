@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { twoSidedTransparentMesh } from './twoSided';
 import type { ModelFigure } from './ModelFigure';
 import { VISION_CONE_DEG } from '../util/geometry';
 import { markShared } from '../util/dispose';
@@ -20,15 +21,11 @@ const PISTOL_W = 0.10;
 const PISTOL_H = 0.14;
 const PISTOL_L = 0.22;
 
-const FLASHLIGHT_MAT = new THREE.MeshStandardMaterial({
+const FLASHLIGHT_MAT = new THREE.MeshLambertMaterial({
   color: 0x303035,
-  roughness: 0.4,
-  metalness: 0.5,
 });
-const PISTOL_MAT = new THREE.MeshStandardMaterial({
+const PISTOL_MAT = new THREE.MeshLambertMaterial({
   color: 0x202024,
-  roughness: 0.3,
-  metalness: 0.6,
 });
 const BEAM_MAT = new THREE.ShaderMaterial({
   transparent: true,
@@ -80,7 +77,7 @@ function buildBeam(visionRange: number): THREE.Mesh {
   const geo = new THREE.ConeGeometry(baseR, visionRange, 16, 1, true);
   geo.translate(0, -visionRange / 2, 0);
   geo.rotateX(-Math.PI / 2);
-  return new THREE.Mesh(geo, BEAM_MAT);
+  return twoSidedTransparentMesh(geo, BEAM_MAT);
 }
 
 export function attachGuardEquipment(

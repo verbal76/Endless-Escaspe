@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
+import { FixedText as Text } from '../../ui/Text';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -11,11 +12,17 @@ import Animated, {
 import { useStore } from '../../state/store';
 import { input } from '../../systems/InputSystem';
 import type { PickupKind } from '../../types/world';
+import { color as ui, hud, type as T } from '../../ui/theme';
+import { BTN_H, BTN_W, pickupLayout } from '../../ui/hudLayout';
 
-// Stack of pickup-use buttons sitting above the stance column on the
-// right edge of the screen. Each button shows its remaining count
-// and is dimmed when empty; tapping it sets the matching one-shot
-// input flag, which Game.tsx consumes on the next update tick.
+// Pickup-use buttons above the stance column on the right edge of the
+// screen (positions: ui/hudLayout.pickupLayout - on phones under
+// 406 dp tall the crowbar moves into the THROW row instead of climbing
+// to the top edge). A button only shows while the player holds
+// that item (count > 0); an empty slot keeps its space as an invisible
+// placeholder so the other controls never shift. Tapping sets the
+// matching one-shot input flag, which Game.tsx consumes on the next
+// update tick.
 //
 // Buttons use Gesture.Tap (not Pressable) so they cooperate with
 // the joystick's Pan gesture - the player can pop a smoke bomb or
@@ -32,14 +39,14 @@ const SLOTS: Slot[] = [
   {
     kind: 'crowbar',
     label: 'CROWBAR',
-    active: 'rgba(255,150,80,0.45)',
-    border: 'rgba(255,180,120,0.8)',
+    active: 'rgba(110, 58, 24, 0.62)',
+    border: '#ffb478',
   },
   {
     kind: 'smokebomb',
     label: 'SMOKE',
-    active: 'rgba(180,200,220,0.5)',
-    border: 'rgba(220,230,240,0.85)',
+    active: 'rgba(52, 64, 80, 0.62)',
+    border: '#dce6f0',
   },
 ];
 
@@ -77,13 +84,31 @@ function SmokeIcon({ tint }: { tint: string }) {
   );
 }
 
-function PickupSlot({ slot, count }: { slot: Slot; count: number }) {
+function RockIcon({ tint }: { tint: string }) {
+  return (
+    <View style={iconStyles.box}>
+      <View style={[iconStyles.rock, { backgroundColor: tint }]} />
+    </View>
+  );
+}
+
+// Throwable rock: separate from the main column (the right edge only
+// fits two stacked slots in landscape), sitting above RUN.
+const ROCK_SLOT: Slot = {
+  kind: 'rock',
+  label: 'THROW',
+  active: 'rgba(78, 70, 56, 0.62)',
+  border: '#e6dcc8',
+};
+
+function PickupSlot({ slot, count, highlight }: { slot: Slot; count: number; highlight: boolean }) {
   const empty = count <= 0;
   const pressed = useSharedValue(0);
 
   const fire = () => {
     if (empty) return;
     if (slot.kind === 'crowbar') input.useCrowbar = true;
+    else if (slot.kind === 'rock') input.throwRock = true;
     else input.useSmokeBomb = true;
   };
 
@@ -108,30 +133,35 @@ function PickupSlot({ slot, count }: { slot: Slot; count: number }) {
     [slot.kind, empty, pressed],
   );
 
-  const style = useAnimatedStyle(() => {
-    if (empty) return { opacity: 0.45 };
-    return {
-      transform: [{ scale: 1 - pressed.value * 0.06 }],
-      opacity: 1 - pressed.value * 0.15,
-    };
-  });
+  const style = useAnimatedStyle(() => ({
+    transform: [{ scale: 1 - pressed.value * 0.06 }],
+    opacity: 1 - pressed.value * 0.15,
+  }));
+
+  // Nothing to use: keep the slot's footprint so the rest of the
+  // cluster stays put, but draw nothing and take no touches.
+  if (empty) return <View style={styles.placeholder} pointerEvents="none" />;
 
   return (
     <GestureDetector gesture={tap}>
       <Animated.View
         style={[
           styles.btn,
-          !empty && { borderColor: slot.border, backgroundColor: slot.active },
+          { borderColor: slot.border, backgroundColor: slot.active },
+          // Target in swing range: gold ring matching the world marker.
+          highlight && styles.inRange,
           style,
         ]}
       >
         {slot.kind === 'crowbar' ? (
-          <CrowbarIcon tint={empty ? 'rgba(255,255,255,0.5)' : '#f0d8a8'} />
+          <CrowbarIcon tint="#f0d8a8" />
+        ) : slot.kind === 'rock' ? (
+          <RockIcon tint="#e8e0d0" />
         ) : (
-          <SmokeIcon tint={empty ? 'rgba(255,255,255,0.5)' : '#e8eef7'} />
+          <SmokeIcon tint="#e8eef7" />
         )}
-        <Text style={[styles.count, empty && styles.countEmpty]}>{count}</Text>
-        <Text style={[styles.label, empty && styles.labelEmpty]}>{slot.label}</Text>
+        <Text style={styles.count}>{count}</Text>
+        <Text style={styles.label}>{slot.label}</Text>
       </Animated.View>
     </GestureDetector>
   );
@@ -140,63 +170,80 @@ function PickupSlot({ slot, count }: { slot: Slot; count: number }) {
 export function PickupBag() {
   const inventory = useStore((s) => s.inventory);
   const runState = useStore((s) => s.runState);
+  const crowbarInRange = useStore((s) => s.crowbarInRange);
+  const { height } = useWindowDimensions();
   if (runState !== 'playing') return null;
+  const pos = pickupLayout(height);
 
   return (
-    <View style={styles.col}>
+    <>
+      <View style={[styles.slot, pos.rock]}>
+        <PickupSlot slot={ROCK_SLOT} count={inventory.rock} highlight={false} />
+      </View>
       {SLOTS.map((slot) => (
-        <PickupSlot key={slot.kind} slot={slot} count={inventory[slot.kind]} />
+        <View key={slot.kind} style={[styles.slot, slot.kind === 'crowbar' ? pos.crowbar : pos.smoke]}>
+          <PickupSlot
+            slot={slot}
+            count={inventory[slot.kind]}
+            highlight={slot.kind === 'crowbar' && crowbarInRange && inventory.crowbar > 0}
+          />
+        </View>
       ))}
-    </View>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  col: {
+  slot: {
     position: 'absolute',
-    // Sit above the stance column. ActionButtons.tsx uses right:63,
-    // bottom:100 with 56-tall buttons + 8 gap. Two stance buttons
-    // stack to ~120 px tall, so put the pickup column directly above
-    // that with the same right:63 alignment.
-    right: 63,
-    bottom: 230,
-    flexDirection: 'column',
-    gap: 8,
   },
   btn: {
-    width: 78,
-    height: 56,
+    width: BTN_W,
+    height: BTN_H,
     borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
+    backgroundColor: hud.fill,
+    borderWidth: hud.ringWidth,
+    borderColor: hud.ring,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  placeholder: {
+    width: BTN_W,
+    height: BTN_H,
+  },
+  inRange: {
+    borderColor: ui.gold,
+    borderWidth: 2,
+  },
   count: {
-    color: 'rgba(255,255,255,0.95)',
-    fontSize: 11,
+    color: hud.label,
+    ...hud.textShadow,
+    fontSize: T.caption,
     fontWeight: '800',
     marginTop: 1,
   },
-  countEmpty: {
-    color: 'rgba(255,255,255,0.55)',
-  },
   label: {
-    color: 'rgba(255,255,255,0.80)',
-    fontSize: 9,
-    fontWeight: '700',
+    color: hud.label,
+    ...hud.textShadow,
+    fontSize: T.caption,
+    fontWeight: '800',
     letterSpacing: 0.3,
     marginTop: 1,
-  },
-  labelEmpty: {
-    color: 'rgba(255,255,255,0.45)',
   },
 });
 
 // Drawn pickup icons. Each lives in a 22x22 box; absolute children
 // position the strokes that form the silhouette.
 const iconStyles = StyleSheet.create({
+  rock: {
+    position: 'absolute',
+    top: 5,
+    left: 4,
+    width: 14,
+    height: 12,
+    borderRadius: 5,
+    transform: [{ rotate: '18deg' }],
+  },
   box: {
     width: 22,
     height: 22,

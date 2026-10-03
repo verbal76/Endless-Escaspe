@@ -47,7 +47,22 @@ function newRimMaterial(): THREE.MeshBasicMaterial {
   });
 }
 
+// Recycled clouds: a finished cloud's meshes and materials go back to
+// this pool and are reused by the next throw (no per-throw material
+// allocation).
+const POOL: SmokeCloud[] = [];
+
 export function createSmokeCloud(x: number, z: number): SmokeCloud {
+  const reused = POOL.pop();
+  if (reused) {
+    reused.x = x;
+    reused.z = z;
+    reused.age = 0;
+    reused.group.position.set(x, SMOKE_RADIUS * 0.55, z);
+    reused.core.scale.setScalar(0.001);
+    reused.rim.scale.setScalar(0.001);
+    return reused;
+  }
   const group = new THREE.Group();
   group.position.set(x, SMOKE_RADIUS * 0.55, z);
 
@@ -94,23 +109,8 @@ export function updateSmokeCloud(c: SmokeCloud, dt: number): boolean {
   return true;
 }
 
+// Return a finished cloud to the pool (caller has already detached
+// its group from the scene).
 export function disposeSmokeCloud(c: SmokeCloud) {
-  (c.core.material as THREE.MeshBasicMaterial).dispose();
-  (c.rim.material as THREE.MeshBasicMaterial).dispose();
-}
-
-// True if (px, pz) lies inside any active cloud's vision-blocking
-// disc. Using XZ distance (ignoring Y) since the gameplay is on a
-// flat plane.
-export function pointInAnySmoke(
-  clouds: readonly SmokeCloud[],
-  px: number,
-  pz: number,
-): boolean {
-  for (const c of clouds) {
-    const dx = c.x - px;
-    const dz = c.z - pz;
-    if (dx * dx + dz * dz <= c.radius * c.radius) return true;
-  }
-  return false;
+  if (POOL.length < 6 && !POOL.includes(c)) POOL.push(c);
 }

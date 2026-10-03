@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -10,6 +10,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
+import { hud } from '../../ui/theme';
+import { BTN_W, CLUSTER_RIGHT, LOOK, RUN } from '../../ui/hudLayout';
 
 // Hold-to-look arrows. Use react-native-gesture-handler instead of
 // Pressable so they coexist with the joystick's Pan gesture - with
@@ -23,7 +25,7 @@ import { useStore } from '../../state/store';
 
 const LOOK_YAW_DEG = 45;
 const LOOK_YAW_RAD = (LOOK_YAW_DEG * Math.PI) / 180;
-const ARROW_SIZE = 50;
+const ARROW_SIZE = LOOK.size;
 
 function setYaw(v: number) {
   input.viewYaw = v;
@@ -66,12 +68,12 @@ export function LookButtons() {
     <>
       <GestureDetector gesture={left.gesture}>
         <Animated.View style={[styles.left, left.style]}>
-          <Text style={styles.glyph}>‹</Text>
+          <View style={[styles.chevron, styles.chevronLeft]} />
         </Animated.View>
       </GestureDetector>
       <GestureDetector gesture={right.gesture}>
         <Animated.View style={[styles.right, right.style]}>
-          <Text style={styles.glyph}>›</Text>
+          <View style={[styles.chevron, styles.chevronRight]} />
         </Animated.View>
       </GestureDetector>
     </>
@@ -80,13 +82,13 @@ export function LookButtons() {
 
 const baseBtn = {
   position: 'absolute' as const,
-  bottom: 30,
+  bottom: LOOK.bottom,
   width: ARROW_SIZE,
   height: ARROW_SIZE,
   borderRadius: ARROW_SIZE / 2,
-  backgroundColor: 'rgba(255, 255, 255, 0.10)',
-  borderWidth: 1,
-  borderColor: 'rgba(255, 255, 255, 0.20)',
+  backgroundColor: hud.fill,
+  borderWidth: hud.ringWidth,
+  borderColor: hud.ring,
   alignItems: 'center' as const,
   justifyContent: 'center' as const,
 };
@@ -94,17 +96,27 @@ const baseBtn = {
 const styles = StyleSheet.create({
   right: {
     ...baseBtn,
-    right: 63 + (78 - ARROW_SIZE) / 2,
+    right: CLUSTER_RIGHT + (BTN_W - ARROW_SIZE) / 2,
   },
   left: {
     ...baseBtn,
-    right: 63 + 78 + 14,
+    right: RUN.right,
   },
-  glyph: {
-    color: '#fff',
-    fontSize: 30,
-    fontWeight: '900',
-    lineHeight: 32,
-    marginTop: -4,
+  // Drawn chevron (two sides of a small square, rotated): the same on
+  // every phone, unlike the ‹ › font glyphs it replaces.
+  chevron: {
+    width: 12,
+    height: 12,
+    borderColor: hud.label,
+    borderLeftWidth: 3,
+    borderBottomWidth: 3,
+  },
+  chevronLeft: {
+    marginLeft: 5,
+    transform: [{ rotate: '45deg' }],
+  },
+  chevronRight: {
+    marginRight: 5,
+    transform: [{ rotate: '-135deg' }],
   },
 });

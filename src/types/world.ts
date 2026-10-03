@@ -1,4 +1,5 @@
 import type { Object3D } from 'three';
+import type { NavState } from '../systems/Navigator';
 
 export type RunState = 'idle' | 'playing' | 'caught' | 'cleared';
 
@@ -62,7 +63,8 @@ export type Projectile = {
 //   crowbar    - melee stun on the nearest guard within range.
 //   smokebomb  - drops a vision-blocking cloud at the player's feet
 //                that hides them from any guard inside the radius.
-export type PickupKind = 'crowbar' | 'smokebomb';
+//   rock       - throwable distraction; makes noise where it lands.
+export type PickupKind = 'crowbar' | 'smokebomb' | 'rock';
 
 export type Pickup = {
   id: number;
@@ -87,6 +89,24 @@ export type Chunk = {
   // detection LOS, pickups), so the player can't walk into a
   // horizon chunk and they never affect difficulty.
   isHorizon?: boolean;
+  // Instanced contact shadows for this chunk's props.
+  shadow?: Object3D | null;
+  // Scene group holding every mesh of this chunk (props, pickups,
+  // shadows), so the chunk can be hidden as a whole when far away.
+  root?: Object3D | null;
+  // Risk / reward fork, if this chunk is one (see ProcgenSystem).
+  fork?: ForkInfo;
+};
+
+// A chunk split lengthwise by a wall: one lane is short and straight
+// but watched by a guard post (and holds extra pickups), the other is
+// a slow slalom with no watcher.
+export type ForkInfo = {
+  dangerSide: -1 | 1; // sign of x for the danger lane
+  startZ: number;
+  endZ: number;
+  postX: number;
+  postZ: number;
 };
 
 // Player movement mode. RUN is a separate, orthogonal speed multiplier
@@ -110,6 +130,10 @@ export type Player = {
   // before they can sprint again). Stamina is only enforced from
   // the stamina-enabled stage tier - see progression.staminaEnabledFor.
   stamina: number;
+  // Latched when a sprint drains stamina to zero. While set, running
+  // is refused (and the RUN toggle is switched off) until stamina has
+  // recovered to STAMINA_RECOVER_AT; the player must re-engage RUN.
+  exhausted: boolean;
 };
 
 // Guard behaviour state machine.
@@ -150,6 +174,24 @@ export type Guard = {
   // not transition state, does not move, and DetectionSystem skips
   // its vision contribution. Decays in the AI update tick.
   stunTimer: number;
+  // Path-following state (see Navigator.ts).
+  nav: NavState;
+  // Perception memory. lastSeen is only written while the guard has
+  // real line of sight; lastHeard is a fuzzy fix from noise. The AI
+  // pursues these, never the player's live position when blind.
+  lastSeen: { x: number; z: number } | null;
+  lastHeard: { x: number; z: number } | null;
+  sinceSeen: number;
+  // Seconds since lastHeard was set (a noise fix or a heard event such
+  // as a rock landing); belief uses whichever memory is newer.
+  sinceHeard: number;
+  hearTimer: number;
+  // Tier-2 look-and-scan after losing sight.
+  lookTimer: number;
+  lookBase: number;
+  // Shot wind-up progress (seconds). > 0 means the guard is aiming
+  // and the laser telegraph is visible.
+  aimTimer: number;
   mesh: Object3D | null;
   visionMesh: Object3D | null;
 };

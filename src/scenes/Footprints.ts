@@ -26,29 +26,40 @@ const SHARED_MAT_TEMPLATE = {
   depthWrite: false,
 };
 
+// Fixed pool: MAX_FOOTPRINTS mesh+material pairs are created once per
+// field and recycled oldest-first, so walking through snow never
+// allocates (it used to create - and dispose - a material per print).
 export type Footprint = {
   age: number;
   lifetime: number;
+  active: boolean;
   mesh: THREE.Mesh;
   material: THREE.MeshBasicMaterial;
 };
 
 export type FootprintField = {
   prints: Footprint[];
-  // Side toggle so successive prints stagger left / right of the
-  // player's heading instead of stacking on the same midline.
+  next: number;
   nextSide: 1 | -1;
-  // Time since the last spawn; the caller increments and resets.
   sinceSpawn: number;
 };
 
 export function createFootprintField(): FootprintField {
-  return { prints: [], nextSide: 1, sinceSpawn: 0 };
+  return { prints: [], next: 0, nextSide: 1, sinceSpawn: 0 };
 }
 
-// Spawn a single print at (x, z) heading along `facing` (radians).
-// A small lateral offset perpendicular to the heading staggers
-// successive prints; nextSide flips on each spawn so they alternate.
+function slot(field: FootprintField): Footprint {
+  if (field.prints.length < MAX_FOOTPRINTS) {
+    const material = new THREE.MeshBasicMaterial(SHARED_MAT_TEMPLATE);
+    const fp: Footprint = { age: 0, lifetime: FOOTPRINT_LIFETIME, active: false, mesh: new THREE.Mesh(SHARED_GEO, material), material };
+    field.prints.push(fp);
+    return fp;
+  }
+  const fp = field.prints[field.next];
+  field.next = (field.next + 1) % MAX_FOOTPRINTS;
+  return fp;
+}
+
 export function spawnFootprint(
   field: FootprintField,
   x: number,
@@ -56,53 +67,40 @@ export function spawnFootprint(
   facing: number,
   parent: THREE.Object3D,
 ) {
-  const material = new THREE.MeshBasicMaterial(SHARED_MAT_TEMPLATE);
-  const mesh = new THREE.Mesh(SHARED_GEO, material);
-  // Stagger 0.18m to one side of the player's centre.
+  const fp = slot(field);
+  const mesh = fp.mesh;
   const sx = Math.cos(facing + Math.PI / 2) * 0.18 * field.nextSide;
   const sz = Math.sin(facing + Math.PI / 2) * 0.18 * field.nextSide;
   mesh.position.set(x + sx, 0.012, z + sz);
   mesh.rotation.y = facing;
   mesh.scale.set(1, 1, 1.6);
-  parent.add(mesh);
-  field.prints.push({ age: 0, lifetime: FOOTPRINT_LIFETIME, mesh, material });
+  mesh.visible = true;
+  if (mesh.parent !== parent) parent.add(mesh);
+  fp.age = 0;
+  fp.active = true;
+  fp.material.opacity = 0.55;
   field.nextSide = field.nextSide === 1 ? -1 : 1;
-  // Cap memory: drop the oldest if we're over the limit. Despawning
-  // also disposes the per-print material so we don't leak.
-  while (field.prints.length > MAX_FOOTPRINTS) {
-    const oldest = field.prints.shift();
-    if (oldest) {
-      if (oldest.mesh.parent) oldest.mesh.parent.remove(oldest.mesh);
-      oldest.material.dispose();
-    }
-  }
 }
 
-// Advance every print's age and prune expired ones. Caller passes
-// the parent so we can re-anchor the remove() call cleanly even if
-// the print's parent has been swapped (e.g. mid-scene-rebuild).
 export function updateFootprintField(field: FootprintField, dt: number) {
-  for (let i = field.prints.length - 1; i >= 0; i--) {
-    const fp = field.prints[i];
+  for (const fp of field.prints) {
+    if (!fp.active) continue;
     fp.age += dt;
     const t = fp.age / fp.lifetime;
     if (t >= 1) {
-      if (fp.mesh.parent) fp.mesh.parent.remove(fp.mesh);
-      fp.material.dispose();
-      field.prints.splice(i, 1);
+      fp.active = false;
+      fp.mesh.visible = false;
       continue;
     }
-    // Linear opacity fade with a slight ease-out so the fresh prints
-    // sit at near-full opacity for a beat before melting away.
     const eased = 1 - t * t;
     fp.material.opacity = 0.55 * eased;
   }
 }
 
+// Hide every print (soft restart). The pool stays allocated.
 export function disposeFootprintField(field: FootprintField) {
   for (const fp of field.prints) {
-    if (fp.mesh.parent) fp.mesh.parent.remove(fp.mesh);
-    fp.material.dispose();
+    fp.active = false;
+    fp.mesh.visible = false;
   }
-  field.prints.length = 0;
 }

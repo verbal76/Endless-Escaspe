@@ -1,71 +1,86 @@
-import { Platform } from 'react-native';
-import { formatEntry, getEntries, getPreviousRun } from './debug';
-import { BUILD_VERSION, OTA_VERSION } from '../version';
+import { Linking, Platform } from 'react-native';
+import { composeMailtoReport, mailtoUrl } from './bugReport';
+import { formatEntry, getEntries, getPreviousRun, logDebug } from './debug';
+import { getReleaseInfo } from './releaseRuntime';
+import { formatDetailRows, formatInfoLines, formatMenuLine, formatVitalsText, type InfoRow } from './releaseInfo';
+import { getTextureStatus } from './textures';
+import { formatTextureRow } from './textureSource';
+import { formatFontRow, getFontStatus } from '../ui/fonts';
+import { formatAuditRows, getRenderAudit } from './renderAudit';
 
 // Pre-fill mailto: links for bug reports + feature requests so the
 // user's email client opens with the diagnostic info already pasted.
 //
 // Adapted from the Personal Assistant template; trimmed down for
-// this project: we don't ship a debug-log capture (yet) and we
-// haven't added expo-device, so the report includes BUILD_VERSION /
-// OTA_VERSION + Platform.OS / Version. Adding expo-device later
-// (and Constants.expoConfig.extra.gitBranch / commit / buildTime
-// fields) is a drop-in extension.
+// this project: the report carries the full Build / Update Info
+// (real APK + expo-updates metadata, see util/releaseInfo) plus
+// Platform.OS / Version.
 
 export const SUPPORT_EMAIL = 'hotatticgames@gmail.com';
 
-interface BuildInfo {
-  build: string;
-  ota: string;
-}
-
-function readBuildInfo(): BuildInfo {
-  return { build: BUILD_VERSION, ota: OTA_VERSION };
-}
-
-function buildInfoMultiline(b: BuildInfo): string {
+function infoRows(): InfoRow[] {
   return [
-    `Build: ${b.build}`,
-    `OTA:   ${b.ota}`,
-    `OS:    ${Platform.OS} ${Platform.Version}`,
-  ].join('\n');
+    ...formatDetailRows(getReleaseInfo()),
+    formatTextureRow(getTextureStatus()),
+    formatFontRow(getFontStatus()),
+    ...formatAuditRows(getRenderAudit()),
+  ];
+}
+
+const osLabel = () => `${Platform.OS} ${Platform.Version}`;
+
+function buildInfoMultiline(): string {
+  return formatInfoLines(formatMenuLine(getReleaseInfo()), infoRows(), osLabel()).join('\n');
+}
+
+// Everything in Build / Update Info as text, for the COPY / SHARE INFO
+// button (Android share sheet: Copy, or send to any app).
+export function composeVitalsText(): string {
+  return formatVitalsText(formatMenuLine(getReleaseInfo()), infoRows(), osLabel(), new Date());
 }
 
 export function composeBugReportUrl(): string {
-  const info = readBuildInfo();
-  // Last 30 entries each is enough to fit comfortably under most
-  // mailto: URL length caps (~8 KB on Android / iOS) while still
-  // capturing a useful trail. The previous-run slice is the
-  // crash-to-desktop catch: if the app died last session those
-  // entries are the lead-up.
-  const current = getEntries().slice(-30).map(formatEntry).join('\n');
-  const prev = (getPreviousRun() ?? []).slice(-30).map(formatEntry).join('\n');
-  const subject = `Endless Escape bug report — ${info.ota}`;
-  const body = [
-    'Describe what happened above this line. Anything below is for context — leave it as-is.',
-    '',
-    '--- diagnostic info (auto-generated) ---',
-    buildInfoMultiline(info),
-    '',
-    '--- previous run (pre-crash, last 30 entries) ---',
-    prev || '(no previous-run entries)',
-    '',
-    '--- current run (last 30 entries) ---',
-    current || '(no current-run entries)',
-  ].join('\n');
-  const params = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  return `mailto:${SUPPORT_EMAIL}?${params}`;
+  // The last 30 entries of each run, clipped and trimmed oldest-first
+  // so the whole URL stays within what mail apps accept (see
+  // util/bugReport.ts); the diagnostic block is always kept. The
+  // previous-run slice is the crash-to-desktop catch: if the app died
+  // last session those entries are the lead-up.
+  return composeMailtoReport({
+    to: SUPPORT_EMAIL,
+    subject: `Endless Escape bug report — ${formatMenuLine(getReleaseInfo())}`,
+    head: [
+      'Describe what happened above this line. Anything below is for context — leave it as-is.',
+      '',
+      '--- diagnostic info (auto-generated) ---',
+      buildInfoMultiline(),
+    ],
+    sections: [
+      { title: 'previous run (pre-crash)', entries: (getPreviousRun() ?? []).slice(-30).map(formatEntry), empty: '(no previous-run entries)' },
+      { title: 'current run', entries: getEntries().slice(-30).map(formatEntry), empty: '(no current-run entries)' },
+    ],
+  });
 }
 
 export function composeFeatureRequestUrl(): string {
-  const info = readBuildInfo();
-  const subject = `Endless Escape feature request — ${info.ota}`;
+  const subject = `Endless Escape feature request — ${formatMenuLine(getReleaseInfo())}`;
   const body = [
     'Describe the feature you\'d like above this line.',
     '',
     '--- diagnostic info (auto-generated) ---',
-    buildInfoMultiline(info),
+    buildInfoMultiline(),
   ].join('\n');
-  const params = `subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-  return `mailto:${SUPPORT_EMAIL}?${params}`;
+  return mailtoUrl(SUPPORT_EMAIL, subject, body);
+}
+
+// Opens a composed mailto: URL. Resolves false (and logs why) when no
+// app can take it (e.g. no email client), so the caller can offer the
+// COPY / SHARE INFO path instead of failing silently.
+export async function openSupportUrl(url: string): Promise<boolean> {
+  try {
+    await Linking.openURL(url);
+    return true;
+  } catch (e) {
+    logDebug('warn', '[support] could not open mail app', e);
+    return false;
+  }
 }

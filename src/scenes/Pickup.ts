@@ -8,25 +8,17 @@ export const PICKUP_RADIUS = 0.7;
 
 // Shared materials so we don't pay the per-pickup material cost; the
 // world builds dozens of these per segment.
-const CROWBAR_BAR_MAT = new THREE.MeshStandardMaterial({
+const CROWBAR_BAR_MAT = new THREE.MeshLambertMaterial({
   color: 0xb84a2a,
-  roughness: 0.5,
-  metalness: 0.6,
 });
-const CROWBAR_TIP_MAT = new THREE.MeshStandardMaterial({
+const CROWBAR_TIP_MAT = new THREE.MeshLambertMaterial({
   color: 0x2a2a2e,
-  roughness: 0.5,
-  metalness: 0.85,
 });
-const SMOKE_BODY_MAT = new THREE.MeshStandardMaterial({
+const SMOKE_BODY_MAT = new THREE.MeshLambertMaterial({
   color: 0x3a3f48,
-  roughness: 0.6,
-  metalness: 0.4,
 });
-const SMOKE_CAP_MAT = new THREE.MeshStandardMaterial({
+const SMOKE_CAP_MAT = new THREE.MeshLambertMaterial({
   color: 0xe8c050,
-  roughness: 0.55,
-  metalness: 0.3,
 });
 const HALO_MAT = new THREE.MeshBasicMaterial({
   color: 0xffd96a,
@@ -34,6 +26,7 @@ const HALO_MAT = new THREE.MeshBasicMaterial({
   opacity: 0.45,
   depthWrite: false,
   side: THREE.DoubleSide,
+  forceSinglePass: true,
 });
 
 const CROWBAR_GEO = markShared(new THREE.BoxGeometry(0.85, 0.08, 0.08));

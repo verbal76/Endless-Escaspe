@@ -19,3 +19,17 @@ export function randInt(rng: Rng, minInclusive: number, maxExclusive: number): n
 export function pick<T>(rng: Rng, arr: readonly T[]): T {
   return arr[Math.floor(rng() * arr.length)];
 }
+
+// Simulation randomness (guard wander / search picks, hearing error,
+// dog sniffing). Seeded once per run by the game loop so the same
+// seed and the same inputs replay the same run - the Daily must be
+// identical for everyone. Falls back to Math.random until seeded.
+let simRng: Rng = Math.random;
+
+export function seedSimRandom(seed: number): void {
+  simRng = mulberry32(seed);
+}
+
+export function simRandom(): number {
+  return simRng();
+}

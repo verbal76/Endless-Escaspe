@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { BackHandler, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable } from '../../ui/Pressable';
+import { Text } from '../../ui/Text';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,10 +13,12 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
+import { color as ui, type as T, fonts, touch } from '../../ui/theme';
 
-// Top-down 2D intro cutscene. Auto-plays four beats illustrating
-// the core stealth loop: walk past guards, get spotted, hide behind
-// cover, get caught. Non-interactive aside from a skip button.
+// Top-down 2D intro cutscene. Auto-plays six beats: four animated
+// ones illustrating the core stealth loop (walk past a guard, get
+// spotted, crouch behind a low wall, get caught) and two text cards.
+// Non-interactive aside from a skip button.
 //
 // Why 2D and not the real 3D scene: this teaches geometric
 // abstractions (line of sight, detection meter, cover) which read
@@ -82,27 +86,44 @@ const LANDSCAPE_LAYOUT: StageLayout = {
   beat3Target: { x: 130, y: 116 },
 };
 
+// Explainer card width cap in landscape (tablets).
+const TUTORIAL_CARD_MAX = 460;
+
 const BEAT_MS = 3500;
 const OUTRO_MS = 1300;
 
-const TOTAL_BEATS = 4;
+// Beats 0-3 animate the little stage; 4-5 are read-only cards, so
+// they stay up longer.
+const BEAT_DURATIONS = [BEAT_MS, BEAT_MS + 500, BEAT_MS + 500, BEAT_MS + 1000, 5200, 5200];
+const TOTAL_BEATS = BEAT_DURATIONS.length;
 
+// Only what matters on stage 1, plus the controls. Rules that arrive
+// later are taught when they first appear (util/stageTips.ts) and all
+// of them are in the How to Play reference (HowToPlay.tsx).
 const POPUPS: { title: string; body: string }[] = [
   {
-    title: 'Walk past guards',
-    body: 'Each guard has a yellow vision cone. Stay out of it and you stay invisible.',
+    title: 'Move',
+    body: 'Left thumb: move. CROUCH / WALK set your stance. RUN is on / off and stands you up to sprint.',
   },
   {
-    title: 'Detection ring',
-    body: 'Step into a cone and the ring around you fills. Yellow → orange → red means you\'re seen.',
+    title: 'Guards\' cones',
+    body: 'Guards only see inside their cone. The dots at your feet fill as they notice you.',
   },
   {
-    title: 'Use cover',
-    body: 'Hide behind cover blocks to break line of sight. The meter drains while you\'re hidden.',
+    title: 'Hide behind props',
+    body: 'Put a prop between you and the guard. Low walls only hide you if you CROUCH.',
   },
   {
-    title: 'Avoid getting caught',
-    body: 'Let the ring fill all the way and the alarm goes off. One catch and the segment restarts.',
+    title: 'Red = danger',
+    body: 'Red dots: they can shoot. A laser means a shot is coming - break line of sight! A touch costs a heart.',
+  },
+  {
+    title: 'Noise',
+    body: 'Moving makes noise (the circle around you). Standing still is silent. Noise alone never starts a chase.',
+  },
+  {
+    title: 'Escape',
+    body: 'Grab tools on the way. Reach the green line. Stars for staying unseen, fast and unhurt.',
   },
 ];
 
@@ -126,6 +147,8 @@ export function Tutorial() {
   const guardAngle = useSharedValue(180);
   const popScale = useSharedValue(0);
   const catchFlash = useSharedValue(0);
+  // 1 = standing, smaller while crouched behind the low wall (beat 2).
+  const crouch = useSharedValue(1);
 
   // Card-entry shared value drives popup fade/slide on each beat.
   const cardT = useSharedValue(0);
@@ -137,6 +160,7 @@ export function Tutorial() {
     // only patch the field we care about here - no risk of clobbering
     // a stale volume / weather value the user changed mid-tutorial.
     saveSettings({ tutorialSeen: true });
+    useStore.getState().setTutorialSeen(true);
   };
 
   // Reset state on (re-)mount of the tutorial. showTutorial flipping
@@ -151,6 +175,7 @@ export function Tutorial() {
     guardAngle.value = 180;
     popScale.value = 0;
     catchFlash.value = 0;
+    crouch.value = 1;
   }, [
     showTutorial,
     L.PLAYER_START.x,
@@ -170,9 +195,8 @@ export function Tutorial() {
       const t = setTimeout(dismissAndPersist, OUTRO_MS);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => setBeat(beat + 1), BEAT_MS);
+    const t = setTimeout(() => setBeat(beat + 1), BEAT_DURATIONS[beat] ?? BEAT_MS);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [beat, showTutorial]);
 
   // Drive the beat-specific animations. Splitting per-beat keeps
@@ -201,7 +225,8 @@ export function Tutorial() {
         withTiming(0.7, { duration: BEAT_MS - 900, easing: Easing.out(Easing.quad) }),
       );
     } else if (beat === 2) {
-      // Beat 3: slip behind cover; detection drains.
+      // Beat 3: crouch behind the low wall; detection drains.
+      crouch.value = withTiming(0.72, { duration: 400, easing: Easing.out(Easing.quad) });
       playerY.value = withTiming(L.beat2Target.y, { duration: 600, easing: Easing.out(Easing.cubic) });
       playerX.value = withTiming(L.beat2Target.x, { duration: 600, easing: Easing.out(Easing.cubic) });
       detection.value = withDelay(
@@ -209,7 +234,8 @@ export function Tutorial() {
         withTiming(0, { duration: BEAT_MS - 700, easing: Easing.in(Easing.quad) }),
       );
     } else if (beat === 3) {
-      // Beat 4: walk back into the cone; "!" pops; ring caps; flash.
+      // Beat 4: stand, walk back into the cone; "!" pops; ring caps; flash.
+      crouch.value = withTiming(1, { duration: 300 });
       playerY.value = withTiming(L.beat3Target.y, { duration: 1000, easing: Easing.out(Easing.cubic) });
       detection.value = withDelay(
         700,
@@ -229,6 +255,13 @@ export function Tutorial() {
           withTiming(0, { duration: 700, easing: Easing.in(Easing.quad) }),
         ),
       );
+    } else {
+      // Text-only cards: settle the stage back to a calm pose.
+      detection.value = withTiming(0, { duration: 600 });
+      guardAngle.value = withTiming(180, { duration: 600 });
+      popScale.value = withTiming(0, { duration: 200 });
+      playerX.value = withTiming(L.PLAYER_START.x, { duration: 900 });
+      playerY.value = withTiming(L.PLAYER_START.y, { duration: 900 });
     }
   }, [
     beat,
@@ -252,6 +285,7 @@ export function Tutorial() {
   const playerStyle = useAnimatedStyle(() => ({
     left: playerX.value - playerR,
     top: playerY.value - playerR,
+    transform: [{ scale: crouch.value }],
   }));
 
   // Detection ring: colour shifts yellow → orange → red as the value
@@ -261,9 +295,10 @@ export function Tutorial() {
   const ringStyle = useAnimatedStyle(() => {
     const v = detection.value;
     const opacity = 0.18 + v * 0.55;
-    let color = 'rgba(255, 209, 74, 1)'; // alert yellow
-    if (v >= 0.75) color = 'rgba(255, 56, 56, 1)'; // chase red
-    else if (v >= 0.4) color = 'rgba(255, 154, 48, 1)'; // investigate orange
+    // Same thresholds as the in-game ring (RadialMeter.ts).
+    let color = 'rgba(255, 209, 74, 1)'; // noticed: yellow
+    if (v >= 0.85) color = 'rgba(255, 56, 56, 1)'; // can shoot: red
+    else if (v >= 0.5) color = 'rgba(255, 154, 48, 1)'; // searching: orange
     return {
       left: playerX.value - ringR,
       top: playerY.value - ringR,
@@ -291,6 +326,17 @@ export function Tutorial() {
     transform: [{ translateY: (1 - cardT.value) * 8 }],
   }));
 
+  // Android back skips the intro, like the SKIP button.
+  useEffect(() => {
+    if (!showTutorial) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      dismissAndPersist();
+      return true;
+    });
+    return () => sub.remove();
+    // dismissAndPersist only uses stable store setters.
+  }, [showTutorial]);
+
   if (!showTutorial) return null;
 
   const popup = POPUPS[Math.min(beat, TOTAL_BEATS - 1)];
@@ -298,7 +344,8 @@ export function Tutorial() {
   // Card width: matches the stage in portrait; takes whatever's left
   // after the stage in landscape, with a minimum so the body text
   // doesn't compress to one word per line on narrow displays.
-  const cardWidth = isLandscape ? Math.max(220, win.width - L.W - 80) : L.W;
+  // Capped so a tablet doesn't get one 900 dp line of text (D-19).
+  const cardWidth = isLandscape ? Math.min(TUTORIAL_CARD_MAX, Math.max(220, win.width - L.W - 80)) : L.W;
 
   return (
     <View style={styles.root}>
@@ -333,7 +380,7 @@ export function Tutorial() {
             ]}
           />
           <Text style={[styles.coverLabel, { left: L.COVER.x, top: L.COVER.y - 12 }]}>
-            COVER
+            LOW WALL
           </Text>
 
           {/* Vision cone. Wrapper sized 0×0 with transformOrigin at
@@ -464,9 +511,10 @@ const styles = StyleSheet.create({
   },
   skipBtn: {
     position: 'absolute',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 18,
+    paddingHorizontal: 18,
+    minHeight: touch.min,
+    justifyContent: 'center',
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.30)',
     backgroundColor: 'rgba(255,255,255,0.06)',
@@ -476,7 +524,7 @@ const styles = StyleSheet.create({
   },
   skipLabel: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 12,
+    fontSize: T.caption,
     fontWeight: '800',
     letterSpacing: 1.5,
   },
@@ -507,7 +555,7 @@ const styles = StyleSheet.create({
     top: 24,
     alignSelf: 'center',
     color: 'rgba(80, 230, 130, 0.85)',
-    fontSize: 9,
+    fontSize: T.caption,
     fontWeight: '800',
     letterSpacing: 2.5,
   },
@@ -521,7 +569,7 @@ const styles = StyleSheet.create({
   coverLabel: {
     position: 'absolute',
     color: 'rgba(180, 190, 210, 0.7)',
-    fontSize: 8,
+    fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 1.5,
   },
@@ -550,7 +598,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   guardPopText: {
-    color: '#ff3838',
+    color: ui.danger,
     fontSize: 22,
     fontWeight: '900',
     textShadowColor: 'rgba(0,0,0,0.7)',
@@ -569,27 +617,27 @@ const styles = StyleSheet.create({
   },
   catchFlash: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ff3838',
+    backgroundColor: ui.danger,
   },
   popupCard: {
     backgroundColor: 'rgba(20, 24, 32, 0.92)',
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 210, 90, 0.45)',
+    borderColor: 'rgba(255, 209, 74, 0.45)',
     paddingHorizontal: 18,
     paddingVertical: 14,
     alignItems: 'center',
   },
   popupTitle: {
-    color: '#ffd14a',
-    fontSize: 14,
-    fontWeight: '900',
+    color: ui.gold,
+    fontSize: T.body,
+    fontFamily: fonts.display,
     letterSpacing: 2,
     marginBottom: 6,
   },
   popupBody: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 13,
+    fontSize: T.small,
     lineHeight: 18,
     textAlign: 'center',
   },
@@ -605,6 +653,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.25)',
   },
   beatDotActive: {
-    backgroundColor: '#ffd14a',
+    backgroundColor: ui.gold,
   },
 });

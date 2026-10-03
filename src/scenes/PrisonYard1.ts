@@ -7,7 +7,10 @@ import {
   VISION_CONE_DEG,
 } from '../util/geometry';
 import { createModelFigure, type ModelFigure } from './ModelFigure';
-import { getGrassTexture } from '../util/textures';
+import { getGrassTexture, getPropTexture } from '../util/textures';
+import { tagAuditMaterial, tagAuditRole } from '../util/renderAudit';
+import { createNavState } from '../systems/Navigator';
+import { outfitById, type OutfitId } from '../util/outfits';
 
 // Player + guard figures are now Kenney-modelled OBJs (see
 // ModelFigure.ts) instead of the procedural blocks. Public API names
@@ -41,6 +44,7 @@ export function createPlayer(): Player {
     isCrouched: false,
     isHidden: false,
     stamina: 1,
+    exhausted: false,
   };
 }
 
@@ -48,8 +52,11 @@ export function createPlayer(): Player {
 // uniforms.
 //   beige -> character D (yellow striped jumpsuit)
 //   brown -> character G (grey + red striped jumpsuit)
-export function createPlayerFigure(skin: 'beige' | 'brown' = 'beige'): ModelFigure {
-  return createModelFigure(skin === 'brown' ? 'g' : 'd');
+export function createPlayerFigure(skin: 'beige' | 'brown' = 'beige', outfit: OutfitId | null = null): ModelFigure {
+  const o = outfitById(outfit);
+  const fig = o ? createModelFigure(o.model, o.tint) : createModelFigure(skin === 'brown' ? 'g' : 'd');
+  tagAuditRole(fig.group, 'player');
+  return fig;
 }
 
 export type GuardConfig = {
@@ -75,6 +82,15 @@ export function createGuard(cfg: GuardConfig): Guard {
     investigationTarget: null,
     fireCooldown: 0,
     stunTimer: 0,
+    nav: createNavState(),
+    lastSeen: null,
+    lastHeard: null,
+    sinceSeen: 999,
+    sinceHeard: 999,
+    hearTimer: 0,
+    lookTimer: 0,
+    lookBase: 0,
+    aimTimer: 0,
     mesh: null,
     visionMesh: null,
   };
@@ -87,6 +103,8 @@ export function createGuard(cfg: GuardConfig): Guard {
 export function createGuardConfigs(
   guardCount: number,
   segLen: number,
+  zStart: number = 0,
+  firstId: number = 1,
 ): GuardConfig[] {
   const n = Math.max(1, guardCount | 0);
   const halfX = Math.max(2, PLAY_HALF_W * 0.55);
@@ -94,10 +112,10 @@ export function createGuardConfigs(
   for (let i = 0; i < n; i++) {
     // Zones evenly distributed along Z: i / n .. (i+1) / n.
     const t = (i + 0.5) / n;
-    const homeZ = segLen * (0.18 + 0.74 * t);
+    const homeZ = zStart + segLen * (0.18 + 0.74 * t);
     const sideX = i % 2 === 0 ? -halfX : halfX;
     configs.push({
-      id: i + 1,
+      id: firstId + i,
       homeX: sideX,
       homeZ,
       // Home radius shrinks slightly with more guards so they keep
@@ -113,7 +131,9 @@ export function createGuardConfigs(
 // model we get the moustache + uniform "for free" and the crew is
 // readable as a uniform police force at a glance.
 export function createGuardFigure(): ModelFigure {
-  return createModelFigure('j');
+  const fig = createModelFigure('j');
+  tagAuditRole(fig.group, 'guards');
+  return fig;
 }
 
 // Flat triangular cone on the ground showing the guard's actual
@@ -139,6 +159,7 @@ export function createFacingMarker(visionRange: number): THREE.Mesh {
     opacity: 0.30,
     depthWrite: false,
     side: THREE.DoubleSide,
+    forceSinglePass: true,
   });
   return new THREE.Mesh(geo, mat);
 }
@@ -160,7 +181,7 @@ export function createGround(): THREE.Mesh {
   // same loaded texture instance. Falls back to a flat green when
   // the asset preload didn't resolve.
   const grassTex = getGrassTexture();
-  let mat: THREE.MeshStandardMaterial;
+  let mat: THREE.MeshLambertMaterial;
   if (grassTex) {
     const tex = grassTex.clone();
     tex.needsUpdate = true;
@@ -170,25 +191,60 @@ export function createGround(): THREE.Mesh {
     // Linear filter would blend into a muddy green; nearest preserves
     // the per-blade detail of the source tile.
     tex.repeat.set(200, 450);
+    // Close up, nearest keeps the per-blade pixel detail. In the
+    // distance the 450x-tiled grass used to minify with no mipmaps and
+    // shimmered / moire'd badly; trilinear mip filtering plus a little
+    // anisotropy (the ground is always seen at a grazing angle) keeps
+    // the far field calm.
     tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    mat = new THREE.MeshStandardMaterial({
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
+    tex.anisotropy = 4;
+    mat = new THREE.MeshLambertMaterial({
       map: tex,
-      roughness: 1,
       // Slight emissive lift so the ground stays legible on the
       // deep-night palette, same trick the obstacle materials use.
       emissive: 0xffffff,
       emissiveMap: tex,
-      emissiveIntensity: 0.18,
+      emissiveIntensity: 0.08,
     });
   } else {
-    mat = new THREE.MeshStandardMaterial({
+    mat = new THREE.MeshLambertMaterial({
       color: 0x3f6a2c,
-      roughness: 1,
     });
   }
+  tagAuditMaterial(mat, 'ground', 'grass');
   const m = new THREE.Mesh(geo, mat);
   m.rotation.x = -Math.PI / 2;
+  // Worn yard floor: a translucent dirt layer between the fences, so
+  // the yard reads as a trodden prison yard rather than open field.
+  // A child of the ground, so it follows it in every mode.
+  const dirtSrc = getPropTexture('dirt');
+  if (dirtSrc) {
+    const dt = dirtSrc.clone();
+    dt.needsUpdate = true;
+    dt.wrapS = THREE.RepeatWrapping;
+    dt.wrapT = THREE.RepeatWrapping;
+    dt.repeat.set((PLAY_HALF_W * 2) / 3, 1800 / 3);
+    dt.magFilter = THREE.NearestFilter;
+    dt.minFilter = THREE.LinearMipmapLinearFilter;
+    dt.generateMipmaps = true;
+    const yard = new THREE.Mesh(
+      new THREE.PlaneGeometry(PLAY_HALF_W * 2, 1800),
+      new THREE.MeshLambertMaterial({
+        map: dt,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
+        polygonOffsetUnits: -1,
+      }),
+    );
+    yard.name = 'yardFloor';
+    yard.renderOrder = -2;
+    m.add(yard);
+  }
   // Centred so the plane spans roughly z = -500 .. +1300, which
   // covers everything from a few metres behind the start line out
   // to the mountain row plus its depth.

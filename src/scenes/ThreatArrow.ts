@@ -37,6 +37,7 @@ export function createThreatArrow(): ThreatArrow {
     opacity: 0.85,
     depthWrite: false,
     side: THREE.DoubleSide,
+    forceSinglePass: true,
   });
   const mesh = new THREE.Mesh(sharedGeo, mat);
   mesh.visible = false;

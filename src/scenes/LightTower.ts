@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
+import { twoSidedTransparentMesh } from './twoSided';
+import { PLAY_HALF_W } from '../util/geometry';
 import { markShared } from '../util/dispose';
 
 // Scanning floodlight tower: vertical pole, head, downward translucent
@@ -17,15 +18,25 @@ const HEAD_RADIUS = 0.35;
 // gameplay (player illuminated when inside the footprint) matches
 // what they see on screen.
 const BEAM_BASE_R = 4.0;
-const BEAM_FOOTPRINT_OFFSET = 5.0;
+// Footprint centre distance from the pole. Towers stand 0.6 m outside
+// the fence (x = +-9.6), so offset + radius must pass the centre line
+// (9.6 + 0.9) for the two towers of a row to cover the whole lane
+// between them - at 5.0 a band |x| < 0.6 down the middle (most of
+// every route) could never be lit.
+export const BEAM_FOOTPRINT_OFFSET = 6.5;
 export const LIGHT_FOOTPRINT_R = 4.0;
+// Axis length from the lamp head to the footprint centre.
+const BEAM_LEN = Math.hypot(TOWER_HEIGHT, BEAM_FOOTPRINT_OFFSET);
+// Tracking / search turn rate (rad/s). The beam visibly swings onto
+// the player instead of snapping (up to ~53 deg in one frame before),
+// and a sprint across the beam can break the lock.
+export const TRACK_TURN_RATE = 1.2;
 
-const POLE_MAT = new THREE.MeshStandardMaterial({ color: 0x4a4a52, roughness: 0.7 });
-const HEAD_MAT = new THREE.MeshStandardMaterial({
+const POLE_MAT = new THREE.MeshLambertMaterial({ color: 0x4a4a52 });
+const HEAD_MAT = new THREE.MeshLambertMaterial({
   color: 0xffe7a3,
   emissive: 0xffce6a,
   emissiveIntensity: 0.6,
-  roughness: 0.3,
 });
 // Beam: shader material that fades to alpha=0 at the cone's wide end
 // (the ground side after the pole-tilt rotation) so the beam smoothly
@@ -66,6 +77,9 @@ const BEAM_MAT = new THREE.ShaderMaterial({
 const FOOT_MAT = new THREE.ShaderMaterial({
   transparent: true,
   side: THREE.DoubleSide,
+  // Flat disk: the back-face pass of the default two-pass path draws
+  // nothing extra, it only re-resolves the program every frame.
+  forceSinglePass: true,
   depthWrite: false,
   uniforms: {
     uColor: { value: new THREE.Color(0xfff0a0) },
@@ -154,8 +168,8 @@ function buildTower(
   pivot.position.set(x, 0, z);
   worldRoot.add(pivot);
 
-  const beam = new THREE.Mesh(
-    new THREE.ConeGeometry(BEAM_BASE_R, TOWER_HEIGHT, 16, 1, true),
+  const beam = twoSidedTransparentMesh(
+    new THREE.ConeGeometry(BEAM_BASE_R, BEAM_LEN, 16, 1, true),
     BEAM_MAT,
   );
   beam.position.set(0, TOWER_HEIGHT / 2, BEAM_FOOTPRINT_OFFSET / 2);
@@ -206,6 +220,8 @@ export function spawnLightTowers(
   rows: number,
   scanSpeedMul: number,
   canTrack: boolean,
+  // World Z where this stretch of yard starts (Endless sections).
+  zStart: number = 0,
 ): LightTower[] {
   const towerX = PLAY_HALF_W + 0.6;
   const towers: LightTower[] = [];
@@ -214,7 +230,7 @@ export function spawnLightTowers(
     // line and the win line so the player has breathing room at the
     // ends of the run.
     const t = (i + 0.5) / rows;
-    const rz = segLen * (0.10 + 0.80 * t);
+    const rz = zStart + segLen * (0.10 + 0.80 * t);
     const dir = i % 2 === 0 ? 1 : -1;
     towers.push(buildTower(-towerX, rz, 0.55 * scanSpeedMul * dir, worldRoot, canTrack));
     towers.push(buildTower(towerX, rz, -0.55 * scanSpeedMul * dir, worldRoot, canTrack));
@@ -222,10 +238,18 @@ export function spawnLightTowers(
   return towers;
 }
 
+// Turn `from` toward `to` by at most maxStep radians (shortest way).
+export function turnToward(from: number, to: number, maxStep: number): number {
+  let d = to - from;
+  d = Math.atan2(Math.sin(d), Math.cos(d));
+  if (Math.abs(d) <= maxStep) return from + d;
+  return from + Math.sign(d) * maxStep;
+}
+
 // Update one tower in place. The state machine drives the pivot's
 // y-rotation: 'scan' rolls scanAngle forward by scanSpeed; 'track'
-// snaps the angle to point at (px, pz); 'search' holds the angle
-// from when we lost the player until SEARCH_HOLD_S elapses.
+// turns the angle toward (px, pz) at TRACK_TURN_RATE; 'search' turns
+// to the last known spot and holds until SEARCH_HOLD_S elapses.
 export function updateLightTower(t: LightTower, dt: number, px: number, pz: number) {
   t.stateTimer += dt;
 
@@ -264,7 +288,7 @@ export function updateLightTower(t: LightTower, dt: number, px: number, pz: numb
       // angle whose forward (sin, cos) hits (dx, dz).
       const dx = px - t.x;
       const dz = pz - t.z;
-      t.scanAngle = Math.atan2(dx, dz);
+      t.scanAngle = turnToward(t.scanAngle, Math.atan2(dx, dz), TRACK_TURN_RATE * dt);
       t.lastSeenX = px;
       t.lastSeenZ = pz;
       // After a sustained lock, raise the searchlight flag exactly
@@ -277,7 +301,7 @@ export function updateLightTower(t: LightTower, dt: number, px: number, pz: numb
     case 'search': {
       const dx = t.lastSeenX - t.x;
       const dz = t.lastSeenZ - t.z;
-      t.scanAngle = Math.atan2(dx, dz);
+      t.scanAngle = turnToward(t.scanAngle, Math.atan2(dx, dz), TRACK_TURN_RATE * dt);
       break;
     }
     case 'scan':

@@ -1,20 +1,36 @@
 name: EAS Update (OTA)
 
+# Publishes the JS bundle of the publishing branch to the `preview`
+# channel that every installed APK follows. Nothing is published unless,
+# for the same commit:
+#   1. validate      typecheck, unit tests, native fingerprint gate and
+#                    an Android bundle export (ci.yml)
+#   2. render-check  the release APK built from this commit draws its
+#                    textures on an Android emulator and survives a
+#                    background / foreground cycle (android-render-check.yml)
+#   3. publish       the native fingerprint still matches the one
+#                    recorded for app.json's version (an OTA must never
+#                    need native code the installed APKs lack), and the
+#                    commit is still the branch head (a re-run of an old
+#                    run must not roll devices back).
+# Native/build/config changes ship as a new APK instead (apk-build.yml).
+# Rollback: see README "Rolling back an OTA" (ota-rollback.yml).
+
 on:
   workflow_dispatch:
-  # JS-only pushes ship as OTA. Native/build/config changes are handled
-  # by apk-build.yml instead (which embeds the new JS in the new APK).
   push:
-    # Two active branches: the original gRlFH branch and the
-    # Github-APK-Transition-Escap branch the user spun up to validate
-    # the GitHub-hosted Gradle build. Both run the same OTA pipeline.
+    # The single publishing branch. Older branches were removed from
+    # this list: all branches publish to the same channel, so a push to
+    # a stale branch would roll every device back.
     branches:
-      - claude/endless-escape-game-android-gRlFH
-      - Github-APK-Transition-Escap
+      - claude/game-review-suggestions-cjxiqh
+    # A push is skipped only if EVERY changed file matches; any change
+    # to src/, App.tsx, assets/ etc. still publishes.
     paths-ignore:
       - 'package.json'
       - 'package-lock.json'
       - 'app.json'
+      - 'app.config.js'
       - 'eas.json'
       - 'babel.config.js'
       - 'metro.config.js'
@@ -23,21 +39,54 @@ on:
       - 'assets/icon.png'
       - 'assets/adaptive-icon.png'
       - 'assets/splash-icon.png'
-      - '.github/workflows/**'
-      - 'README.md'
+      - 'assets/adaptive-icon-background.png'
+      - '.github/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'docs/**'
+      - '**/*.md'
       - '.gitignore'
 
-concurrency:
-  group: eas-update-${{ github.ref }}
-  cancel-in-progress: true
+permissions:
+  contents: read
 
 jobs:
+  validate:
+    name: Validate
+    uses: ./.github/workflows/ci.yml
+
+  render-check:
+    name: Render check
+    needs: validate
+    uses: ./.github/workflows/android-render-check.yml
+
   publish:
     name: Publish OTA bundle
+    needs: [validate, render-check]
+    # Only the publishing branch reaches the channel (a manual run on
+    # another branch validates and render-checks only).
+    if: github.ref == 'refs/heads/claude/game-review-suggestions-cjxiqh'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # One queue for every publish to the `preview` channel (whatever
+    # branch or workflow), never cancelled mid-way: a cancel between
+    # `eas update` and the verify step would leave an update live but
+    # unverified and unrecorded. GitHub keeps at most one pending run.
+    concurrency:
+      group: eas-update-preview
+      cancel-in-progress: false
+    # Metadata stamped into the published update's manifest (see
+    # app.config.js): the human-readable OTA sequence is this
+    # workflow's run number; the source commit is the pushed SHA.
+    env:
+      EE_OTA_SEQUENCE: ${{ github.run_number }}
+      EE_GIT_SHA: ${{ github.sha }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
+        with:
+          # History for the "newest publishable commit" check below.
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -48,18 +97,83 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # Hard gate: the native layer this JS was bundled against must be
+      # the one the installed APKs of this runtime were built with.
+      - name: Native fingerprint gate
+        run: node scripts/check-native-fingerprint.mjs
+
+      # The render check takes ~40 minutes. If the branch moved on
+      # meanwhile with a change that publishes (outside paths-ignore),
+      # that commit's own run publishes it, so this one stands down -
+      # publishing it now (or from a re-run of an old run) would roll
+      # devices back. If the newer commits only touch ignored paths
+      # (tests, docs, CI), no run of theirs publishes, so this one must.
+      - name: Still the newest publishable commit?
+        id: head
+        run: |
+          git fetch --no-tags --quiet origin "$GITHUB_REF"
+          HEAD_SHA=$(git rev-parse FETCH_HEAD)
+          echo "branch head: $HEAD_SHA  this run: $GITHUB_SHA"
+          if [ "$HEAD_SHA" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          elif ! git merge-base --is-ancestor "$GITHUB_SHA" "$HEAD_SHA"; then
+            echo "::notice::Not publishing $GITHUB_SHA: it is no longer on the branch (head $HEAD_SHA)"
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$GITHUB_SHA" "$HEAD_SHA" -- . \
+              ':!package.json' ':!package-lock.json' ':!app.json' ':!app.config.js' ':!eas.json' \
+              ':!babel.config.js' ':!metro.config.js' ':!android' ':!ios' \
+              ':!assets/icon.png' ':!assets/adaptive-icon.png' ':!assets/splash-icon.png' ':!assets/adaptive-icon-background.png' \
+              ':!.github' ':!scripts' ':!tests' ':!docs' ':!*.md' ':!.gitignore'; then
+            echo "::notice::Newer commits only touch paths that don't publish; publishing $GITHUB_SHA"
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Not publishing $GITHUB_SHA: $HEAD_SHA carries newer app changes and publishes itself"
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up EAS
+        if: steps.head.outputs.current == 'true'
         uses: expo/expo-github-action@v8
         with:
-          eas-version: latest
+          # Pinned: verify-ota.mjs and the summary parse `--json`
+          # output. 24.9.0 published OTA 121; bump deliberately.
+          eas-version: 24.9.0
           token: ${{ secrets.EAS }}
 
+      # Publish to the `preview` CHANNEL (the header baked into every
+      # APK by app.json updates.requestHeaders), so the destination is
+      # by construction the stream installed APKs query. The update's
+      # runtime version comes from app.json (policy: appVersion) and
+      # must equal the installed APK's runtime to be eligible.
       - name: Publish update
+        if: steps.head.outputs.current == 'true'
+        id: publish
         env:
           EXPO_TOKEN: ${{ secrets.EAS }}
         run: |
-          MSG=$(git log -1 --pretty=%s | head -c 200)
+          MSG="OTA $(printf '%03d' "$EE_OTA_SEQUENCE")$([ "$GITHUB_RUN_ATTEMPT" != 1 ] && echo ".$GITHUB_RUN_ATTEMPT") · $(git log -1 --pretty=%s | head -c 180)"
           eas update \
-            --branch preview \
+            --channel preview \
+            --platform android \
             --message "$MSG" \
-            --non-interactive
+            --non-interactive \
+            --json > update.json
+          cat update.json
+
+      - name: Verify the update is served to installed APKs
+        if: steps.head.outputs.current == 'true'
+        run: node scripts/verify-ota.mjs
+
+      - name: Record published update
+        if: steps.head.outputs.current == 'true'
+        run: |
+          node -e '
+            const u = JSON.parse(require("fs").readFileSync("update.json", "utf8"));
+            const list = Array.isArray(u) ? u : [u];
+            const lines = ["## OTA " + String(process.env.EE_OTA_SEQUENCE).padStart(3, "0"), "",
+              "| platform | update id | group | runtime | branch | commit |", "|---|---|---|---|---|---|"];
+            for (const x of list) lines.push(`| ${x.platform} | ${x.id} | ${x.group} | ${x.runtimeVersion} | ${x.branch ?? ""} | ${x.gitCommitHash ?? process.env.EE_GIT_SHA} |`);
+            lines.push("", "Roll back: Actions → OTA rollback, or `eas update:rollback " + (list[0]?.group ?? "<group>") + " --platform android --message \"Roll back\" --non-interactive`");
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            console.log(lines.join("\n"));
+          '

@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Endless Escaspe",
+    "name": "Endless Escape",
     "slug": "runner",
-    "version": "0.1.0",
+    "version": "0.2.1",
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -16,6 +16,7 @@
       "package": "com.verbal76.endlessescaspe",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundImage": "./assets/adaptive-icon-background.png",
         "backgroundColor": "#0b0d12"
       },
       "edgeToEdgeEnabled": true,
@@ -28,7 +29,13 @@
       "policy": "appVersion"
     },
     "updates": {
-      "url": "https://u.expo.dev/702308e3-1350-4db7-b41c-b6d73f3d4e69"
+      "url": "https://u.expo.dev/702308e3-1350-4db7-b41c-b6d73f3d4e69",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0,
+      "requestHeaders": {
+        "expo-channel-name": "preview"
+      }
     },
     "extra": {
       "eas": {

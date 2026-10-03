@@ -4,15 +4,37 @@ import type { WeatherKind } from '../scenes/Weather';
 import type { Save, SavesMap } from '../util/storage';
 import type { GameModalConfig } from '../components/HUD/GameModal';
 import { startingHeartsFor } from '../util/progression';
+import { snapVolume } from '../util/musicIntensity';
+
+// Coalesce slider noise, but never swallow a move onto an endpoint.
+const volumeUnchanged = (prev: number, next: number) =>
+  next === prev || (next !== 0 && next !== 1 && Math.abs(prev - next) < 0.005);
+import type { OutfitId } from '../util/outfits';
 
 // How many of each pickup the player is currently carrying. Counts
 // reset to zero on each segment start. The HUD's PickupBag reads
 // from here; Game.tsx's update loop writes when a pickup is grabbed
 // or used.
 export type Inventory = Record<PickupKind, number>;
-const EMPTY_INVENTORY: Inventory = { crowbar: 0, smokebomb: 0 };
+const EMPTY_INVENTORY: Inventory = { crowbar: 0, smokebomb: 0, rock: 0 };
 
 export type PlayerSkin = 'beige' | 'brown';
+
+// campaign = numbered stages with a finish line; endless = a seeded,
+// never-ending yard scored by distance; daily = endless with the
+// day's shared seed.
+export type GameMode = 'campaign' | 'endless' | 'daily';
+
+// Shown on the end-of-run banner for Endless / Daily runs, and for
+// the coins a campaign clear earned.
+export type RunSummary = {
+  mode: GameMode;
+  distanceM: number;
+  bestM: number;
+  coinsEarned: number;
+  coinsTotal: number;
+  day: string | null;
+};
 
 // End-of-segment stats reported on the win board.
 export type RunStats = {
@@ -29,6 +51,9 @@ export type RunStats = {
   livesUsed: number;
   // Computed 1..3 stars based on the four metrics above.
   stars: number;
+  // Run time needed for full marks on the time metric (seconds), for
+  // the results card. Absent on run-over / non-scored snapshots.
+  timeTarget3?: number;
 };
 
 type Store = {
@@ -57,14 +82,25 @@ type Store = {
   // Per-segment weather. Picked at segment init by Game.tsx via
   // pickWeather(seed); HUD subscribes if it ever needs to surface it.
   weather: WeatherKind;
+  // The weather setting the current segment was built with (the toggle
+  // applies from the next segment).
+  segmentWeatherEnabled: boolean;
   // Toggle: when false, every segment is forced to clear weather and
   // the AI gets a sense boost so the player doesn't get an easier
   // game by disabling effects. Persisted via AsyncStorage.
   weatherEnabled: boolean;
+  // Vibration on/off (pause panel). Persisted with the settings.
+  hapticsEnabled: boolean;
   // Visibility of the intro tutorial overlay. Set true on first
   // launch and from the start-screen "How to play" button; flips
   // back to false when the cutscene finishes or the player skips.
   showTutorial: boolean;
+  // How to Play reference screen: where it was opened from (the home
+  // screen, or the pause panel - which is its own native modal, so the
+  // reference renders inside it there), or null when closed.
+  howToPlay: 'home' | 'pause' | null;
+  // Persisted: the intro tutorial was watched or skipped once already.
+  tutorialSeen: boolean;
   // Branded confirm / alert modal config. Any component can set
   // this to show a popup; the GameModal mounted in Game.tsx renders
   // it. The action onPress handlers are responsible for clearing
@@ -83,12 +119,11 @@ type Store = {
   // whole seconds); 0 outside an arena. The HUD's BossTimer
   // subscribes to render the on-screen clock.
   bossTimeRemaining: number;
-  // Master audio volume 0..1, applied on top of the siren's
-  // detection-driven volume curve. Persisted via AsyncStorage.
+  // Master audio volume 0..1 (the pause panel's "Volume"): scales
+  // SFX, the siren and the music. Persisted via AsyncStorage.
   masterVolume: number;
-  // Music volume slider 0..1. Independent of masterVolume so the
-  // player can mute the soundtrack without losing SFX (or vice
-  // versa). Persisted via AsyncStorage.
+  // Music slider 0..1, applied on top of masterVolume, so the player
+  // can mute the soundtrack while keeping SFX. Persisted.
   musicVolume: number;
   // Boss-perk reward. Beating a boss arena (surviving the timer
   // without dying) sets perkRemainingStages to PERK_DURATION_STAGES;
@@ -136,9 +171,37 @@ type Store = {
   // a new segment starts; mirrored to / from the game loop via the
   // setters below.
   inventory: Inventory;
+  // True while a crowbar is carried and something (guard or dog) is
+  // inside swing range; the crowbar slot glows to match the in-world
+  // target ring.
+  crowbarInRange: boolean;
+  gameMode: GameMode;
+  // Daily run day key (YYYY-MM-DD) while gameMode === 'daily'.
+  dailyDay: string | null;
+  // Endless / Daily HUD: distance (whole metres) and current level.
+  distanceM: number;
+  endlessLevel: number;
+  runSummary: RunSummary | null;
+  playerOutfit: OutfitId;
+  setGameMode: (m: GameMode, day?: string | null) => void;
+  setDistance: (m: number, level: number) => void;
+  setRunSummary: (s: RunSummary | null) => void;
+  setPlayerOutfit: (o: OutfitId) => void;
+  // Highest guard detection (0..1), coalesced for the HUD edge tint.
+  dangerLevel: number;
+  setDangerLevel: (v: number) => void;
+  // Short in-game notice (camera alarm dispatch, tutorial prompts).
+  // `id` changes on every post so repeated text still re-animates.
+  toast: { id: number; text: string; tone: 'info' | 'warn' | 'tip' } | null;
+  setCrowbarInRange: (b: boolean) => void;
+  showToast: (text: string, tone?: 'info' | 'warn' | 'tip') => void;
+  clearToast: () => void;
   setRunState: (s: RunState) => void;
   setHearts: (n: number) => void;
   setDetection: (id: number, v: number) => void;
+  // Write every guard's meter in one store update (one notification
+  // per frame instead of one per guard).
+  setDetections: (values: ReadonlyMap<number, number>) => void;
   setStamina: (v: number) => void;
   setAlarmLevel: (v: number) => void;
   setStance: (s: Stance) => void;
@@ -149,9 +212,13 @@ type Store = {
   setLastDeathCause: (c: 'arrested' | 'killed' | null) => void;
   bumpCatchCounter: () => void;
   setWeather: (w: WeatherKind) => void;
+  setSegmentWeatherEnabled: (v: boolean) => void;
   setBestStars: (b: Record<number, number>) => void;
   setWeatherEnabled: (b: boolean) => void;
+  setHapticsEnabled: (b: boolean) => void;
   setShowTutorial: (b: boolean) => void;
+  setHowToPlay: (v: 'home' | 'pause' | null) => void;
+  setTutorialSeen: (b: boolean) => void;
   setGameModal: (m: GameModalConfig | null) => void;
   setBossModeUnlocked: (b: boolean) => void;
   setBossModeEnabled: (b: boolean) => void;
@@ -175,8 +242,12 @@ type Store = {
   consumePickup: (kind: PickupKind) => boolean;
   requestRestart: () => void;
   resetForSegment: (seed: number) => void;
-  startRun: () => void;
+  // `opts.perkStages`: boss perk carried by the save being resumed
+  // (Save.perkStages); omitted / invalid -> 0 (fresh perk state).
+  startRun: (opts?: { perkStages?: number }) => void;
 };
+
+let toastSeq = 0;
 
 export const useStore = create<Store>((set) => ({
   runState: 'idle',
@@ -191,8 +262,12 @@ export const useStore = create<Store>((set) => ({
   paused: false,
   restartCounter: 0,
   weather: 'clear',
+  segmentWeatherEnabled: true,
   weatherEnabled: true,
+  hapticsEnabled: true,
   showTutorial: false,
+  howToPlay: null,
+  tutorialSeen: false,
   gameModal: null,
   bossModeUnlocked: false,
   bossModeEnabled: false,
@@ -202,7 +277,7 @@ export const useStore = create<Store>((set) => ({
   perkRemainingStages: 0,
   playerSkin: 'beige',
   playerName: '',
-  saves: {},
+  saves: Object.create(null) as SavesMap,
   activeSaveName: null,
   pendingStartMode: null,
   lastStats: null,
@@ -210,6 +285,34 @@ export const useStore = create<Store>((set) => ({
   catchCounter: 0,
   bestStars: {},
   inventory: { ...EMPTY_INVENTORY },
+  crowbarInRange: false,
+  gameMode: 'campaign',
+  dailyDay: null,
+  distanceM: 0,
+  endlessLevel: 1,
+  runSummary: null,
+  playerOutfit: 'classic',
+  setGameMode: (m, day = null) => set({ gameMode: m, dailyDay: m === 'daily' ? day : null }),
+  setDistance: (m, level) =>
+    set((st) => {
+      const d = Math.floor(m);
+      return st.distanceM === d && st.endlessLevel === level ? st : { distanceM: d, endlessLevel: level };
+    }),
+  setRunSummary: (r) => set({ runSummary: r }),
+  setPlayerOutfit: (o) => set((st) => (st.playerOutfit === o ? st : { playerOutfit: o })),
+  dangerLevel: 0,
+  setDangerLevel: (v) =>
+    set((st) => {
+      const q = Math.round(Math.max(0, Math.min(1, v)) * 25) / 25;
+      return st.dangerLevel === q ? st : { dangerLevel: q };
+    }),
+  toast: null,
+  setCrowbarInRange: (b) =>
+    set((st) => (st.crowbarInRange === b ? st : { crowbarInRange: b })),
+  // Ids never repeat (the previous "last id + 1" restarted at 1 after a
+  // toast cleared), so a toast can be tracked by id.
+  showToast: (text, tone = 'info') => set({ toast: { id: ++toastSeq, text, tone } }),
+  clearToast: () => set((st) => (st.toast === null ? st : { toast: null })),
   setRunState: (s) => set({ runState: s }),
   setHearts: (n) => set({ hearts: n }),
   setDetection: (id, v) =>
@@ -217,6 +320,20 @@ export const useStore = create<Store>((set) => ({
       const cur = st.detection[id];
       if (cur === v) return st;
       return { detection: { ...st.detection, [id]: v } };
+    }),
+  setDetections: (values) =>
+    set((st) => {
+      let changed = false;
+      for (const [id, v] of values) {
+        if (st.detection[id] !== v) {
+          changed = true;
+          break;
+        }
+      }
+      if (!changed) return st;
+      const next: Record<number, number> = { ...st.detection };
+      for (const [id, v] of values) next[id] = v;
+      return { detection: next };
     }),
   setStamina: (v) =>
     set((st) => {
@@ -245,10 +362,15 @@ export const useStore = create<Store>((set) => ({
   bumpCatchCounter: () =>
     set((st) => ({ catchCounter: st.catchCounter + 1 })),
   setWeather: (w) => set((st) => (st.weather === w ? st : { weather: w })),
+  setSegmentWeatherEnabled: (v) => set((st) => (st.segmentWeatherEnabled === v ? st : { segmentWeatherEnabled: v })),
+  setHapticsEnabled: (b) =>
+    set((st) => (st.hapticsEnabled === b ? st : { hapticsEnabled: b })),
   setWeatherEnabled: (b) =>
     set((st) => (st.weatherEnabled === b ? st : { weatherEnabled: b })),
+  setTutorialSeen: (b) => set({ tutorialSeen: b }),
   setShowTutorial: (b) =>
     set((st) => (st.showTutorial === b ? st : { showTutorial: b })),
+  setHowToPlay: (v) => set((st) => (st.howToPlay === v ? st : { howToPlay: v })),
   setGameModal: (m) => set({ gameModal: m }),
   setBossModeUnlocked: (b) =>
     set((st) => (st.bossModeUnlocked === b ? st : { bossModeUnlocked: b })),
@@ -256,19 +378,18 @@ export const useStore = create<Store>((set) => ({
     set((st) => (st.bossModeEnabled === b ? st : { bossModeEnabled: b })),
   setBossTimeRemaining: (v) =>
     set((st) => (st.bossTimeRemaining === v ? st : { bossTimeRemaining: v })),
+  // Volume setters: endpoints snap (<= 0.01 -> 0, >= 0.99 -> 1) and
+  // always land, so the 0.005 change dead-band can never leave the
+  // game faintly audible at "0" (audio review E-4).
   setMasterVolume: (v) =>
     set((st) => {
-      const clamped = Math.max(0, Math.min(1, v));
-      return Math.abs(st.masterVolume - clamped) < 0.005
-        ? st
-        : { masterVolume: clamped };
+      const snapped = snapVolume(v);
+      return volumeUnchanged(st.masterVolume, snapped) ? st : { masterVolume: snapped };
     }),
   setMusicVolume: (v) =>
     set((st) => {
-      const clamped = Math.max(0, Math.min(1, v));
-      return Math.abs(st.musicVolume - clamped) < 0.005
-        ? st
-        : { musicVolume: clamped };
+      const snapped = snapVolume(v);
+      return volumeUnchanged(st.musicVolume, snapped) ? st : { musicVolume: snapped };
     }),
   // Beating a boss tops up the perk counter; subsequent boss wins
   // refresh / extend it instead of stacking - one heart of buffer is
@@ -287,17 +408,19 @@ export const useStore = create<Store>((set) => ({
   setPlayerName: (n) =>
     set((st) => (st.playerName === n ? st : { playerName: n })),
   setSaves: (m) => set({ saves: m }),
+  // --- save-map plumbing (own-property safe; see storage.hasOwn) ---
+  // Maps are built with a null prototype so a lookup like
+  // saves['constructor'] can't hit Object.prototype.
   upsertSave: (save) =>
     set((st) => ({
-      saves: {
-        ...st.saves,
+      saves: Object.assign(Object.create(null) as SavesMap, st.saves, {
         [save.name.trim().toLowerCase()]: save,
-      },
+      }),
     })),
   removeSave: (key) =>
     set((st) => {
-      if (!(key in st.saves)) return st;
-      const next: SavesMap = {};
+      if (!Object.prototype.hasOwnProperty.call(st.saves, key)) return st;
+      const next: SavesMap = Object.create(null);
       for (const k of Object.keys(st.saves)) {
         if (k !== key) next[k] = st.saves[k];
       }
@@ -326,7 +449,8 @@ export const useStore = create<Store>((set) => ({
   setInventory: (inv) =>
     set((st) =>
       st.inventory.crowbar === inv.crowbar &&
-      st.inventory.smokebomb === inv.smokebomb
+      st.inventory.smokebomb === inv.smokebomb &&
+      st.inventory.rock === inv.rock
         ? st
         : { inventory: { ...inv } },
     ),
@@ -352,8 +476,15 @@ export const useStore = create<Store>((set) => ({
     set((st) => ({
       restartCounter: st.restartCounter + 1,
       paused: false,
+      // Guard ids are reused when the world is rebuilt; stale meters
+      // would keep the alarm edge lit and seed the new guards.
+      detection: {},
+      alarmLevel: 0,
       lastStats: null,
       lastDeathCause: null,
+      // A restart is a fresh attempt: the world respawns its pickups,
+      // so the bag starts empty (otherwise items farm across restarts).
+      inventory: { ...EMPTY_INVENTORY },
     })),
   resetForSegment: (seed) =>
     set({
@@ -368,13 +499,22 @@ export const useStore = create<Store>((set) => ({
       lastStats: null,
       lastDeathCause: null,
       inventory: { ...EMPTY_INVENTORY },
+      distanceM: 0,
+      endlessLevel: 1,
+      runSummary: null,
     }),
-  startRun: () =>
+  startRun: (opts) =>
     set((st) => ({
       runState: 'playing',
-      // Fresh runs don't inherit a leftover boss perk - the +1
-      // heart buffer is earned per-run inside the gameplay loop.
-      perkRemainingStages: 0,
+      // --- boss-perk persistence ---
+      // A campaign continue resumes the perk stored on the save
+      // (Save.perkStages); anything else starts without one. The
+      // value is checked because startRun is also wired to handlers
+      // that may pass an event object.
+      perkRemainingStages:
+        opts && typeof opts.perkStages === 'number' && Number.isFinite(opts.perkStages)
+          ? Math.max(0, Math.floor(opts.perkStages))
+          : 0,
       hearts: startingHeartsFor(st.stage),
       detection: {},
       stamina: 1,
@@ -385,5 +525,15 @@ export const useStore = create<Store>((set) => ({
       lastStats: null,
       lastDeathCause: null,
       inventory: { ...EMPTY_INVENTORY },
+      distanceM: 0,
+      endlessLevel: 1,
+      runSummary: null,
     })),
 }));
+
+// Level the difficulty rules use: the campaign stage, or in Endless /
+// Daily the distance-driven level. HUD pieces that depend on the rules
+// (hearts, stamina, camera alarm) must read this, not `stage`, which in
+// Endless / Daily still holds the player's campaign progress.
+export const selectRuleLevel = (s: { gameMode: GameMode; stage: number; endlessLevel: number }): number =>
+  s.gameMode === 'campaign' ? s.stage : s.endlessLevel;

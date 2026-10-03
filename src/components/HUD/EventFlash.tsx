@@ -17,7 +17,7 @@ import { useStore } from '../../state/store';
 // once on the runState transition and fades to nothing in ~600ms.
 
 const CAUGHT_COLOR = 'rgba(255, 60, 50, 1)';
-const CLEARED_COLOR = 'rgba(255, 210, 90, 1)';
+const CLEARED_COLOR = 'rgba(255, 209, 74, 1)';
 
 export function EventFlash() {
   const runState = useStore((s) => s.runState);

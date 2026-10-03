@@ -5,12 +5,45 @@
 // (require('./siren.mp3') + bundling). Synthesising in JS avoids
 // that entirely - a ~1.4s WAV at 11025 Hz mono 16-bit PCM is small
 // enough (~30KB base64) to embed inline and produces a recognisable
-// two-tone police siren via a triangle frequency sweep.
+// two-tone siren via a sinusoidal frequency sweep.
+//
+// The buffer loops, so it must close on itself: the sweep spans
+// exactly one period of the buffer, and the oscillator's per-sample
+// phase increment is scaled so the buffer holds a whole number of
+// cycles (otherwise the wrap is a phase jump = a click every loop).
+// Tone: a sine with a soft second harmonic and a lower peak level -
+// less piercing than the bare sine, still clearly a siren.
 
 const SAMPLE_RATE = 11025;
 const DURATION_S = 1.4;
-const FREQ_LOW = 600;
-const FREQ_HIGH = 920;
+const FREQ_LOW = 560;
+const FREQ_HIGH = 860;
+const AMPLITUDE = 13000;
+const HARMONIC_2 = 0.18;
+
+export const SIREN_SAMPLE_RATE = SAMPLE_RATE;
+
+// Raw 16-bit samples of one loop of the siren.
+export function buildSirenPcm(): Int16Array {
+  const n = Math.round(SAMPLE_RATE * DURATION_S);
+  const freqAt = (i: number) => {
+    const sweep = Math.sin((i / n) * 2 * Math.PI);
+    return (FREQ_LOW + FREQ_HIGH) / 2 + (sweep * (FREQ_HIGH - FREQ_LOW)) / 2;
+  };
+  // Total cycles over one loop, then the correction that makes it whole.
+  let cycles = 0;
+  for (let i = 0; i < n; i++) cycles += freqAt(i) / SAMPLE_RATE;
+  const k = Math.round(cycles) / cycles;
+  const peak = 1 + HARMONIC_2;
+  const out = new Int16Array(n);
+  let phase = 0;
+  for (let i = 0; i < n; i++) {
+    const v = Math.sin(phase) + HARMONIC_2 * Math.sin(2 * phase);
+    out[i] = Math.round((v / peak) * AMPLITUDE);
+    phase += (2 * Math.PI * freqAt(i) * k) / SAMPLE_RATE;
+  }
+  return out;
+}
 
 const B64_CHARS =
   'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -56,7 +89,8 @@ let cachedUri: string | null = null;
 export function getSirenDataUri(): string {
   if (cachedUri) return cachedUri;
 
-  const numSamples = Math.floor(SAMPLE_RATE * DURATION_S);
+  const pcm = buildSirenPcm();
+  const numSamples = pcm.length;
   const dataSize = numSamples * 2;
   const buf = new ArrayBuffer(44 + dataSize);
   const view = new DataView(buf);
@@ -74,18 +108,7 @@ export function getSirenDataUri(): string {
   view.setUint16(34, 16, true);
   writeAscii(view, 36, 'data');
   view.setUint32(40, dataSize, true);
-
-  // Two-tone siren via a sinusoidal frequency sweep. Phase tracked
-  // continuously so there are no clicks at frequency changes.
-  let phase = 0;
-  for (let i = 0; i < numSamples; i++) {
-    const t = i / SAMPLE_RATE;
-    const sweep = Math.sin((t / DURATION_S) * 2 * Math.PI);
-    const freq = (FREQ_LOW + FREQ_HIGH) / 2 + sweep * (FREQ_HIGH - FREQ_LOW) / 2;
-    phase += (2 * Math.PI * freq) / SAMPLE_RATE;
-    const sample = Math.sin(phase) * 18000;
-    view.setInt16(44 + i * 2, sample, true);
-  }
+  for (let i = 0; i < numSamples; i++) view.setInt16(44 + i * 2, pcm[i], true);
 
   cachedUri = 'data:audio/wav;base64,' + bytesToBase64(new Uint8Array(buf));
   return cachedUri;

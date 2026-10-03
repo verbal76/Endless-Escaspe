@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/Text';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -9,8 +10,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useStore } from '../../state/store';
+import { selectRuleLevel, useStore } from '../../state/store';
 import { cameraCountFor } from '../../scenes/Camera';
+import { type as T } from '../../ui/theme';
 
 // Top-of-screen yard-alarm bar fed by the segment's security
 // cameras. Filling the bar summons an extra patrol; staying out of
@@ -22,8 +24,11 @@ import { cameraCountFor } from '../../scenes/Camera';
 
 export function AlarmBar() {
   const alarmLevel = useStore((s) => s.alarmLevel);
-  const stage = useStore((s) => s.stage);
+  const stage = useStore(selectRuleLevel);
   const runState = useStore((s) => s.runState);
+  // Endless / Daily: the distance readout owns the top-centre slot
+  // (y 10-60), so the alarm bar sits below it.
+  const endless = useStore((s) => s.gameMode !== 'campaign');
   const insets = useSafeAreaInsets();
 
   const pct = Math.max(0, Math.min(1, alarmLevel));
@@ -55,7 +60,7 @@ export function AlarmBar() {
 
   return (
     <Animated.View
-      style={[styles.wrap, { top: Math.max(32, insets.top + 16) }, wrapStyle]}
+      style={[styles.wrap, { top: endless ? Math.max(66, insets.top + 50) : Math.max(32, insets.top + 16) }, wrapStyle]}
       pointerEvents="none"
     >
       <Text style={[styles.label, isHigh && styles.labelHot]}>YARD ALARM</Text>
@@ -82,7 +87,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: 'rgba(255, 200, 200, 0.85)',
-    fontSize: 10,
+    fontSize: T.caption,
     fontWeight: '900',
     letterSpacing: 2,
     marginBottom: 3,

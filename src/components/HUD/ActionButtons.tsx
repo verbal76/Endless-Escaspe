@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { FixedText as Text } from '../../ui/Text';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -11,6 +12,8 @@ import Animated, {
 import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
 import type { Stance } from '../../types/world';
+import { hud, type as T } from '../../ui/theme';
+import { BTN_GAP, BTN_H, BTN_W, CLUSTER_RIGHT, STANCE_BOTTOM } from '../../ui/hudLayout';
 
 // Stance picker only. RUN is its own component (RunButton) sitting
 // near the joystick on the left side of the screen.
@@ -109,29 +112,30 @@ const styles = StyleSheet.create({
     // Shifted left half a button width (right:24 -> 63) plus pushed
     // up to bottom:100 to make room for the look-arrow row that
     // sits directly underneath the stack at bottom:30.
-    right: 63,
-    bottom: 100,
+    right: CLUSTER_RIGHT,
+    bottom: STANCE_BOTTOM,
     flexDirection: 'column',
-    gap: 8,
+    gap: BTN_GAP,
   },
   btn: {
-    width: 78,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.10)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.20)',
+    width: BTN_W,
+    height: BTN_H,
+    borderRadius: BTN_H / 2,
+    backgroundColor: hud.fill,
+    borderWidth: hud.ringWidth,
+    borderColor: hud.ring,
     alignItems: 'center',
     justifyContent: 'center',
   },
   btnActive: {
-    backgroundColor: 'rgba(255,210,90,0.35)',
-    borderColor: 'rgba(255,210,90,0.65)',
+    backgroundColor: hud.goldFill,
+    borderColor: hud.goldRing,
   },
   label: {
-    color: 'rgba(255,255,255,0.92)',
-    fontWeight: '700',
+    color: hud.label,
+    ...hud.textShadow,
+    fontWeight: '800',
     letterSpacing: 0.5,
-    fontSize: 13,
+    fontSize: T.small,
   },
 });

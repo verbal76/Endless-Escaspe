@@ -1,66 +1,188 @@
 import * as THREE from 'three';
 import { Asset } from 'expo-asset';
+import { requireOptionalNativeModule } from 'expo-modules-core';
+import { Platform } from 'react-native';
+// @ts-expect-error - plain JS module without type declarations
+import { getAssetByID } from '@react-native/assets-registry/registry';
+import { logDebug } from './debug';
+import { base64ToBytes, decodePng } from './png';
+import { TEXTURE_PNG_BASE64 } from './textureData';
+import {
+  resolveTextureSource,
+  type AssetLike,
+  type PackagerMeta,
+  type TextureSourceDeps,
+  type TextureSourceResult,
+} from './textureSource';
 
-// Async texture loader for the expo-gl + bare three.js stack. React
-// Native has no DOM Image, so three's TextureLoader.load() can't be
-// used directly. Instead we build a bare THREE.Texture whose `image`
-// is an asset-shaped object (uri / localUri / width / height /
-// downloadAsync). expo-gl's overridden gl.texImage2D recognises that
-// shape and uploads the pixel data natively - see the comment in
-// node_modules/expo-gl/build/GLView.web.js getImageForAsset for the
-// runtime hook.
+// Texture loader for the expo-gl + bare three.js stack.
 //
-// All textures we ship are loaded once at app startup (preloadAll
-// below); subsequent get*() calls return the cached Texture so figure
-// / vehicle factories can resolve synchronously during scene rebuild.
+// Primary path: the texture PNGs are embedded in the JS bundle
+// (textureData.ts, generated from assets/ by
+// scripts/gen-texture-probes.mjs), decoded in JS (png.ts) and uploaded
+// as raw RGBA DataTextures. That path uses no native asset code at all.
+//
+// Why: in the GitHub-built release APKs, expo-audio's `expo-asset: "*"`
+// peer dependency pulled in expo-asset 55.x (an SDK 55 package) at the
+// top of node_modules, and autolinking compiled that native module
+// against SDK 54's expo-modules-core. Every native
+// ExpoAsset.downloadAsync then threw NoSuchMethodError
+// (AppContext.getFilePermission), so no image file could be resolved and
+// every textured model fell back to its flat colour. The embedded path
+// works on every installed APK regardless of the native asset module.
+//
+// Fallback path (only if decoding ever fails): resolve the image file
+// through expo-asset (textureSource.ts) and let expo-gl's texImage2D
+// read it from its file:// localUri.
+//
+// All textures are loaded once at app startup (preloadAllTextures);
+// get*() calls then return the cached Texture so figure / vehicle
+// factories can resolve synchronously during scene rebuild.
 
 type Cache = Record<string, THREE.Texture | null>;
 const CACHE: Cache = {};
+
+export type TextureStatus = {
+  total: number;
+  loaded: number;
+  // key -> how it loaded (route) or why it didn't (all errors).
+  details: Record<string, string>;
+};
+const STATUS: TextureStatus = { total: 0, loaded: 0, details: {} };
+
+// Snapshot for Settings > Build / Update Info and bug reports.
+export function getTextureStatus(): TextureStatus {
+  return { total: STATUS.total, loaded: STATUS.loaded, details: { ...STATUS.details } };
+}
+
+const ExpoAssetNative = requireOptionalNativeModule<{
+  downloadAsync(uri: string, hash: string | null, type: string): Promise<string>;
+}>('ExpoAsset');
+
+const DEPS: TextureSourceDeps = {
+  platform: Platform.OS,
+  fromModule: (id) => Asset.fromModule(id) as unknown as AssetLike,
+  nativeDownload: ExpoAssetNative ? (uri, hash, type) => ExpoAssetNative.downloadAsync(uri, hash, type) : null,
+  getMeta: (id) => getAssetByID(id) as PackagerMeta | undefined,
+};
+
+// Sampling settings shared by both load paths.
+function configure(tex: THREE.Texture, key: string): THREE.Texture {
+  // Survives .clone() (Texture.copy copies userData), so the render
+  // audit can match any texture back to its source PNG.
+  tex.userData.textureKey = key;
+  // flipY on: the first (top) PNG row lands in the last GL row, which
+  // is how the Kenney OBJ UVs expect the palette / sheet to sit (an
+  // earlier flipY=false made police bodies sample brown, lights green).
+  // Applies to raw pixel uploads as well as image uploads.
+  tex.flipY = true;
+  // The PNGs hold sRGB colour. Without this three treated them as
+  // linear and gamma-encoded them again on output, which washed every
+  // texture out (chalky props, beige prisoner, grey-green ground).
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.needsUpdate = true;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  // Nearest-neighbour keeps the palette colours crisp (linear blends
+  // sample neighbouring cells, producing muddy intermediates on small
+  // palette atlases like colormap.png).
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  return tex;
+}
+
+function textureFromEmbeddedPng(key: string): THREE.DataTexture | null {
+  const b64 = TEXTURE_PNG_BASE64[key];
+  if (!b64) return null;
+  const png = decodePng(base64ToBytes(b64));
+  const tex = new THREE.DataTexture(png.rgba, png.width, png.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+  releasePixelsAfterUpload(tex, png.rgba, png.width, png.height, () => decodePng(base64ToBytes(b64)).rgba);
+  return configure(tex, key) as THREE.DataTexture;
+}
+
+// The decoded RGBA (13 MiB for all sheets) is only needed while the GL
+// texture is being created; texImage2D copies it. Drop the JS copy once
+// the texture is uploaded, and decode it again on demand if a texture
+// sharing this image is ever uploaded again (a clone with different
+// sampling, or a new GL context / renderer after the surface was
+// re-created) - three reads image.data only at upload time.
+export function releasePixelsAfterUpload(
+  tex: THREE.DataTexture,
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  redecode: () => Uint8Array,
+) {
+  let data: Uint8Array | null = pixels;
+  tex.image = {
+    width,
+    height,
+    get data(): Uint8Array {
+      if (!data) data = redecode();
+      return data;
+    },
+    set data(v: Uint8Array) {
+      data = v;
+    },
+  } as unknown as typeof tex.image;
+  tex.onUpdate = () => {
+    data = null;
+  };
+}
 
 async function loadAssetTexture(
   key: string,
   module: number,
 ): Promise<THREE.Texture | null> {
   if (CACHE[key]) return CACHE[key];
+  STATUS.total += 1;
+  const errors: string[] = [];
   try {
-    const asset = Asset.fromModule(module);
-    await asset.downloadAsync();
-    const tex = new THREE.Texture();
-    // Asset shape that expo-gl's texImage2D wrapper expects: when
-    // `downloadAsync` is present on the image object, the wrapper
-    // pulls localUri/uri off it and forwards to the native upload.
-    tex.image = {
-      width: asset.width ?? 1,
-      height: asset.height ?? 1,
-      uri: asset.uri,
-      localUri: asset.localUri ?? undefined,
-      downloadAsync: async () => {
-        // already downloaded; no-op so the wrapper's truthiness
-        // check still passes.
-      },
-    } as unknown as HTMLImageElement;
-    // Leave flipY at its three.js default (true). expo-gl's native
-    // texImage2D path uploads the PNG already oriented for GL's
-    // bottom-up V, so our earlier flipY=false produced a double-no-
-    // flip and Kenney OBJ UVs landed on the wrong row of the palette
-    // (police body sampling brown, lights sampling green, etc.). With
-    // the default, V=0 sits at the bottom of the source PNG and the
-    // OBJ UVs index the cells the kit author intended.
-    tex.needsUpdate = true;
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    // Nearest-neighbour minification keeps the palette colours crisp
-    // (linear blends sample neighbouring cells, producing muddy
-    // intermediates on small palette atlases like colormap.png).
-    tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
-    tex.generateMipmaps = false;
-    CACHE[key] = tex;
-    return tex;
-  } catch {
+    const tex = textureFromEmbeddedPng(key);
+    if (tex) {
+      STATUS.loaded += 1;
+      STATUS.details[key] = `embedded ${tex.image.width}x${tex.image.height}`;
+      CACHE[key] = tex;
+      return tex;
+    }
+    errors.push('embedded: no data for this key');
+  } catch (e) {
+    errors.push(`embedded: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  let result: TextureSourceResult;
+  try {
+    result = await resolveTextureSource(module, DEPS);
+  } catch (e) {
+    result = { ok: false, errors: [e instanceof Error ? e.message : String(e)] };
+  }
+  if (!result.ok) {
+    STATUS.details[key] = `FAILED: ${[...errors, ...result.errors].join('; ')}`;
+    logDebug('warn', `[textures] ${key} ${STATUS.details[key]}`);
     CACHE[key] = null;
     return null;
   }
+  const src = result.source;
+  STATUS.loaded += 1;
+  STATUS.details[key] = src.route;
+  logDebug('log', `[textures] ${key} via ${src.route} after: ${[...errors, ...result.errors].join('; ')}`);
+  const tex = new THREE.Texture();
+  // Asset shape that expo-gl's texImage2D wrapper expects: when
+  // `downloadAsync` is present on the image object, the wrapper
+  // pulls localUri off it (it must be a file:// path on native) and
+  // forwards to the native upload.
+  tex.image = {
+    width: src.width,
+    height: src.height,
+    uri: src.uri,
+    localUri: src.localUri,
+    downloadAsync: async () => {
+      // already resolved; no-op so the wrapper's truthiness check
+      // still passes.
+    },
+  } as unknown as HTMLImageElement;
+  CACHE[key] = configure(tex, key);
+  return tex;
 }
 
 // Pre-load every texture the game might need before the GLView
@@ -108,9 +230,10 @@ export function getVehicleColormap(): THREE.Texture | null {
 
 // Prop texture lookup keyed by the MTL `newmtl` name from each
 // Kenney prop OBJ. Returns null if the texture wasn't preloaded
-// (caller falls back to a solid colour). All eight MTL names are
-// covered now; dirt is filled by the rock texture as a stand-in
-// because the Kenney atlas didn't ship a dirt PNG.
+// (caller falls back to a solid colour). Covers wall, wall_metal,
+// concrete, signs, roof and dirt (assets/props/dirt.png); grass goes
+// through getGrassTexture, and the tree materials (leafsDark,
+// woodBarkDark) use solid colours.
 export function getPropTexture(materialName: string): THREE.Texture | null {
   switch (materialName) {
     case 'wall':

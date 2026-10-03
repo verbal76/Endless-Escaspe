@@ -1,7 +1,10 @@
 import type { Guard, Obstacle, Player } from '../types/world';
 import { dist2Sq } from '../util/math';
-import { circleHit } from '../util/collision';
+import { clearLine } from '../util/collision';
 import { PLAY_HALF_W } from '../util/geometry';
+import { simRandom } from '../util/rng';
+import type { NavGrid } from './NavGrid';
+import { navigateToward, resetNavState } from './Navigator';
 
 // Guards no longer follow a fixed waypoint loop. Each one wanders a
 // home zone, reacts to player noise / line-of-sight, escalates
@@ -47,82 +50,168 @@ const INVESTIGATE_TIMEOUT_S = 21;
 const RETURN_HOME_RADIUS = 1.5;
 
 const FIRE_COOLDOWN_S = 1.3;
-const GUARD_COLLISION_R = 0.6;
+// Movement collision radius against props. Slightly under the nav
+// grid's clearance (NAV_INFLATE) so planned paths are always
+// physically followable.
+const GUARD_COLLISION_R = 0.5;
 
 // Detection thresholds drive transitions.
 const TH_ALERT = 0.18;     // even small noise triggers a pause + scan
 const TH_INVESTIGATE = 0.40;
 const TH_CHASE = 1.0;
 const TH_LOSE = 0.50;      // if detection drops below 50%, fall back to investigate
-// Standalone fire threshold: any guard with detection above this
-// shoots, regardless of which AI state they're in. Lets the guard
-// open fire while the meter is sustained "red" without requiring
-// it to peg the chase trigger - in practice the per-frame rate
-// scale at low stages can leave the meter sitting at ~0.9 for
-// seconds without ever hitting the chase 1.0 ceiling.
-const TH_FIRE = 0.85;
+// Fire threshold. A guard only opens fire with the meter at or above
+// this AND a clear look at the player AND a bullet line that isn't
+// blocked by a prop - and only after the AIM_TIME_S telegraph.
+export const TH_FIRE = 0.85;
+// Visible wind-up before every shot: the guard plants their feet and
+// a laser sight tracks the player. Breaking line of sight during the
+// wind-up cancels the shot.
+export const AIM_TIME_S = 0.7;
+// Bullets fly at chest height; anything this tall stops them.
+export const BULLET_BLOCK_HEIGHT = 0.8;
+// Tier 2+: after losing sight, turn to the last-seen spot and sweep
+// the view for this long before moving to search it.
+const LOOK_SCAN_S = 1.6;
+const LOOK_SWEEP_RAD = (35 * Math.PI) / 180;
+// Noise gives a rough bearing, not a GPS fix: heard positions carry
+// an error proportional to distance and are refreshed at most this
+// often.
+const HEAR_REFRESH_S = 0.8;
+const HEAR_ERROR_FRAC = 0.25;
 
 export type GuardFireFn = (g: Guard, targetX: number, targetZ: number) => void;
 
-function rngTarget(g: Guard): { x: number; z: number } {
-  const angle = Math.random() * Math.PI * 2;
-  const r = Math.random() * g.homeRadius;
+// What the guard perceived this frame (from DetectionSystem) plus the
+// stage's AI tier.
+export type GuardSenses = {
+  visual: boolean;
+  heard: boolean;
+  aiTier: number;
+  // An external feed (floodlight on the player, searchlight jolt, the
+  // handler's dog smelling the player) raised this guard's meter this
+  // frame. Like noise it gives a rough fix on the player's position,
+  // so the guard has somewhere to search instead of freezing.
+  external?: boolean;
+};
+
+const NO_SENSES: GuardSenses = { visual: false, heard: false, aiTier: 1, external: false };
+
+function rngTarget(g: Guard, grid: NavGrid | null): { x: number; z: number } {
+  const angle = simRandom() * Math.PI * 2;
+  const r = simRandom() * g.homeRadius;
   // Stay inside playfield even if homeRadius nudges outside.
-  const x = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, g.homeX + Math.cos(angle) * r));
-  const z = Math.max(2, Math.min(g.homeZ + g.homeRadius, g.homeZ + Math.sin(angle) * r));
+  let x = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, g.homeX + Math.cos(angle) * r));
+  let z = Math.max(2, Math.min(g.homeZ + g.homeRadius, g.homeZ + Math.sin(angle) * r));
+  // Never aim at a spot inside a prop - the guard would grind
+  // against it until the retarget timer fired.
+  if (grid) {
+    const cell = grid.nearestFree(x, z, 8);
+    if (cell) {
+      x = grid.colX(cell.col);
+      z = grid.rowZ(cell.row);
+    }
+  }
   return { x, z };
 }
 
+// Pathfinding move (A* over the guard nav grid with real-footprint
+// collision). Returns false when the guard is genuinely stuck so the
+// state machine can choose a new goal instead of standing still.
 function moveToward(
   g: Guard,
   tx: number,
   tz: number,
   speed: number,
   obstacles: readonly Obstacle[],
+  grid: NavGrid | null,
   dt: number,
-) {
-  const dx = tx - g.x;
-  const dz = tz - g.z;
-  const d = Math.hypot(dx, dz);
-  if (d < 0.001) return;
-  let nx = g.x + (dx / d) * speed * dt;
-  let nz = g.z + (dz / d) * speed * dt;
-  // Simple obstacle steering: if the desired next pos collides, try
-  // a perpendicular sidestep. Good enough to keep guards from
-  // chronically jamming into a crate; not full pathfinding.
-  const blockedFwd = obstacles.some((o) =>
-    circleHit({ x: nx, z: nz, r: GUARD_COLLISION_R }, { x: o.x, z: o.z, r: o.r }),
-  );
-  if (blockedFwd) {
-    const px = g.x + (-dz / d) * speed * dt;
-    const pz = g.z + (dx / d) * speed * dt;
-    const blockedSide = obstacles.some((o) =>
-      circleHit({ x: px, z: pz, r: GUARD_COLLISION_R }, { x: o.x, z: o.z, r: o.r }),
-    );
-    if (!blockedSide) {
-      nx = px;
-      nz = pz;
-    } else {
-      // Both directions blocked: stand still this frame.
-      nx = g.x;
-      nz = g.z;
-    }
-  }
-  g.x = nx;
-  g.z = nz;
-  g.facing = Math.atan2(dz, dx);
+  repathEvery?: number,
+): boolean {
+  return navigateToward(g, tx, tz, speed, dt, grid, obstacles, {
+    radius: GUARD_COLLISION_R,
+    repathEvery,
+  });
 }
 
-function setState(g: Guard, next: Guard['state'], player?: Player) {
+function pickSearchPoint(g: Guard, grid: NavGrid | null, cx: number, cz: number) {
+  const angle = simRandom() * Math.PI * 2;
+  const r = (0.4 + simRandom() * 0.6) * SEARCH_RADIUS;
+  let sx = Math.max(-PLAY_HALF_W + 1, Math.min(PLAY_HALF_W - 1, cx + Math.cos(angle) * r));
+  let sz = Math.max(2, cz + Math.sin(angle) * r);
+  if (grid) {
+    const cell = grid.nearestFree(sx, sz, 8);
+    if (cell) {
+      sx = grid.colX(cell.col);
+      sz = grid.rowZ(cell.row);
+    }
+  }
+  g.investigationTarget = { x: sx, z: sz };
+}
+
+function setState(g: Guard, next: Guard['state'], target?: { x: number; z: number } | null) {
+  // Invariant: 'investigate' always has a goal. Without a target (no
+  // sighting, no noise fix) a guard would stand frozen until the
+  // timeout, so a goal-less request is refused: a wandering guard
+  // keeps wandering, anyone else heads home.
+  if (next === 'investigate' && !target && !g.investigationTarget) {
+    if (g.state === 'wander' || g.state === 'return') return;
+    next = 'return';
+  }
   if (g.state === next) return;
   g.state = next;
   g.behaviorTimer = 0;
-  if (next === 'investigate' && player) {
-    g.investigationTarget = { x: player.x, z: player.z };
+  if (next === 'investigate' && target) {
+    g.investigationTarget = { x: target.x, z: target.z };
   }
   if (next === 'wander' || next === 'return') {
     g.investigationTarget = null;
   }
+  g.aimTimer = 0;
+  resetNavState(g.nav);
+}
+
+// Where the guard believes the player is: the live position while in
+// sight, otherwise the NEWER of the last sighting and the last noise
+// fix. (Always preferring an old sighting made a guard that had once
+// seen the player ignore every later rock, noise or radio call-out and
+// walk back to that old spot.)
+export function belief(g: Guard): { x: number; z: number } | null {
+  if (g.lastSeen && g.lastHeard) return g.sinceHeard < g.sinceSeen ? g.lastHeard : g.lastSeen;
+  return g.lastSeen ?? g.lastHeard;
+}
+
+// External noise event at a point (thrown distraction, alarm). The
+// guard's attention goes to the *source* of the sound.
+export function hearNoiseAt(g: Guard, x: number, z: number) {
+  if (g.stunTimer > 0) return;
+  g.lastHeard = { x, z };
+  g.sinceHeard = 0;
+  g.hearTimer = HEAR_REFRESH_S;
+  if (g.state !== 'chase') {
+    g.investigationTarget = { x, z };
+    if (g.state === 'wander' || g.state === 'return' || g.state === 'alert') {
+      setState(g, 'investigate', { x, z });
+    } else {
+      // Already investigating: a new cue (rock, radio call-out) is a
+      // new lead, so the search clock restarts for it instead of the
+      // guard dropping the fresh spot a second later on the old
+      // investigation's timeout.
+      g.behaviorTimer = 0;
+      resetNavState(g.nav);
+    }
+  }
+}
+
+// Wipe perception memory (segment reset, soft respawn).
+export function resetGuardMemory(g: Guard) {
+  g.lastSeen = null;
+  g.lastHeard = null;
+  g.sinceSeen = 999;
+  g.sinceHeard = 999;
+  g.hearTimer = 0;
+  g.lookTimer = 0;
+  g.aimTimer = 0;
 }
 
 export function updateGuard(
@@ -132,6 +221,8 @@ export function updateGuard(
   dt: number,
   obstacles: readonly Obstacle[],
   onFire?: GuardFireFn,
+  grid: NavGrid | null = null,
+  senses: GuardSenses = NO_SENSES,
 ) {
   // Crowbar stun: the guard freezes in place, no AI tick, no firing.
   // We still drain the cooldown timers and the stun itself so the
@@ -139,91 +230,142 @@ export function updateGuard(
   if (g.stunTimer > 0) {
     g.stunTimer = Math.max(0, g.stunTimer - dt);
     g.fireCooldown = Math.max(0, g.fireCooldown - dt);
+    g.aimTimer = 0;
     return;
   }
 
   g.behaviorTimer += dt;
   g.wanderTimer += dt;
   g.fireCooldown = Math.max(0, g.fireCooldown - dt);
+  g.hearTimer = Math.max(0, g.hearTimer - dt);
+  g.sinceHeard += dt;
 
-  // Standalone fire path: any guard with sustained high detection
-  // shoots, regardless of AI state. Decoupled from the chase case
-  // so the meter doesn't have to peg at exactly 1.0 (TH_CHASE) for
-  // shots to start - sitting at "red" (~0.85+) is enough.
-  if (detection >= TH_FIRE && g.fireCooldown <= 0 && onFire) {
-    onFire(g, p.x, p.z);
-    g.fireCooldown = FIRE_COOLDOWN_S;
+  // ---- Perception memory -------------------------------------------
+  const wasSeeing = g.sinceSeen === 0;
+  if (senses.visual) {
+    g.lastSeen = { x: p.x, z: p.z };
+    g.sinceSeen = 0;
+    g.lookTimer = 0;
+  } else {
+    g.sinceSeen += dt;
+    // Tier 2+: the moment sight is lost, turn toward the last-seen
+    // spot and scan before committing to a search.
+    if (wasSeeing && senses.aiTier >= 2 && g.lastSeen && g.state !== 'wander') {
+      g.lookTimer = LOOK_SCAN_S;
+      g.lookBase = Math.atan2(g.lastSeen.z - g.z, g.lastSeen.x - g.x);
+    }
+    if ((senses.heard || senses.external) && g.hearTimer <= 0) {
+      const d = Math.hypot(p.x - g.x, p.z - g.z);
+      const err = d * HEAR_ERROR_FRAC;
+      const a = simRandom() * Math.PI * 2;
+      g.lastHeard = { x: p.x + Math.cos(a) * err * simRandom(), z: p.z + Math.sin(a) * err * simRandom() };
+      g.sinceHeard = 0;
+      g.hearTimer = HEAR_REFRESH_S;
+    }
+  }
+  const believed = senses.visual ? { x: p.x, z: p.z } : belief(g);
+
+  // ---- Shooting (telegraphed, line of sight only) -------------------
+  const canShoot =
+    !!onFire &&
+    senses.visual &&
+    detection >= TH_FIRE &&
+    g.fireCooldown <= 0 &&
+    clearLine(obstacles, g.x, g.z, p.x, p.z, BULLET_BLOCK_HEIGHT);
+  if (canShoot) {
+    g.aimTimer += dt;
+    g.facing = Math.atan2(p.z - g.z, p.x - g.x);
+    if (g.aimTimer >= AIM_TIME_S) {
+      (onFire as GuardFireFn)(g, p.x, p.z);
+      g.fireCooldown = FIRE_COOLDOWN_S;
+      g.aimTimer = 0;
+    }
+  } else {
+    g.aimTimer = 0;
   }
 
-  // Fresh stimulus while not chasing keeps the investigation target current.
-  if (detection >= TH_INVESTIGATE && g.state !== 'chase') {
-    g.investigationTarget = { x: p.x, z: p.z };
+  // Fresh stimulus while not chasing keeps the investigation target
+  // on what the guard actually perceives.
+  if (detection >= TH_INVESTIGATE && g.state !== 'chase' && believed) {
+    g.investigationTarget = { x: believed.x, z: believed.z };
   }
 
-  // State transitions from detection level.
-  if (detection >= TH_CHASE) {
-    setState(g, 'chase', p);
+  // State transitions from detection level. Chase needs eyes on.
+  if (detection >= TH_CHASE && (senses.visual || g.state === 'chase')) {
+    setState(g, 'chase');
   } else if (g.state === 'chase' && detection < TH_LOSE) {
-    setState(g, 'investigate', p);
+    setState(g, 'investigate', believed);
   } else if (g.state !== 'chase' && g.state !== 'investigate' && detection >= TH_INVESTIGATE) {
-    setState(g, 'investigate', p);
-  } else if (g.state === 'wander' && detection >= TH_ALERT) {
-    setState(g, 'alert', p);
-    g.investigationTarget = { x: p.x, z: p.z };
+    setState(g, 'investigate', believed);
+  } else if (g.state === 'wander' && detection >= TH_ALERT && believed) {
+    setState(g, 'alert');
+    g.investigationTarget = { x: believed.x, z: believed.z };
+  }
+
+  // Wind-up: feet planted while aiming.
+  if (g.aimTimer > 0) return;
+
+  // Tier 2 look-and-scan after losing sight.
+  if (g.lookTimer > 0 && !senses.visual) {
+    g.lookTimer = Math.max(0, g.lookTimer - dt);
+    const phase = 1 - g.lookTimer / LOOK_SCAN_S;
+    g.facing = g.lookBase + Math.sin(phase * Math.PI * 2) * LOOK_SWEEP_RAD;
+    return;
   }
 
   // Behaviour-specific updates and time-outs.
   switch (g.state) {
     case 'alert': {
       // Trail toward the suspected source at a slow walk while the
-      // alert pause ticks down. The prior "stand still" tuning let
-      // the player walk freely away during the 1.6 s pause; trailing
-      // means the guard at least starts closing distance the moment
-      // they notice anything. After the pause ALWAYS commit to
-      // investigate (rather than only when detection is currently
-      // >= TH_INVESTIGATE) - the investigate-state timeout handles
-      // returning home if the trail goes cold. Without this the
-      // guard would bail back to wander if the player broke LOS for
-      // even a moment after being spotted.
+      // alert pause ticks down, then always commit to investigating;
+      // the investigate timeout handles giving up.
       if (g.investigationTarget) {
-        moveToward(
+        const ok = moveToward(
           g,
           g.investigationTarget.x,
           g.investigationTarget.z,
           SPEED_ALERT_TRAIL,
           obstacles,
+          grid,
           dt,
         );
+        // Blocked trail: skip straight to investigating (which
+        // re-targets around the blockage) rather than freezing.
+        if (!ok) g.behaviorTimer = ALERT_PAUSE_S;
       }
       if (g.behaviorTimer >= ALERT_PAUSE_S) {
-        setState(g, 'investigate', p);
+        // setState refuses a goal-less investigate (-> return).
+        setState(g, 'investigate', g.investigationTarget ?? believed);
       }
       break;
     }
     case 'investigate': {
-      if (g.investigationTarget) {
-        moveToward(g, g.investigationTarget.x, g.investigationTarget.z, SPEED_INVESTIGATE, obstacles, dt);
+      if (!g.investigationTarget) {
+        // Defensive: nothing to search (the invariant in setState
+        // should make this unreachable). Never stand frozen.
+        setState(g, 'return');
+        break;
+      }
+      {
+        const ok = moveToward(
+          g,
+          g.investigationTarget.x,
+          g.investigationTarget.z,
+          SPEED_INVESTIGATE,
+          obstacles,
+          grid,
+          dt,
+        );
         const arrived =
           dist2Sq(g.x, g.z, g.investigationTarget.x, g.investigationTarget.z) <= ARRIVE_EPS_SQ;
-        if (arrived) {
-          // Reached the spot - now SWEEP the area instead of bailing
-          // home. Pick a new search target within SEARCH_RADIUS of
-          // the last known position; the guard will walk to that,
-          // arrive, and pick another, repeating until the investigate
-          // timeout fires. This triples the ground covered after a
-          // sighting so the player can't just step around a corner
-          // and have the guard immediately forget them.
-          const angle = Math.random() * Math.PI * 2;
-          const r = (0.4 + Math.random() * 0.6) * SEARCH_RADIUS;
-          const sx = Math.max(
-            -PLAY_HALF_W + 1,
-            Math.min(
-              PLAY_HALF_W - 1,
-              g.investigationTarget.x + Math.cos(angle) * r,
-            ),
-          );
-          const sz = Math.max(2, g.investigationTarget.z + Math.sin(angle) * r);
-          g.investigationTarget = { x: sx, z: sz };
+        if (arrived || !ok) {
+          // Reached the spot (or can't get there) - SWEEP the area
+          // instead of bailing home. Pick a new search target within
+          // SEARCH_RADIUS of the last known position; the guard walks
+          // to it, arrives, and picks another, repeating until the
+          // investigate timeout fires.
+          pickSearchPoint(g, grid, g.investigationTarget.x, g.investigationTarget.z);
+          resetNavState(g.nav);
         }
       }
       if (g.behaviorTimer >= INVESTIGATE_TIMEOUT_S && detection < TH_INVESTIGATE) {
@@ -232,18 +374,30 @@ export function updateGuard(
       break;
     }
     case 'chase': {
-      moveToward(g, p.x, p.z, SPEED_CHASE, obstacles, dt);
+      // Pursue the player while in sight; once sight is lost, run to
+      // the last sighting - the guard does NOT know where the player
+      // went. Arriving there blind drops to a search.
+      if (senses.visual) {
+        moveToward(g, p.x, p.z, SPEED_CHASE, obstacles, grid, dt, 0.4);
+      } else if (g.lastSeen) {
+        moveToward(g, g.lastSeen.x, g.lastSeen.z, SPEED_CHASE, obstacles, grid, dt, 0.4);
+        if (dist2Sq(g.x, g.z, g.lastSeen.x, g.lastSeen.z) <= 1.0 || g.sinceSeen > 4) {
+          setState(g, 'investigate', g.lastSeen);
+        }
+      } else {
+        setState(g, 'investigate', believed);
+      }
       // Firing is now handled by the standalone TH_FIRE block at the
       // top of this function so chase / non-chase guards can both
       // shoot. Keep the move-fast behaviour here.
       break;
     }
     case 'return': {
-      moveToward(g, g.homeX, g.homeZ, SPEED_RETURN, obstacles, dt);
+      const ok = moveToward(g, g.homeX, g.homeZ, SPEED_RETURN, obstacles, grid, dt);
       const home = dist2Sq(g.x, g.z, g.homeX, g.homeZ);
-      if (home <= RETURN_HOME_RADIUS * RETURN_HOME_RADIUS) {
+      if (!ok || home <= RETURN_HOME_RADIUS * RETURN_HOME_RADIUS) {
         setState(g, 'wander');
-        g.wanderTarget = rngTarget(g);
+        g.wanderTarget = rngTarget(g, grid);
         g.wanderTimer = 0;
       }
       break;
@@ -252,10 +406,15 @@ export function updateGuard(
     default: {
       const arrived = dist2Sq(g.x, g.z, g.wanderTarget.x, g.wanderTarget.z) <= ARRIVE_EPS_SQ;
       if (arrived || g.wanderTimer >= WANDER_RETARGET_S) {
-        g.wanderTarget = rngTarget(g);
+        g.wanderTarget = rngTarget(g, grid);
         g.wanderTimer = 0;
       }
-      moveToward(g, g.wanderTarget.x, g.wanderTarget.z, SPEED_WANDER, obstacles, dt);
+      const ok = moveToward(g, g.wanderTarget.x, g.wanderTarget.z, SPEED_WANDER, obstacles, grid, dt);
+      if (!ok) {
+        g.wanderTarget = rngTarget(g, grid);
+        g.wanderTimer = 0;
+        resetNavState(g.nav);
+      }
       break;
     }
   }

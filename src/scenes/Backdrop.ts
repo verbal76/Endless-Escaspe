@@ -1,6 +1,8 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CHUNK_LEN, CHUNKS_AHEAD, PLAY_HALF_W } from '../util/geometry';
-import { buildTreeGroup } from './Obstacles';
+import { createKitPropInstances } from './KitProps';
+import type { StageLighting } from './Lighting';
 
 // Layered backdrop: snow-capped mountains far back, a tree line in
 // the midground, drifting clouds, and birds crossing the sky. None
@@ -15,11 +17,23 @@ import { buildTreeGroup } from './Obstacles';
 
 const segLen = CHUNK_LEN * CHUNKS_AHEAD;
 
-// Mountains live behind the property-line fence. Far enough that they
-// barely shift on screen during play.
-const MOUNTAIN_Z = segLen + 600;
-const MOUNTAIN_SPAN_X = 900;
-const MOUNTAIN_COUNT = 14;
+// Far scenery: a gradient sky dome and two mountain ridges, all kept
+// centred on the player (every mode) so they never drift or "develop"
+// as the player walks. Ridges are arcs at a fixed distance, so looking
+// left / right never reaches an end. They are unlit and fog-free, with
+// the haze painted into their vertex colours: the old 14 flat-shaded
+// pyramids at ~720 m sat 85-96% inside the fog (lighter than the sky),
+// were backlit, and their snow caps were buried and z-fought.
+//
+// The camera tilts ~25 deg down, so the sky band above the horizon is
+// only ~5 deg tall: peaks are sized to ~2-3.5 deg of elevation so they
+// sit inside it rather than being cut off by the top of the screen.
+const DOME_R = 1400;
+const RIDGE_FAR = { dist: 900, base: 18, amp: 40, peaks: 16, snowLine: 42, seed: 7 };
+const RIDGE_NEAR = { dist: 640, base: 8, amp: 22, peaks: 14, snowLine: 999, seed: 13 };
+const RIDGE_ARC = (125 * Math.PI) / 180; // +-125 deg around the view axis
+const RIDGE_COLUMNS = 110;
+const RIDGE_HAZE = 0.55; // base colour mixed this far toward the horizon
 
 // Mid-ground tree line flanks the playfield.
 const TREE_LINE_OUTER = PLAY_HALF_W + 8;
@@ -31,32 +45,36 @@ const TREE_LINE_FAR = PLAY_HALF_W + 24;
 // TREE_LINE_OUTER..TREE_LINE_FAR band gives them depth.
 const TREE_COUNT_PER_SIDE = 168;
 
-// Sky props
-const CLOUD_COUNT = 6;
-const CLOUD_Y = 36;
-const CLOUD_DRIFT_SPEED = 0.6; // m/s; very slow drift
+// Sky props. Both live in the thin band of sky the camera actually
+// sees (the view tilts ~25 deg down, leaving ~5 deg above the
+// horizon): the old clouds at y 36 and birds at y 22 sat 14-16 deg up
+// and were never on screen during play. Placed by distance +
+// elevation angle, kept centred on the player with the ridges.
+const CAM_Y = 7;
+const yAtElevation = (dist: number, deg: number) => CAM_Y + dist * Math.tan((deg * Math.PI) / 180);
+const CLOUD_COUNT = 7;
+const CLOUD_SPAN = 700; // clouds wrap within +-CLOUD_SPAN (x)
+const CLOUD_DRIFT_SPEED = 3; // m/s at ~450 m: a slow drift on screen
 
-const BIRD_COUNT = 7;
-const BIRD_Y = 22;
+const BIRD_COUNT = 6;
+const BIRD_SPAN = 240;
 const BIRD_SPEED_MIN = 5;
 const BIRD_SPEED_MAX = 9;
 
-// Materials are shared so we make one of each.
-const MOUNTAIN_BASE_MAT = new THREE.MeshStandardMaterial({
-  color: 0x2c3a4f,
-  roughness: 1,
-  flatShading: true,
-});
-const MOUNTAIN_SNOW_MAT = new THREE.MeshStandardMaterial({
-  color: 0xeef3fb,
-  roughness: 1,
-  flatShading: true,
-});
-const CLOUD_MAT = new THREE.MeshBasicMaterial({
-  color: 0xf2f2f7,
-  transparent: true,
-  opacity: 0.55,
+const FAR_MAT = new THREE.MeshBasicMaterial({ vertexColors: true, fog: false, side: THREE.DoubleSide });
+const DOME_MAT = new THREE.MeshBasicMaterial({
+  vertexColors: true,
+  fog: false,
+  side: THREE.BackSide,
   depthWrite: false,
+});
+// Clouds and birds are tinted per stage mood (applyBackdropMood) so
+// they don't glow white against a night sky.
+const CLOUD_DAY = new THREE.Color(0xf4f6fa);
+// Low-poly puffs, lit (flat shaded) so they read as 3D shapes.
+const CLOUD_MAT = new THREE.MeshLambertMaterial({
+  color: 0xf4f6fa,
+  flatShading: true,
   fog: false,
 });
 const BIRD_MAT = new THREE.MeshBasicMaterial({
@@ -64,6 +82,7 @@ const BIRD_MAT = new THREE.MeshBasicMaterial({
   transparent: true,
   opacity: 0.85,
   side: THREE.DoubleSide,
+  forceSinglePass: true,
   depthWrite: false,
 });
 
@@ -75,93 +94,112 @@ const BIRD_MAT = new THREE.MeshBasicMaterial({
 // below); the procedural trunk/leaves geos and snow-cap dome are
 // retired with the swap.
 
-function buildMountainMesh(rng: () => number): THREE.Group {
-  // Triangle peak made from a custom BufferGeometry: base at y=0
-  // from -halfW to +halfW, apex at the chosen height.
-  const halfW = 30 + rng() * 50;
-  const height = 70 + rng() * 90;
-  const baseDepth = 26;
-  const verts = new Float32Array([
-    -halfW, 0, -baseDepth,
-    halfW, 0, -baseDepth,
-    -halfW, 0, baseDepth,
+type RidgeSpec = typeof RIDGE_FAR;
 
-    halfW, 0, -baseDepth,
-    halfW, 0, baseDepth,
-    -halfW, 0, baseDepth,
-
-    -halfW, 0, baseDepth,
-    halfW, 0, baseDepth,
-    0, height, 0,
-
-    halfW, 0, baseDepth,
-    halfW, 0, -baseDepth,
-    0, height, 0,
-
-    halfW, 0, -baseDepth,
-    -halfW, 0, -baseDepth,
-    0, height, 0,
-
-    -halfW, 0, -baseDepth,
-    -halfW, 0, baseDepth,
-    0, height, 0,
-  ]);
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(verts, 3));
-  geo.computeVertexNormals();
-  const base = new THREE.Mesh(geo, MOUNTAIN_BASE_MAT);
-
-  // Snow cap: a smaller pyramid sitting on top of the base, positioned
-  // to align with the apex. Built the same way at smaller dimensions.
-  const snowH = height * 0.32;
-  const snowBaseY = height - snowH;
-  const snowHalfW = halfW * 0.28;
-  const snowDepth = baseDepth * 0.28;
-  const snowVerts = new Float32Array([
-    -snowHalfW, snowBaseY, -snowDepth,
-    snowHalfW, snowBaseY, -snowDepth,
-    0, height, 0,
-
-    snowHalfW, snowBaseY, -snowDepth,
-    snowHalfW, snowBaseY, snowDepth,
-    0, height, 0,
-
-    snowHalfW, snowBaseY, snowDepth,
-    -snowHalfW, snowBaseY, snowDepth,
-    0, height, 0,
-
-    -snowHalfW, snowBaseY, snowDepth,
-    -snowHalfW, snowBaseY, -snowDepth,
-    0, height, 0,
-  ]);
-  const snowGeo = new THREE.BufferGeometry();
-  snowGeo.setAttribute('position', new THREE.BufferAttribute(snowVerts, 3));
-  snowGeo.computeVertexNormals();
-  const snow = new THREE.Mesh(snowGeo, MOUNTAIN_SNOW_MAT);
-
-  const group = new THREE.Group();
-  group.add(base);
-  group.add(snow);
-  return group;
+// Height profile: max of seeded triangular peaks over a base, plus a
+// small wobble. `t` runs 0..1 across the arc.
+function ridgeHeights(spec: RidgeSpec): number[] {
+  const rng = mulberry(spec.seed * 7919);
+  const peaks: { t: number; h: number; w: number }[] = [];
+  for (let i = 0; i < spec.peaks; i++) {
+    peaks.push({ t: rng(), h: spec.amp * (0.45 + rng() * 0.55), w: 0.025 + rng() * 0.05 });
+  }
+  const out: number[] = [];
+  for (let c = 0; c <= RIDGE_COLUMNS; c++) {
+    const t = c / RIDGE_COLUMNS;
+    let h = spec.base;
+    for (const p of peaks) h = Math.max(h, spec.base + p.h * Math.pow(Math.max(0, 1 - Math.abs(t - p.t) / p.w), 1.15));
+    out.push(h + Math.sin(t * 40 + spec.seed) * 1.2);
+  }
+  return out;
 }
 
-function buildTreeMesh(_rng: () => number): { group: THREE.Group } {
-  // Backdrop trees use the same Kenney tall-pine helper as the
-  // procgen ones - real 3D geometry, no billboard. Larger uniform
-  // scale (3.5x ~ 5.4 m tall) so the row reads at distance against
-  // the 70-160 m mountain range.
-  const group = buildTreeGroup(3.5);
-  return { group };
-}
-
-function buildCloudMesh(rng: () => number): THREE.Mesh {
-  const w = 18 + rng() * 22;
-  const h = 6 + rng() * 5;
-  const geo = new THREE.PlaneGeometry(w, h);
-  const m = new THREE.Mesh(geo, CLOUD_MAT);
-  // Face the camera roughly (we're looking forward and down).
-  m.rotation.x = -Math.PI / 6;
+// One ridge = a strip of quads along an arc around the origin (the
+// player), from just below the ground plane up to the height profile.
+// Painting (paintFar) colours by vertex height: below ground = hazed
+// base, mid = layer colour, above the snow line = snow.
+function buildRidge(spec: RidgeSpec): THREE.Mesh {
+  const hs = ridgeHeights(spec);
+  const pos: number[] = [];
+  for (let c = 0; c < RIDGE_COLUMNS; c++) {
+    const a0 = -RIDGE_ARC + (c / RIDGE_COLUMNS) * 2 * RIDGE_ARC;
+    const a1 = -RIDGE_ARC + ((c + 1) / RIDGE_COLUMNS) * 2 * RIDGE_ARC;
+    const x0 = Math.sin(a0) * spec.dist, z0 = Math.cos(a0) * spec.dist;
+    const x1 = Math.sin(a1) * spec.dist, z1 = Math.cos(a1) * spec.dist;
+    const h0 = hs[c], h1 = hs[c + 1];
+    // Two bands per column: ground..snow-start, then snow-start..peak,
+    // so the snow colour stays a cap on the upper slope instead of
+    // fading all the way down the mountain.
+    const m0 = Math.min(h0, spec.snowLine - 8), m1 = Math.min(h1, spec.snowLine - 8);
+    pos.push(x0, -6, z0, x1, -6, z1, x1, m1, z1, x0, -6, z0, x1, m1, z1, x0, m0, z0);
+    pos.push(x0, m0, z0, x1, m1, z1, x1, h1, z1, x0, m0, z0, x1, h1, z1, x0, h0, z0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(pos.length), 3));
+  g.userData.spec = spec;
+  const m = new THREE.Mesh(g, FAR_MAT);
+  m.frustumCulled = false;
   return m;
+}
+
+function buildDome(): THREE.Mesh {
+  const g = new THREE.SphereGeometry(DOME_R, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2 + 0.2);
+  g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 3), 3));
+  const m = new THREE.Mesh(g, DOME_MAT);
+  m.renderOrder = -10;
+  m.frustumCulled = false;
+  return m;
+}
+
+const _c0 = new THREE.Color();
+const _c1 = new THREE.Color();
+const _c2 = new THREE.Color();
+
+// Paint the mood into the far scenery's vertex colours.
+function paintFar(b: Backdrop, light: StageLighting) {
+  const horizon = _c0.setHex(light.horizon);
+  const zenith = _c1.setHex(light.zenith);
+  const dome = b.dome.geometry;
+  const dp = dome.attributes.position;
+  const dc = dome.attributes.color as THREE.BufferAttribute;
+  for (let i = 0; i < dp.count; i++) {
+    const t = Math.pow(Math.max(0, dp.getY(i) / DOME_R), 0.55);
+    _c2.copy(horizon).lerp(zenith, t);
+    dc.setXYZ(i, _c2.r, _c2.g, _c2.b);
+  }
+  dc.needsUpdate = true;
+  for (const ridge of b.ridges) {
+    const spec = ridge.geometry.userData.spec as RidgeSpec;
+    const layer = new THREE.Color(spec === RIDGE_FAR ? light.ridgeFar : light.ridgeNear);
+    const snow = new THREE.Color(light.snow);
+    const base = layer.clone().lerp(horizon, RIDGE_HAZE);
+    const p = ridge.geometry.attributes.position;
+    const col = ridge.geometry.attributes.color as THREE.BufferAttribute;
+    for (let i = 0; i < p.count; i++) {
+      const y = p.getY(i);
+      const c = y < 0 ? base : y > spec.snowLine ? snow : layer;
+      col.setXYZ(i, c.r, c.g, c.b);
+    }
+    col.needsUpdate = true;
+  }
+}
+
+// A cloud = 3-5 flattened icosahedron puffs merged into one mesh (one
+// draw call each).
+function buildCloudMesh(rng: () => number): THREE.Mesh {
+  const parts: THREE.BufferGeometry[] = [];
+  const n = 3 + Math.floor(rng() * 3);
+  const len = 40 + rng() * 40;
+  for (let i = 0; i < n; i++) {
+    const r = 9 + rng() * 9;
+    const g = new THREE.IcosahedronGeometry(r, 0);
+    g.scale(1.25, 0.55, 0.8);
+    g.translate((i / Math.max(1, n - 1) - 0.5) * len, (rng() - 0.3) * 4, (rng() - 0.5) * 8);
+    parts.push(g);
+  }
+  const geo = mergeGeometries(parts) ?? parts[0];
+  return new THREE.Mesh(geo, CLOUD_MAT);
 }
 
 function buildBirdMesh(): THREE.Mesh {
@@ -206,6 +244,10 @@ type Cloud = {
 
 export type Backdrop = {
   group: THREE.Group;
+  // Sky dome + ridges; kept centred on the player (updateBackdropFar).
+  far: THREE.Group;
+  dome: THREE.Mesh;
+  ridges: THREE.Mesh[];
   birds: Bird[];
   clouds: Cloud[];
   bounds: { left: number; right: number };
@@ -217,39 +259,19 @@ export function createBackdrop(): Backdrop {
   const root = new THREE.Group();
   const rng = mulberry(0x9e3779b9);
 
-  // Mountains: spaced across the back, jittered slightly in z and y
-  // so the silhouette has variety.
-  for (let i = 0; i < MOUNTAIN_COUNT; i++) {
-    const t = i / (MOUNTAIN_COUNT - 1);
-    const x = -MOUNTAIN_SPAN_X / 2 + t * MOUNTAIN_SPAN_X + (rng() - 0.5) * 60;
-    const zJitter = (rng() - 0.5) * 80;
-    const m = buildMountainMesh(rng);
-    m.position.set(x, 0, MOUNTAIN_Z + zJitter);
-    m.rotation.y = (rng() - 0.5) * 0.3;
-    root.add(m);
-  }
+  const far = new THREE.Group();
+  const dome = buildDome();
+  const ridges = [buildRidge(RIDGE_FAR), buildRidge(RIDGE_NEAR)];
+  far.add(dome, ...ridges);
+  root.add(far);
 
-  // Tree line on each side of the playfield.
-  for (let i = 0; i < TREE_COUNT_PER_SIDE; i++) {
-    const z = (i / (TREE_COUNT_PER_SIDE - 1)) * (segLen + 40) + (rng() - 0.5) * 4;
-    for (const sign of [-1, 1]) {
-      const xJitter = rng() * (TREE_LINE_FAR - TREE_LINE_OUTER);
-      const built = buildTreeMesh(rng);
-      built.group.position.set(sign * (TREE_LINE_OUTER + xJitter), 0, z);
-      built.group.scale.multiplyScalar(0.85 + rng() * 0.5);
-      built.group.rotation.y = rng() * Math.PI * 2;
-      root.add(built.group);
-    }
-  }
-
-  // Clouds drifting from -X to +X.
   const clouds: Cloud[] = [];
   for (let i = 0; i < CLOUD_COUNT; i++) {
     const c = buildCloudMesh(rng);
-    const x = BACKDROP_BOUNDS.left + rng() * (BACKDROP_BOUNDS.right - BACKDROP_BOUNDS.left);
-    const z = segLen * 0.3 + rng() * (segLen * 1.4);
-    c.position.set(x, CLOUD_Y + (rng() - 0.5) * 6, z);
-    root.add(c);
+    const dist = 380 + rng() * 180;
+    const x = -CLOUD_SPAN + ((i + rng() * 0.6) / CLOUD_COUNT) * 2 * CLOUD_SPAN;
+    c.position.set(x, yAtElevation(dist, 2.2 + rng() * 1.6), dist);
+    far.add(c);
     clouds.push({ mesh: c });
   }
 
@@ -257,11 +279,11 @@ export function createBackdrop(): Backdrop {
   const birds: Bird[] = [];
   for (let i = 0; i < BIRD_COUNT; i++) {
     const b = buildBirdMesh();
-    const x = BACKDROP_BOUNDS.left + rng() * (BACKDROP_BOUNDS.right - BACKDROP_BOUNDS.left);
-    const z = 30 + rng() * (segLen + 30);
-    b.position.set(x, BIRD_Y + rng() * 8, z);
-    b.scale.setScalar(0.9 + rng() * 0.6);
-    root.add(b);
+    const x = -BIRD_SPAN + rng() * 2 * BIRD_SPAN;
+    const z = 110 + rng() * 90;
+    b.position.set(x, yAtElevation(z, 1.2 + rng() * 2), z);
+    b.scale.setScalar(2.4 + rng() * 1.2);
+    far.add(b);
     birds.push({
       mesh: b,
       vx: BIRD_SPEED_MIN + rng() * (BIRD_SPEED_MAX - BIRD_SPEED_MIN),
@@ -270,7 +292,8 @@ export function createBackdrop(): Backdrop {
     });
   }
 
-  return { group: root, birds, clouds, bounds: BACKDROP_BOUNDS };
+  const b: Backdrop = { group: root, far, dome, ridges, birds, clouds, bounds: BACKDROP_BOUNDS };
+  return b;
 }
 
 // Toggle snow caps on every backdrop tree. Called by Game.tsx after
@@ -280,6 +303,77 @@ export function createBackdrop(): Backdrop {
 // no longer carry snow caps (the sphere drape didn't fit the conical
 // pine silhouette and read as a giant white dome covering the tree),
 // so toggling weather on the backdrop is a visual no-op now.
+// Tint clouds and birds for the stage mood: at night clouds sink
+// toward the sky colour (faintly lighter so they still read as
+// shapes) and birds fade toward silhouettes that barely separate from
+// the sky.
+export function applyBackdropMood(b: Backdrop, light: StageLighting) {
+  paintFar(b, light);
+  const sky = new THREE.Color(light.sky);
+  const k = light.darkness;
+  CLOUD_MAT.color.copy(CLOUD_DAY).lerp(new THREE.Color(light.horizon).offsetHSL(0, 0, 0.06), 0.25 + k * 0.6);
+  BIRD_MAT.color.setHex(0x111114).lerp(sky, k * 0.5);
+  BIRD_MAT.opacity = 0.85 - 0.35 * k;
+}
+
+// Tree lines along both fences for one stretch of yard, drawn as
+// instances (one InstancedMesh per pine variant / material group).
+// Built per campaign segment or per Endless section, so the forest
+// always reaches as far as the yard does.
+const TREES_PER_METRE = TREE_COUNT_PER_SIDE / (segLen + 40);
+
+export function createTreeLine(zStart: number, length: number, seed: number): THREE.Group {
+  const rng = mulberry(seed ^ 0x51f15e);
+  const count = Math.max(2, Math.round(length * TREES_PER_METRE));
+  const mats: Record<'treePineTallA' | 'treePineTallADetailed', THREE.Matrix4[]> = {
+    treePineTallA: [],
+    treePineTallADetailed: [],
+  };
+  const tints: Record<'treePineTallA' | 'treePineTallADetailed', THREE.Color[]> = {
+    treePineTallA: [],
+    treePineTallADetailed: [],
+  };
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const pos = new THREE.Vector3();
+  const scl = new THREE.Vector3();
+  for (let i = 0; i < count; i++) {
+    const z = zStart + (i / (count - 1)) * length + (rng() - 0.5) * 4;
+    for (const sign of [-1, 1]) {
+      const xJitter = rng() * (TREE_LINE_FAR - TREE_LINE_OUTER);
+      const variant = rng() < 0.5 ? 'treePineTallA' : 'treePineTallADetailed';
+      // Varied sizes, and about half the trees sunk a little so fewer
+      // bare trunks show: the band reads as a forest, not a row of
+      // identical copies.
+      const sc = 3.5 * (0.7 + rng() * 0.8);
+      const sink = rng() < 0.5 ? rng() * 0.35 * sc : 0;
+      pos.set(sign * (TREE_LINE_OUTER + xJitter), -sink, z);
+      q.setFromAxisAngle(up, rng() * Math.PI * 2);
+      scl.set(sc, sc, sc);
+      mats[variant].push(new THREE.Matrix4().compose(pos, q, scl));
+      // Instance tint: +-10% lightness with a slight green/blue drift.
+      const l = 0.9 + rng() * 0.2;
+      tints[variant].push(new THREE.Color(l * (0.94 + rng() * 0.06), l, l * (0.94 + rng() * 0.1)));
+    }
+  }
+  const g = new THREE.Group();
+  g.add(createKitPropInstances('treePineTallA', mats.treePineTallA, tints.treePineTallA));
+  g.add(createKitPropInstances('treePineTallADetailed', mats.treePineTallADetailed, tints.treePineTallADetailed));
+  return g;
+}
+
+// Endless: keep the far scenery (mountains, clouds, birds) at a fixed
+// distance ahead as the player travels.
+export function followBackdrop(b: Backdrop, playerZ: number) {
+  b.group.position.z = playerZ;
+}
+
+// Every mode: keep the sky dome and ridges centred on the player, so
+// their distance (and look) never changes during a stage.
+export function updateBackdropFar(b: Backdrop, playerX: number, playerZ: number) {
+  b.far.position.set(playerX, 0, playerZ - b.group.position.z);
+}
+
 export function setBackdropSnow(_b: Backdrop, _on: boolean) {
   // intentionally empty
 }
@@ -287,13 +381,9 @@ export function setBackdropSnow(_b: Backdrop, _on: boolean) {
 // Animate clouds and birds. Both wrap around horizontally so the
 // scene looks alive without ever depleting.
 export function updateBackdrop(b: Backdrop, dt: number) {
-  const span = b.bounds.right - b.bounds.left;
-
   for (const c of b.clouds) {
     c.mesh.position.x += CLOUD_DRIFT_SPEED * dt;
-    if (c.mesh.position.x > b.bounds.right) {
-      c.mesh.position.x -= span;
-    }
+    if (c.mesh.position.x > CLOUD_SPAN) c.mesh.position.x -= 2 * CLOUD_SPAN;
   }
 
   for (const bird of b.birds) {
@@ -301,8 +391,6 @@ export function updateBackdrop(b: Backdrop, dt: number) {
     bird.flapPhase += dt * 9;
     bird.mesh.position.y = bird.baseY + Math.sin(bird.flapPhase) * 0.35;
     bird.mesh.rotation.z = Math.sin(bird.flapPhase) * 0.18;
-    if (bird.mesh.position.x > b.bounds.right) {
-      bird.mesh.position.x -= span;
-    }
+    if (bird.mesh.position.x > BIRD_SPAN) bird.mesh.position.x -= 2 * BIRD_SPAN;
   }
 }

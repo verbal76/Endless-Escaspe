@@ -12,6 +12,7 @@ const ARC_MAT_TEMPLATE = {
   transparent: true,
   opacity: 0.9,
   side: THREE.DoubleSide,
+  forceSinglePass: true,
   depthWrite: false,
 };
 

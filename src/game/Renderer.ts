@@ -7,6 +7,11 @@ export type GameRenderer = {
   gl: ExpoWebGLRenderingContext;
   renderer: THREE.WebGLRenderer;
   worldRoot: THREE.Group;
+  // Cached light handles so per-stage lighting updates never have to
+  // search the scene graph.
+  ambient: THREE.AmbientLight;
+  hemi: THREE.HemisphereLight;
+  sun: THREE.DirectionalLight;
   draw: () => void;
 };
 
@@ -48,8 +53,15 @@ export function createRenderer(gl: ExpoWebGLRenderingContext): GameRenderer {
 
   const ambient = new THREE.AmbientLight(0xc8d4e0, 0.75);
   scene.add(ambient);
+  // Sky / ground fill: tops of props catch the sky colour, undersides
+  // the ground bounce, so shapes read without real shadows.
+  const hemi = new THREE.HemisphereLight(0xcfe2ff, 0x6b5a44, 0.9);
+  scene.add(hemi);
+  // The sun sits behind and to the left of the camera (the camera
+  // looks down +Z), so the faces the player sees are lit; it used to
+  // sit ahead of the camera and every visible face was backlit.
   const sun = new THREE.DirectionalLight(0xfff6dd, 1.0);
-  sun.position.set(8, 14, 4);
+  sun.position.set(-7, 12, -9);
   scene.add(sun);
 
   const worldRoot = new THREE.Group();
@@ -61,6 +73,9 @@ export function createRenderer(gl: ExpoWebGLRenderingContext): GameRenderer {
     scene,
     camera,
     worldRoot,
+    ambient,
+    hemi,
+    sun,
     draw: () => {
       renderer.render(scene, camera);
       gl.endFrameEXP();

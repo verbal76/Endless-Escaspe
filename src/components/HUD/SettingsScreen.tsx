@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Linking,
+  AppState,
+  BackHandler,
+  Image,
   Modal,
-  Pressable,
   ScrollView,
+  Share,
   StyleSheet,
-  Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
+import { Pressable } from '../../ui/Pressable';
+import { Text } from '../../ui/Text';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -17,8 +21,12 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
-import { composeBugReportUrl, composeFeatureRequestUrl } from '../../util/support';
-import { BUILD_VERSION, OTA_VERSION } from '../../version';
+import { composeBugReportUrl, composeFeatureRequestUrl, composeVitalsText, openSupportUrl } from '../../util/support';
+import { BuildInfo } from './BuildInfo';
+import { HowToPlay } from './HowToPlay';
+import { CARD_BORDER, CARD_PADDING, PANEL_MARGIN, pausePanelHeights } from '../../ui/pauseLayout';
+import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts, touch } from '../../ui/theme';
+import { SETTINGS_GEAR } from '../../ui/iconData';
 
 const SLIDER_TRACK_W = 220;
 const SLIDER_KNOB_R = 13;
@@ -83,16 +91,24 @@ function VolumeSlider({
 function Toggle({
   value,
   onChange,
+  label,
 }: {
   value: boolean;
   onChange: (v: boolean) => void;
+  label: string;
 }) {
   return (
+    // 44 dp hit area around the 50x28 track.
     <Pressable
       onPress={() => onChange(!value)}
-      style={[styles.toggleTrack, value && styles.toggleTrackOn]}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked: value }}
+      style={styles.toggleHit}
     >
-      <View style={[styles.toggleKnob, value && styles.toggleKnobOn]} />
+      <View style={[styles.toggleTrack, value && styles.toggleTrackOn]}>
+        <View style={[styles.toggleKnob, value && styles.toggleKnobOn]} />
+      </View>
     </Pressable>
   );
 }
@@ -100,6 +116,8 @@ function Toggle({
 export function SettingsScreen() {
   const [open, setOpen] = useState(false);
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const heights = pausePanelHeights(windowHeight, insets.top, insets.bottom);
   const setPaused = useStore((s) => s.setPaused);
   const setRunState = useStore((s) => s.setRunState);
   const requestRestart = useStore((s) => s.requestRestart);
@@ -109,6 +127,13 @@ export function SettingsScreen() {
   const setMusicVolume = useStore((s) => s.setMusicVolume);
   const weatherEnabled = useStore((s) => s.weatherEnabled);
   const setWeatherEnabled = useStore((s) => s.setWeatherEnabled);
+  const hapticsEnabled = useStore((s) => s.hapticsEnabled);
+  const setHapticsEnabled = useStore((s) => s.setHapticsEnabled);
+  const segmentWeatherEnabled = useStore((s) => s.segmentWeatherEnabled);
+  // Off a live run (main menu, stage-clear / caught cards) the gear
+  // opens settings only: RESTART / LOAD RUN / MAIN MENU there started a
+  // run with no save behind it, or raced the card's own buttons.
+  const inRun = useStore((s) => s.runState === 'playing');
 
   const persistSettings = () => {
     const st = useStore.getState();
@@ -120,6 +145,9 @@ export function SettingsScreen() {
   };
 
   const openPanel = () => {
+    // A reference left open when the panel last closed another way
+    // (restart, main menu) must not reappear.
+    if (useStore.getState().howToPlay === 'pause') useStore.getState().setHowToPlay(null);
     setOpen(true);
     setPaused(true);
   };
@@ -129,7 +157,32 @@ export function SettingsScreen() {
     persistSettings();
   };
   const onResume = close;
+
+  // Leaving the app mid-run (home, app switch, screen off) or the
+  // Android back gesture - easy to trigger from the left-edge joystick
+  // zone - pauses the run with the pause panel open, instead of the
+  // run carrying on live the moment the player comes back.
+  useEffect(() => {
+    const shouldPause = () => {
+      const st = useStore.getState();
+      return st.runState === 'playing' && !st.paused;
+    };
+    const appSub = AppState.addEventListener('change', (next) => {
+      if (next !== 'active' && shouldPause()) openPanel();
+    });
+    const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!shouldPause()) return false;
+      openPanel();
+      return true;
+    });
+    return () => {
+      appSub.remove();
+      backSub.remove();
+    };
+    // openPanel only uses stable setters.
+  }, []);
   const onRestart = () => {
+    if (useStore.getState().runState !== 'playing') return close();
     setOpen(false);
     requestRestart();
     persistSettings();
@@ -151,14 +204,19 @@ export function SettingsScreen() {
     persistSettings();
   };
 
+  // No mail app (or it refused the link): offer the share sheet with
+  // the same diagnostics instead of failing silently.
+  const openOrShare = async (url: string, title: string) => {
+    if (await openSupportUrl(url)) return;
+    Share.share({ message: composeVitalsText(), title }).catch(() => undefined);
+  };
   const onReportBug = () => {
-    // openURL fails silently if no email client is installed; we just
-    // ignore the rejection rather than blocking the panel.
-    Linking.openURL(composeBugReportUrl()).catch(() => {});
+    void openOrShare(composeBugReportUrl(), 'Endless Escape - bug report');
   };
   const onFeatureRequest = () => {
-    Linking.openURL(composeFeatureRequestUrl()).catch(() => {});
+    void openOrShare(composeFeatureRequestUrl(), 'Endless Escape - feature request');
   };
+
 
   return (
     <>
@@ -178,58 +236,96 @@ export function SettingsScreen() {
         onPress={openPanel}
         hitSlop={10}
       >
-        <Text style={styles.gearGlyph}>⚙</Text>
+        <Image source={{ uri: SETTINGS_GEAR }} style={styles.gearIcon} />
       </Pressable>
 
-      <Modal visible={open} transparent animationType="fade" onRequestClose={close}>
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          // Back closes the rules reference first, then the panel.
+          const st = useStore.getState();
+          if (st.howToPlay === 'pause') st.setHowToPlay(null);
+          else close();
+        }}
+      >
         {/* Modal content lives in a separate native view tree from
             the App's GestureHandlerRootView, so gestures registered
             here would never fire. Wrap the modal's content in a
             local GHRoot so the volume + music sliders' Pan gesture
             reaches the gesture handler. */}
         <GestureHandlerRootView style={styles.ghRoot}>
-        <View style={styles.backdrop}>
-          <View style={styles.card}>
+        <View
+          style={[
+            styles.backdrop,
+            {
+              paddingTop: Math.max(insets.top, PANEL_MARGIN) + PANEL_MARGIN,
+              paddingBottom: Math.max(insets.bottom, PANEL_MARGIN) + PANEL_MARGIN,
+              paddingLeft: Math.max(insets.left, PANEL_MARGIN) + PANEL_MARGIN,
+              paddingRight: Math.max(insets.right, PANEL_MARGIN) + PANEL_MARGIN,
+            },
+          ]}
+        >
+          <View style={[styles.card, { maxHeight: heights.card }]}>
             {/* Title spans both columns. */}
-            <Text style={styles.title}>GAME PAUSED</Text>
+            <Text style={styles.title}>{inRun ? 'GAME PAUSED' : 'SETTINGS'}</Text>
 
             {/* Two-column landscape layout: pause actions on the left,
-                Settings + About on the right. Lays the whole panel
-                out within the available height so the user doesn't
-                have to scroll on a typical landscape phone. */}
-            <View style={styles.columns}>
-              <View style={styles.colLeft}>
+                Settings / Feedback / Build info on the right. Both
+                columns are capped to the height left under the title
+                and scroll within it (the left one only on very short
+                screens), so every row stays reachable. */}
+            <View style={[styles.columns, { maxHeight: heights.columns }]}>
+              <ScrollView
+                style={[styles.colLeft, { maxHeight: heights.columns }]}
+                contentContainerStyle={styles.colLeftContent}
+                showsVerticalScrollIndicator={false}
+              >
                 <Pressable
                   style={({ pressed }) => [styles.bigBtn, styles.btnResume, pressed && styles.btnPressed]}
                   onPress={onResume}
                 >
-                  <Text style={styles.bigLabel}>RESUME</Text>
+                  <Text style={[styles.bigLabel, buttonLabel('primary')]}>{inRun ? 'RESUME' : 'CLOSE'}</Text>
                 </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
-                  onPress={onRestart}
-                >
-                  <Text style={styles.bigLabel}>RESTART</Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.bigBtn, styles.btnLoad, pressed && styles.btnPressed]}
-                  onPress={onLoadRun}
-                >
-                  <Text style={styles.bigLabel}>LOAD RUN</Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
-                  onPress={onMainMenu}
-                >
-                  <Text style={styles.bigLabel}>MAIN MENU</Text>
-                </Pressable>
-              </View>
+                {inRun ? (
+                  <>
+                  <Pressable
+                    style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
+                    onPress={onRestart}
+                  >
+                    <Text style={styles.bigLabel}>RESTART</Text>
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [styles.bigBtn, styles.btnLoad, pressed && styles.btnPressed]}
+                    onPress={onLoadRun}
+                  >
+                    <Text style={styles.bigLabel}>LOAD RUN</Text>
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
+                    onPress={onMainMenu}
+                  >
+                    <Text style={styles.bigLabel}>MAIN MENU</Text>
+                  </Pressable>
+                  </>
+                ) : null}
+              </ScrollView>
 
               <ScrollView
-                style={styles.colRight}
+                testID="pause-info-scroll"
+                style={[styles.colRight, { maxHeight: heights.columns }]}
                 contentContainerStyle={styles.colRightContent}
-                showsVerticalScrollIndicator={false}
+                showsVerticalScrollIndicator
+                persistentScrollbar
               >
+                <Pressable
+                  onPress={() => useStore.getState().setHowToPlay('pause')}
+                  style={({ pressed }) => [styles.feedbackBtn, styles.helpBtn, pressed && styles.btnPressed]}
+                >
+                  <Text style={styles.feedbackLabel}>HOW TO PLAY</Text>
+                </Pressable>
+
                 <Text style={styles.sectionHeading}>Settings</Text>
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>Volume</Text>
@@ -246,9 +342,19 @@ export function SettingsScreen() {
                       {weatherEnabled
                         ? 'Rain / snow active'
                         : 'Off (AI senses boosted)'}
+                      {/* Fixed per segment (no toggling mid-stage to dodge
+                          a storm): say when a change is still pending. */}
+                      {weatherEnabled !== segmentWeatherEnabled ? ' - from the next stage' : ''}
                     </Text>
                   </View>
-                  <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />
+                  <Toggle label="Weather effects" value={weatherEnabled} onChange={setWeatherEnabled} />
+                </View>
+                <View style={styles.settingRow}>
+                  <View style={styles.toggleLabelWrap}>
+                    <Text style={styles.settingLabel}>Vibration</Text>
+                    <Text style={styles.subLabel}>{hapticsEnabled ? 'On' : 'Off'}</Text>
+                  </View>
+                  <Toggle label="Vibration" value={hapticsEnabled} onChange={setHapticsEnabled} />
                 </View>
 
                 <Text style={styles.sectionHeading}>Feedback</Text>
@@ -273,17 +379,15 @@ export function SettingsScreen() {
                   </Pressable>
                 </View>
 
-                <Text style={styles.sectionHeading}>About</Text>
-                <View style={styles.aboutBlock}>
-                  <Text style={styles.rowLabel}>Build</Text>
-                  <Text style={styles.rowValue}>{BUILD_VERSION}</Text>
-                  <Text style={[styles.rowLabel, styles.rowLabelTop]}>OTA</Text>
-                  <Text style={styles.rowValue}>{OTA_VERSION}</Text>
-                </View>
+                <Text style={styles.sectionHeading}>Build / Update Info</Text>
+                <BuildInfo />
               </ScrollView>
             </View>
           </View>
         </View>
+        {/* The pause panel is its own native modal, so the rules
+            reference opened from here renders inside it. */}
+        <HowToPlay where="pause" />
         </GestureHandlerRootView>
       </Modal>
     </>
@@ -293,10 +397,8 @@ export function SettingsScreen() {
 const styles = StyleSheet.create({
   gearWrap: {
     position: 'absolute',
-    // Plain overlay glyph with no background or border - the user
+    // Plain overlay icon with no background or border - the user
     // wanted it to read as just an icon, not an icon-in-a-box.
-    // Width / height kept generous so the press target stays
-    // forgiving even though the visible art is just the glyph.
     width: 36,
     height: 36,
     alignItems: 'center',
@@ -305,12 +407,11 @@ const styles = StyleSheet.create({
   gearPressed: {
     opacity: 0.6,
   },
-  gearGlyph: {
-    color: 'rgba(255, 255, 255, 0.92)',
-    fontSize: 26,
-    lineHeight: 30,
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowRadius: 3,
+  // assets/ui/settings-gear.png (144 px, embedded as a data URI) drawn
+  // at the full 36 dp button size.
+  gearIcon: {
+    width: 36,
+    height: 36,
   },
   ghRoot: {
     flex: 1,
@@ -320,20 +421,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.65)',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 28,
   },
   card: {
-    // Wider (and shorter) than before so the two-column layout fits
-    // a landscape phone without overflow. maxHeight cap leaves a
-    // small breathing band at the top + bottom.
-    width: '94%',
+    // Two-column layout for landscape phones. Height is capped at
+    // render time from the window + safe-area insets
+    // (pausePanelHeights).
+    width: '100%',
     maxWidth: 720,
-    maxHeight: '94%',
     backgroundColor: '#1a1d24',
     borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 210, 90, 0.40)',
-    padding: 18,
+    borderWidth: CARD_BORDER,
+    borderColor: 'rgba(255, 209, 74, 0.40)',
+    padding: CARD_PADDING,
   },
   columns: {
     flexDirection: 'row',
@@ -343,6 +442,9 @@ const styles = StyleSheet.create({
   colLeft: {
     flex: 1,
     minWidth: 200,
+  },
+  colLeftContent: {
+    paddingBottom: 4,
   },
   colRight: {
     flex: 1.1,
@@ -354,11 +456,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
   },
   title: {
-    color: '#ffd14a',
+    color: ui.gold,
     fontSize: 22,
-    fontWeight: '900',
+    fontFamily: fonts.display,
     letterSpacing: 2,
-    marginBottom: 12,
+    lineHeight: 26,
+    marginBottom: 8,
     textAlign: 'center',
   },
   bigBtn: {
@@ -366,39 +469,30 @@ const styles = StyleSheet.create({
     // alongside the right-hand Settings + About without overflow.
     marginVertical: 4,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    minHeight: touch.min,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
   },
-  btnResume: {
-    backgroundColor: 'rgba(80, 200, 120, 0.25)',
-    borderColor: 'rgba(120, 240, 160, 0.65)',
-  },
-  btnRestart: {
-    backgroundColor: 'rgba(120, 200, 255, 0.20)',
-    borderColor: 'rgba(140, 220, 255, 0.65)',
-  },
-  btnLoad: {
-    backgroundColor: 'rgba(180, 140, 255, 0.20)',
-    borderColor: 'rgba(200, 170, 255, 0.65)',
-  },
-  btnMain: {
-    backgroundColor: 'rgba(255, 210, 90, 0.20)',
-    borderColor: 'rgba(255, 210, 90, 0.55)',
-  },
-  btnPressed: {
-    opacity: 0.7,
-  },
+  // Shared button system (theme.ts): one primary action, the rest
+  // secondary, leaving the run in danger red. (Was four translucent
+  // buttons in four unrelated colours.)
+  btnResume: buttonFill('primary'),
+  btnRestart: buttonFill('secondary'),
+  btnLoad: buttonFill('secondary'),
+  btnMain: buttonFill('danger'),
+  btnPressed: buttonPressed,
   bigLabel: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: T.label,
     fontWeight: '800',
     letterSpacing: 1.5,
   },
   sectionHeading: {
-    color: 'rgba(255, 255, 255, 0.55)',
-    fontSize: 11,
+    color: ui.textMuted,
+    fontSize: T.caption,
     fontWeight: '700',
     letterSpacing: 1.5,
     marginTop: 8,
@@ -412,12 +506,12 @@ const styles = StyleSheet.create({
   },
   settingLabel: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: T.small,
     fontWeight: '700',
   },
   subLabel: {
-    color: 'rgba(255, 255, 255, 0.50)',
-    fontSize: 11,
+    color: ui.textMuted,
+    fontSize: T.caption,
     marginTop: 2,
   },
   toggleLabelWrap: {
@@ -448,7 +542,7 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   codeDigitText: {
-    color: '#ffd14a',
+    color: ui.gold,
     fontSize: 18,
     fontWeight: '900',
     letterSpacing: 1,
@@ -459,12 +553,12 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 210, 90, 0.55)',
-    backgroundColor: 'rgba(255, 210, 90, 0.20)',
+    borderColor: 'rgba(255, 209, 74, 0.55)',
+    backgroundColor: 'rgba(255, 209, 74, 0.20)',
   },
   codeUnlockLabel: {
-    color: '#ffd14a',
-    fontSize: 11,
+    color: ui.gold,
+    fontSize: T.caption,
     fontWeight: '900',
     letterSpacing: 1.5,
   },
@@ -477,9 +571,15 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 4,
   },
+  helpBtn: {
+    alignSelf: 'flex-start',
+    marginBottom: 4,
+  },
   feedbackBtn: {
     flex: 1,
     paddingVertical: 8,
+    minHeight: touch.min,
+    justifyContent: 'center',
     paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
@@ -489,30 +589,9 @@ const styles = StyleSheet.create({
   },
   feedbackLabel: {
     color: '#dff4ff',
-    fontSize: 11,
+    fontSize: T.caption,
     fontWeight: '900',
     letterSpacing: 1.2,
-  },
-  // About: stack label above value vertically so long OTA strings
-  // wrap without overlapping the label.
-  aboutBlock: {
-    paddingTop: 4,
-  },
-  rowLabel: {
-    color: 'rgba(255, 255, 255, 0.55)',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-  },
-  rowLabelTop: {
-    marginTop: 8,
-  },
-  rowValue: {
-    color: '#fff',
-    fontSize: 12,
-    fontFamily: 'monospace',
-    marginTop: 2,
-    flexWrap: 'wrap',
   },
   // Slider
   sliderHit: {
@@ -546,6 +625,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(120, 200, 255, 0.85)',
   },
   // Toggle
+  toggleHit: {
+    minHeight: touch.min,
+    minWidth: touch.min + 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   toggleTrack: {
     width: 50,
     height: 28,

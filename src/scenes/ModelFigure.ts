@@ -1,3 +1,4 @@
+import { markShared } from '../util/dispose';
 import * as THREE from 'three';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import type { Stance } from '../types/world';
@@ -5,6 +6,7 @@ import { character_d_OBJ } from '../../assets/characters/characterDObj';
 import { character_g_OBJ } from '../../assets/characters/characterGObj';
 import { character_j_OBJ } from '../../assets/characters/characterJObj';
 import { getCharacterTexture } from '../util/textures';
+import { tagAuditMaterial } from '../util/renderAudit';
 
 // 3D-modeled character figure. Replaces the procedural BlockyFigure
 // for player + guard so the silhouette reads as a real character
@@ -133,7 +135,27 @@ function parseTemplate(kind: ModelKind): ParsedTemplate {
 // `jointSide`:
 //   'top'    - shoulder / hip pivot (limbs swing from the body)
 //   'center' - torso, head: pivot at the geometric centre
+// Joint-centred copies of each limb geometry, built once per
+// (model, part, joint) and shared by every figure of that model.
+const PIVOTED: Record<string, THREE.BufferGeometry> = {};
+
+function pivotedGeometry(
+  key: string,
+  geometry: THREE.BufferGeometry,
+  x: number,
+  y: number,
+  z: number,
+): THREE.BufferGeometry {
+  const cached = PIVOTED[key];
+  if (cached) return cached;
+  const g = markShared(geometry.clone());
+  g.translate(-x, -y, -z);
+  PIVOTED[key] = g;
+  return g;
+}
+
 function buildLimb(
+  key: string,
   geometry: THREE.BufferGeometry,
   bbox: THREE.Box3,
   material: THREE.Material,
@@ -145,43 +167,49 @@ function buildLimb(
   const cy = (bbox.min.y + bbox.max.y) / 2;
   const jointY = jointSide === 'top' ? bbox.max.y : cy;
   wrapper.position.set(cx, jointY, cz);
-
-  // Clone the geometry rather than translating in place so the
-  // template stays untouched for future figures.
-  const cloned = geometry.clone();
-  cloned.translate(-cx, -jointY, -cz);
-  const mesh = new THREE.Mesh(cloned, material);
+  const mesh = new THREE.Mesh(pivotedGeometry(`${key}:${jointSide}`, geometry, cx, jointY, cz), material);
   wrapper.add(mesh);
   return wrapper;
 }
 
-export function createModelFigure(kind: ModelKind): ModelFigure {
+// One material per character model, shared by every figure using it.
+const FIGURE_MATS: Record<string, THREE.MeshLambertMaterial> = {};
+
+// `tint` multiplies the model texture (cosmetic outfits); null keeps
+// the original colours. One material per (model, tint).
+export function createModelFigure(kind: ModelKind, tint: number | null = null): ModelFigure {
   const template = parseTemplate(kind);
   const palette = PALETTES[kind];
 
-  // Try the textured material first. If the asset preload couldn't
-  // resolve the image (network glitch on first launch, etc.) we fall
-  // back to the solid-colour palette so the figure still renders
-  // recognisably. One material is shared across every limb because
+  // Try the textured material first. If the texture preload failed
+  // (see util/textureSource.ts; the reason is shown in Settings >
+  // Build / Update Info > Textures) we fall back to the solid-colour
+  // palette so the figure still renders recognisably. One material is shared across every limb because
   // the OBJ's UVs map all body parts onto a single texture sheet.
   const tex = getCharacterTexture(kind);
-  const sharedMat = tex
-    ? new THREE.MeshStandardMaterial({
+  const matKey = tint === null ? kind : `${kind}:${tint.toString(16)}`;
+  const sharedMat =
+    FIGURE_MATS[matKey] ??
+    (FIGURE_MATS[matKey] = markShared(tex
+    ? new THREE.MeshLambertMaterial({
         map: tex,
-        roughness: 0.7,
         // Bump emissive map slightly so the figure stays legible
         // against the dark night palette without dimming the texture
         // brightness in daylight.
         emissive: 0xffffff,
         emissiveMap: tex,
-        emissiveIntensity: 0.20,
+        emissiveIntensity: 0.08,
       })
-    : new THREE.MeshStandardMaterial({
+    : new THREE.MeshLambertMaterial({
         color: palette.body,
         emissive: palette.body,
-        emissiveIntensity: 0.18,
-        roughness: 0.7,
-      });
+        emissiveIntensity: 0.08,
+      })));
+  tagAuditMaterial(sharedMat, kind === 'j' ? 'guards' : 'player', `figure-${kind}`);
+  if (tint !== null) {
+    sharedMat.color.setHex(tint);
+    sharedMat.emissive.setHex(tint);
+  }
   const bodyMat = sharedMat;
   const headMat = sharedMat;
 
@@ -202,6 +230,7 @@ export function createModelFigure(kind: ModelKind): ModelFigure {
   // Torso: pivot at centre so a slight forward-lean (running) rotates
   // around the chest rather than a foot.
   const torso = buildLimb(
+    `${kind}:torso`,
     template.parts.torso.geometry,
     template.parts.torso.bbox,
     bodyMat,
@@ -217,32 +246,35 @@ export function createModelFigure(kind: ModelKind): ModelFigure {
   const hcz = (headPart.bbox.min.z + headPart.bbox.max.z) / 2;
   const hcy = headPart.bbox.min.y;
   headWrapper.position.set(hcx, hcy, hcz);
-  const headGeo = headPart.geometry.clone();
-  headGeo.translate(-hcx, -hcy, -hcz);
+  const headGeo = pivotedGeometry(`${kind}:head:neck`, headPart.geometry, hcx, hcy, hcz);
   headWrapper.add(new THREE.Mesh(headGeo, headMat));
   group.add(headWrapper);
 
   // Limbs pivot at the top edge of their bbox (shoulder for arms,
   // hip for legs).
   const armL = buildLimb(
+    `${kind}:arm-left`,
     template.parts['arm-left'].geometry,
     template.parts['arm-left'].bbox,
     bodyMat,
     'top',
   );
   const armR = buildLimb(
+    `${kind}:arm-right`,
     template.parts['arm-right'].geometry,
     template.parts['arm-right'].bbox,
     bodyMat,
     'top',
   );
   const legL = buildLimb(
+    `${kind}:leg-left`,
     template.parts['leg-left'].geometry,
     template.parts['leg-left'].bbox,
     bodyMat,
     'top',
   );
   const legR = buildLimb(
+    `${kind}:leg-right`,
     template.parts['leg-right'].geometry,
     template.parts['leg-right'].bbox,
     bodyMat,

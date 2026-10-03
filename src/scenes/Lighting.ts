@@ -1,178 +1,191 @@
 import * as THREE from 'three';
 
-// Stage-driven sky / ambient progression. Stage 1 is bright daylight;
-// each successive stage darkens and warms toward dusk and then night.
-// The renderer is built once with daylight defaults; this module
-// re-tints the scene + camera background to match the current stage.
+// Per-stage lighting / environment mood. Each stage gets ONE mood for
+// its whole duration (the old 60 s rolling day/night loop is gone), so
+// visibility never swings mid-run. Night moods are a deliberate
+// difficulty feature: guards see less far in the dark, which makes
+// floodlights and searchlights matter more.
+
+export type MoodName = 'day' | 'afternoon' | 'dusk' | 'night' | 'deepNight';
 
 export type StageLighting = {
+  mood: MoodName;
+  // Clear colour and fog colour - both the horizon colour, so the
+  // ground melts into the base of the sky dome with no seam.
   sky: number;
   fog: number;
+  fogNear: number;
+  fogFar: number;
+  // Sky dome gradient (Backdrop): horizon at eye level up to zenith.
+  zenith: number;
+  horizon: number;
+  // Distant ridge silhouettes (far / near layer) and their snow line.
+  ridgeFar: number;
+  ridgeNear: number;
+  snow: number;
   ambientColor: number;
   ambientIntensity: number;
+  // Hemisphere fill: sky colour from above, ground bounce from below.
+  hemiSky: number;
+  hemiGround: number;
+  hemiIntensity: number;
   sunColor: number;
   sunIntensity: number;
+  // 0 = full daylight .. 1 = deepest night. Drives backdrop tinting.
+  darkness: number;
+  // Multiplier on guard vision range for this mood.
+  visionMul: number;
 };
 
-const STAGES: StageLighting[] = [
-  // Stage 1 - bright daylight
-  {
-    sky: 0x88b4d8,
-    fog: 0x88b4d8,
-    ambientColor: 0xc8d4e0,
-    ambientIntensity: 0.75,
-    sunColor: 0xfff6dd,
-    sunIntensity: 1.0,
+const MOODS: Record<MoodName, StageLighting> = {
+  day: {
+    mood: 'day',
+    sky: 0xcfe2ee,
+    fog: 0xcfe2ee,
+    fogNear: 60,
+    fogFar: 560,
+    zenith: 0x4a7fc1,
+    horizon: 0xcfe2ee,
+    ridgeFar: 0x8fa6c0,
+    ridgeNear: 0x5c7390,
+    snow: 0xf4f7fb,
+    ambientColor: 0xd0dae6,
+    ambientIntensity: 1.0,
+    hemiSky: 0xcfe2ff,
+    hemiGround: 0x7a6a50,
+    hemiIntensity: 1.3,
+    sunColor: 0xfff4dc,
+    sunIntensity: 2.1,
+    darkness: 0,
+    visionMul: 1.0,
   },
-  // Stage 2 - late afternoon
-  {
-    sky: 0xb89878,
-    fog: 0xb89878,
-    ambientColor: 0xd4bfa0,
-    ambientIntensity: 0.65,
+  afternoon: {
+    mood: 'afternoon',
+    sky: 0xf3d2a2,
+    fog: 0xf3d2a2,
+    fogNear: 55,
+    fogFar: 520,
+    zenith: 0x6f8fc0,
+    horizon: 0xf3d2a2,
+    ridgeFar: 0xb89a94,
+    ridgeNear: 0x7d6a73,
+    snow: 0xfff1dc,
+    ambientColor: 0xe0c8a8,
+    ambientIntensity: 0.9,
+    hemiSky: 0xf5dcc0,
+    hemiGround: 0x7a5c48,
+    hemiIntensity: 1.2,
     sunColor: 0xffd9a0,
-    sunIntensity: 0.85,
+    sunIntensity: 1.9,
+    darkness: 0.2,
+    visionMul: 1.0,
   },
-  // Stage 3 - dusk
-  {
-    sky: 0x7a5566,
-    fog: 0x7a5566,
-    ambientColor: 0x806f8a,
-    ambientIntensity: 0.50,
+  dusk: {
+    mood: 'dusk',
+    sky: 0xc47a6c,
+    fog: 0xc47a6c,
+    fogNear: 40,
+    fogFar: 420,
+    zenith: 0x2e2a52,
+    horizon: 0xc47a6c,
+    ridgeFar: 0x7b5670,
+    ridgeNear: 0x4a3a55,
+    snow: 0xf2c7c0,
+    ambientColor: 0x9a88a8,
+    ambientIntensity: 0.7,
+    hemiSky: 0xc89aa8,
+    hemiGround: 0x3a2c30,
+    hemiIntensity: 1.0,
     sunColor: 0xff9a70,
-    sunIntensity: 0.55,
+    sunIntensity: 1.3,
+    darkness: 0.5,
+    visionMul: 0.95,
   },
-  // Stage 4 - early night. Bumped a touch so obstacle colour is still
-  // legible against the ground; the prior 0.35/0.30 crushed boulders
-  // and dark-blue cover into near-silhouettes.
-  {
-    sky: 0x2a3148,
-    fog: 0x2a3148,
-    ambientColor: 0x5a6c8e,
-    ambientIntensity: 0.55,
-    sunColor: 0xa0b8de,
-    sunIntensity: 0.45,
+  night: {
+    mood: 'night',
+    sky: 0x2a3a5c,
+    fog: 0x2a3a5c,
+    fogNear: 30,
+    fogFar: 360,
+    zenith: 0x0b1226,
+    horizon: 0x2a3a5c,
+    ridgeFar: 0x24324f,
+    ridgeNear: 0x18223a,
+    snow: 0x8ea3c8,
+    ambientColor: 0x7288b0,
+    ambientIntensity: 0.4,
+    hemiSky: 0x5a70a0,
+    hemiGround: 0x1a1c22,
+    hemiIntensity: 0.7,
+    sunColor: 0xa8bee6,
+    sunIntensity: 0.5,
+    darkness: 0.85,
+    visionMul: 0.88,
   },
-  // Stage 5+ - deep night. Brighter than a strict simulation would
-  // call for: silhouettes have to remain readable enough that the
-  // player can plan around obstacles. Bumped again from 0.55/0.45
-  // because cover/crate/boulder colours were still bottoming out
-  // on the device. Combined with the +emissive bump on every obstacle
-  // material this is the brightest night will get.
-  {
-    sky: 0x1c2640,
-    fog: 0x1c2640,
-    ambientColor: 0x6478a0,
-    ambientIntensity: 0.75,
-    sunColor: 0xb4c4e8,
-    sunIntensity: 0.60,
+  deepNight: {
+    mood: 'deepNight',
+    sky: 0x1a2540,
+    fog: 0x1a2540,
+    fogNear: 24,
+    fogFar: 300,
+    zenith: 0x060a16,
+    horizon: 0x1a2540,
+    ridgeFar: 0x18223a,
+    ridgeNear: 0x0f1628,
+    snow: 0x5d6f94,
+    ambientColor: 0x6a80aa,
+    ambientIntensity: 0.34,
+    hemiSky: 0x4a5f8f,
+    hemiGround: 0x16181e,
+    hemiIntensity: 0.6,
+    sunColor: 0x9fb2dc,
+    sunIntensity: 0.4,
+    darkness: 1,
+    visionMul: 0.82,
   },
-];
+};
 
-// Stages cycle dawn -> day -> dusk -> night and then loop, with each
-// loop trending darker on the night phases so late-game nights are
-// genuinely dim. Indexes 0..4 in STAGES correspond to one cycle;
-// past stage 5 we cycle through them and then bias toward darker
-// indices via a tier offset.
+const ORDER: MoodName[] = ['day', 'afternoon', 'dusk', 'night', 'deepNight'];
+
+// Deterministic mood for a stage. Stages step through the day in
+// blocks of five and each later block starts darker, so early stages
+// are mostly daylight and late stages mostly night.
 export function getStageLighting(stage: number): StageLighting {
   const s = Math.max(1, stage | 0);
-  // Late-game tier bias: after the first cycle we lean later in the
-  // table so brightness keeps trending down.
   const tier = Math.min(2, Math.floor((s - 1) / 5));
   const cyclePos = (s - 1) % 5;
-  const idx = Math.min(STAGES.length - 1, cyclePos + tier);
-  return STAGES[idx];
+  const idx = Math.min(ORDER.length - 1, cyclePos + tier);
+  return MOODS[ORDER[idx]];
 }
 
-// 8-bit-per-channel hex colour lerp. Output is the same packed-int
-// form the rest of the lighting code uses.
-function lerpColor(a: number, b: number, t: number): number {
-  const ar = (a >> 16) & 0xff;
-  const ag = (a >> 8) & 0xff;
-  const ab = a & 0xff;
-  const br = (b >> 16) & 0xff;
-  const bg = (b >> 8) & 0xff;
-  const bb = b & 0xff;
-  const r = Math.round(ar + (br - ar) * t);
-  const g = Math.round(ag + (bg - ag) * t);
-  const bv = Math.round(ab + (bb - ab) * t);
-  return (r << 16) | (g << 8) | bv;
-}
+export type LightRig = {
+  renderer: THREE.WebGLRenderer;
+  scene: THREE.Scene;
+  ambient: THREE.AmbientLight;
+  hemi: THREE.HemisphereLight;
+  sun: THREE.DirectionalLight;
+};
 
-function lerpStage(a: StageLighting, b: StageLighting, t: number): StageLighting {
-  return {
-    sky: lerpColor(a.sky, b.sky, t),
-    fog: lerpColor(a.fog, b.fog, t),
-    ambientColor: lerpColor(a.ambientColor, b.ambientColor, t),
-    ambientIntensity: a.ambientIntensity + (b.ambientIntensity - a.ambientIntensity) * t,
-    sunColor: lerpColor(a.sunColor, b.sunColor, t),
-    sunIntensity: a.sunIntensity + (b.sunIntensity - a.sunIntensity) * t,
-  };
-}
-
-// Cycle through the five STAGES palettes mirrored over a full
-// CYCLE_DURATION_S (bright -> dark -> bright -> dark -> ...). At any
-// time within the cycle the result is a smooth blend between two
-// adjacent palettes - colours and intensities both lerp - so the
-// world fades gradually instead of snapping between presets.
-const CYCLE_DURATION_S = 60; // 1 minute per full bright->dark->bright loop
-export function getCycleLighting(cycleTimeS: number): StageLighting {
-  // Wrap the time into [0, CYCLE_DURATION_S) and normalise to t01.
-  const wrapped = ((cycleTimeS % CYCLE_DURATION_S) + CYCLE_DURATION_S) % CYCLE_DURATION_S;
-  const t01 = wrapped / CYCLE_DURATION_S;
-  // Mirror: 0..0.5 maps to phase 0..1 (bright -> dark), 0.5..1 maps
-  // to phase 1..0 (dark -> bright). The eye sees a smooth sun-up
-  // sun-down loop instead of a snap-back at the loop boundary.
-  const phase = t01 < 0.5 ? t01 * 2 : (1 - t01) * 2;
-  // Map phase to a fractional palette index across the STAGES table.
-  const idx = phase * (STAGES.length - 1);
-  const lo = Math.floor(idx);
-  const hi = Math.min(STAGES.length - 1, lo + 1);
-  const f = idx - lo;
-  return lerpStage(STAGES[lo], STAGES[hi], f);
-}
-
-// Apply a fully-resolved StageLighting struct to the scene. Used by
-// both the per-frame cycle path and the legacy applyStageLighting
-// entry point.
-function applyResolved(
-  renderer: THREE.WebGLRenderer,
-  scene: THREE.Scene,
-  light: StageLighting,
-) {
-  renderer.setClearColor(light.sky, 1);
-  if (scene.fog && scene.fog instanceof THREE.Fog) {
-    scene.fog.color.setHex(light.fog);
+// Apply a mood to the cached lights, clear colour and fog. Called once
+// per scene (re)build - never per frame.
+export function applyLighting(rig: LightRig, light: StageLighting) {
+  rig.renderer.setClearColor(light.sky, 1);
+  if (rig.scene.fog && rig.scene.fog instanceof THREE.Fog) {
+    rig.scene.fog.color.setHex(light.fog);
+    rig.scene.fog.near = light.fogNear;
+    rig.scene.fog.far = light.fogFar;
   }
-  scene.traverse((node) => {
-    if ((node as THREE.AmbientLight).isAmbientLight) {
-      const a = node as THREE.AmbientLight;
-      a.color.setHex(light.ambientColor);
-      a.intensity = light.ambientIntensity;
-    } else if ((node as THREE.DirectionalLight).isDirectionalLight) {
-      const d = node as THREE.DirectionalLight;
-      d.color.setHex(light.sunColor);
-      d.intensity = light.sunIntensity;
-    }
-  });
+  rig.ambient.color.setHex(light.ambientColor);
+  rig.ambient.intensity = light.ambientIntensity;
+  rig.hemi.color.setHex(light.hemiSky);
+  rig.hemi.groundColor.setHex(light.hemiGround);
+  rig.hemi.intensity = light.hemiIntensity;
+  rig.sun.color.setHex(light.sunColor);
+  rig.sun.intensity = light.sunIntensity;
 }
 
-export function applyStageLighting(
-  renderer: THREE.WebGLRenderer,
-  scene: THREE.Scene,
-  stage: number,
-) {
-  applyResolved(renderer, scene, getStageLighting(stage));
-}
-
-// Per-frame entry point for the day/night cycle. Resolves the
-// blended palette for the supplied cycleTime and writes it into the
-// renderer + scene lights. Cheap (just lerps + uniform updates), so
-// it can run every frame without measurable cost.
-export function applyDynamicLighting(
-  renderer: THREE.WebGLRenderer,
-  scene: THREE.Scene,
-  cycleTimeS: number,
-) {
-  applyResolved(renderer, scene, getCycleLighting(cycleTimeS));
+export function applyStageLighting(rig: LightRig, stage: number): StageLighting {
+  const l = getStageLighting(stage);
+  applyLighting(rig, l);
+  return l;
 }

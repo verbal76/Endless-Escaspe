@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { Player, Projectile } from '../types/world';
-import { circleHit } from '../util/collision';
+import type { Obstacle, Player, Projectile } from '../types/world';
+import { circleHit, obstacleHitsCircle } from '../util/collision';
 import { PLAYER_RADIUS, PLAY_HALF_W } from '../util/geometry';
 
 const PROJECTILE_SPEED = 15;
@@ -11,11 +11,10 @@ const HIT_RADIUS = 0.55;
 let nextProjectileId = 1;
 
 const projectileGeo = new THREE.SphereGeometry(PROJECTILE_R, 8, 8);
-const projectileMat = new THREE.MeshStandardMaterial({
+const projectileMat = new THREE.MeshLambertMaterial({
   color: 0xff5544,
   emissive: 0xff2222,
   emissiveIntensity: 0.6,
-  roughness: 0.4,
 });
 
 export class ProjectileSystem {
@@ -46,30 +45,54 @@ export class ProjectileSystem {
 
   // Integrate, cull, and report whether anything hit the player this tick.
   // The caller owns the catch flow (heart loss, restart, runState).
-  update(dt: number, p: Player): boolean {
+  // Props at least `blockHeight` tall stop bullets; the step is split
+  // into sub-steps so a fast bullet can't tunnel through a thin wall.
+  update(
+    dt: number,
+    p: Player,
+    obstacles: readonly Obstacle[] = [],
+    blockHeight: number = 0.8,
+  ): boolean {
     let hit = false;
+    const SUB = 3;
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const pr = this.projectiles[i];
-      pr.x += pr.vx * dt;
-      pr.z += pr.vz * dt;
+      let hitPlayer = false;
+      let blocked = false;
+      for (let s = 0; s < SUB && !hitPlayer && !blocked; s++) {
+        pr.x += (pr.vx * dt) / SUB;
+        pr.z += (pr.vz * dt) / SUB;
+        hitPlayer = circleHit(
+          { x: pr.x, z: pr.z, r: HIT_RADIUS },
+          { x: p.x, z: p.z, r: PLAYER_RADIUS },
+        );
+        if (!hitPlayer) {
+          for (const o of obstacles) {
+            if (o.height < blockHeight) continue;
+            if (obstacleHitsCircle(o, pr.x, pr.z, PROJECTILE_R)) {
+              blocked = true;
+              break;
+            }
+          }
+        }
+      }
       pr.life -= dt;
       if (pr.mesh) {
         pr.mesh.position.x = pr.x;
         pr.mesh.position.z = pr.z;
       }
-
-      const hitPlayer = circleHit(
-        { x: pr.x, z: pr.z, r: HIT_RADIUS },
-        { x: p.x, z: p.z, r: PLAYER_RADIUS },
-      );
       const outOfBounds = Math.abs(pr.x) > PLAY_HALF_W + 1;
       if (hitPlayer) hit = true;
-      if (hitPlayer || outOfBounds || pr.life <= 0) {
+      if (hitPlayer || blocked || outOfBounds || pr.life <= 0) {
         if (pr.mesh) this.worldRoot.remove(pr.mesh);
         this.projectiles.splice(i, 1);
       }
     }
     return hit;
+  }
+
+  count(): number {
+    return this.projectiles.length;
   }
 
   clear() {

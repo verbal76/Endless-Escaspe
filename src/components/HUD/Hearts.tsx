@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '../../ui/Text';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -10,11 +11,73 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { startingHeartsFor } from '../../util/progression';
+import { color as ui, type as T } from '../../ui/theme';
+import { heartsFrame } from '../../ui/hudLayout';
 
-const FILLED_GLYPH = '♥';
-const EMPTY_GLYPH = '♡';
-const FILLED_COLOR = '#ff5577';
-const EMPTY_COLOR = 'rgba(255,255,255,0.3)';
+const FILLED_COLOR = ui.danger;
+const EMPTY_COLOR = 'rgba(255,255,255,0.28)';
+const OUTLINE = 'rgba(0,0,0,0.65)';
+
+// Heart drawn from Views (a square turned 45 deg plus two circles for
+// the lobes), so it looks the same on every phone - the ♥ / ♡ font
+// glyphs varied by device font. A slightly larger dark copy behind it
+// is the outline.
+function HeartShape({ size, color }: { size: number; color: string }) {
+  const sq = size * 0.62;
+  const lobe = sq;
+  return (
+    <View style={{ width: size, height: size }}>
+      <View
+        style={{
+          position: 'absolute',
+          width: sq,
+          height: sq,
+          left: (size - sq) / 2,
+          top: size * 0.3,
+          backgroundColor: color,
+          transform: [{ rotate: '45deg' }],
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: lobe,
+          height: lobe,
+          borderRadius: lobe / 2,
+          left: size / 2 - lobe * 0.9,
+          top: size * 0.08,
+          backgroundColor: color,
+        }}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          width: lobe,
+          height: lobe,
+          borderRadius: lobe / 2,
+          left: size / 2 - lobe * 0.1,
+          top: size * 0.08,
+          backgroundColor: color,
+        }}
+      />
+    </View>
+  );
+}
+
+function OutlinedHeart({ color }: { color: string }) {
+  return (
+    <View style={styles.heartBox}>
+      <View style={styles.heartOutline}>
+        <HeartShape size={HEART + 4} color={OUTLINE} />
+      </View>
+      <View style={styles.heartFill}>
+        <HeartShape size={HEART} color={color} />
+      </View>
+    </View>
+  );
+}
+
+const HEART = 22;
 
 // Single heart slot. Animates between filled and empty: when its
 // `alive` flips from true to false, it briefly pulses to ~140% scale
@@ -42,7 +105,7 @@ function HeartSlot({ alive }: { alive: boolean }) {
     }
   }, [alive, scale, fill]);
 
-  // Cross-fade two glyphs so we never pop characters mid-frame.
+  // Cross-fade the filled and empty hearts.
   const filledStyle = useAnimatedStyle(() => ({
     opacity: fill.value,
     transform: [{ scale: scale.value }],
@@ -54,12 +117,12 @@ function HeartSlot({ alive }: { alive: boolean }) {
 
   return (
     <View style={styles.slot}>
-      <Animated.Text style={[styles.heart, styles.filled, filledStyle]}>
-        {FILLED_GLYPH}
-      </Animated.Text>
-      <Animated.Text style={[styles.heart, styles.empty, emptyStyle]}>
-        {EMPTY_GLYPH}
-      </Animated.Text>
+      <Animated.View style={[styles.heart, filledStyle]}>
+        <OutlinedHeart color={FILLED_COLOR} />
+      </Animated.View>
+      <Animated.View style={[styles.heart, emptyStyle]}>
+        <OutlinedHeart color={EMPTY_COLOR} />
+      </Animated.View>
     </View>
   );
 }
@@ -67,6 +130,7 @@ function HeartSlot({ alive }: { alive: boolean }) {
 export function Hearts() {
   const hearts = useStore((s) => s.hearts);
   const stage = useStore((s) => s.stage);
+  const campaign = useStore((s) => s.gameMode === 'campaign');
   const runState = useStore((s) => s.runState);
   // Boss-perk active: +1 heart for the next perkRemainingStages
   // stages. The HUD renders an extra slot so the bonus heart is
@@ -77,8 +141,11 @@ export function Hearts() {
   // Late stages start the player with fewer hearts; only render
   // that many slots so the HUD doesn't lie about how much margin
   // is left.
-  const baseMax = startingHeartsFor(stage);
-  const max = baseMax + (perkRemainingStages > 0 ? 1 : 0);
+  // Endless / Daily runs always start with stage-1 hearts and no boss
+  // perk. Never show fewer slots than hearts actually held (a perk
+  // heart granted on the last perk stage outlives the counter).
+  const baseMax = startingHeartsFor(campaign ? stage : 1);
+  const max = Math.max(hearts, baseMax + (campaign && perkRemainingStages > 0 ? 1 : 0));
   // Hidden between runs (idle / cleared / caught) so the start
   // screen doesn't carry a stale heart count over the title art.
   if (runState !== 'playing') return null;
@@ -87,8 +154,7 @@ export function Hearts() {
   // the heart row's top floor lands at 64 with a small breathing
   // gap. The big top minimum still clears curved-display masks on
   // devices that hide the status bar (insets.top reports 0).
-  const top = Math.max(64, insets.top + 52);
-  const left = Math.max(16, insets.left + 12);
+  const { top, left } = heartsFrame(insets);
   return (
     <View style={[{ top, left }, styles.wrap]}>
       <View style={styles.row}>
@@ -96,7 +162,7 @@ export function Hearts() {
           <HeartSlot key={i} alive={i < hearts} />
         ))}
       </View>
-      {perkRemainingStages > 0 && (
+      {campaign && perkRemainingStages > 0 && (
         <Text style={styles.perkTag}>
           BOSS PERK · {perkRemainingStages}
         </Text>
@@ -111,8 +177,8 @@ const styles = StyleSheet.create({
   },
   perkTag: {
     marginTop: 2,
-    color: '#ffd14a',
-    fontSize: 10,
+    color: ui.gold,
+    fontSize: T.caption,
     fontWeight: '900',
     letterSpacing: 1.5,
     textShadowColor: 'rgba(0,0,0,0.7)',
@@ -137,22 +203,26 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   heart: {
-    fontSize: 28,
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowRadius: 3,
     position: 'absolute',
     left: 0,
     right: 0,
     top: 0,
     bottom: 0,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    includeFontPadding: false,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  filled: {
-    color: FILLED_COLOR,
+  heartBox: {
+    width: HEART + 4,
+    height: HEART + 4,
   },
-  empty: {
-    color: EMPTY_COLOR,
+  heartOutline: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  },
+  heartFill: {
+    position: 'absolute',
+    left: 2,
+    top: 2,
   },
 });

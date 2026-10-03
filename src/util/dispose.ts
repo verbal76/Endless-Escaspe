@@ -34,7 +34,15 @@ function isShared(res: { userData?: Record<string, unknown> } | undefined): bool
 export function disposeSubtree(node: THREE.Object3D) {
   node.traverse((child) => {
     const mesh = child as THREE.Mesh;
-    if (mesh.isMesh) {
+    // Lines / points (batched rain) carry geometry + material too.
+    const drawable =
+      mesh.isMesh || (child as THREE.Line).isLine || (child as THREE.Points).isPoints;
+    if ((child as THREE.InstancedMesh).isInstancedMesh) {
+      // Frees the per-instance matrix buffer; geometry / material are
+      // handled below like any mesh.
+      (child as THREE.InstancedMesh).dispose();
+    }
+    if (drawable) {
       const geo = mesh.geometry as THREE.BufferGeometry | undefined;
       if (geo && !isShared(geo)) {
         geo.dispose();

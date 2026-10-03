@@ -194,8 +194,8 @@ jobs:
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           curl -fsSL -o build13.apk "https://github.com/${{ github.repository }}/releases/download/build-13/endless-escape-build-13.apk"
-          NEW=$("$BT/apksigner" verify --print-certs "${{ steps.apk.outputs.name }}" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
-          OLD=$("$BT/apksigner" verify --print-certs build13.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')
+          NEW=$("$BT/apksigner" verify --print-certs "${{ steps.apk.outputs.name }}" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          OLD=$("$BT/apksigner" verify --print-certs build13.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
           {
             echo "--- signing continuity vs Build 13"
             echo "build13 cert sha256: $OLD"

@@ -21,6 +21,11 @@ import { dailyRunAgainDay, dailySeed } from '../../util/daily';
 const STAR_FILLED = '★';
 const STAR_EMPTY = '☆';
 
+// One coin format on every result card.
+export function coinsLine(earned: number, total: number): string {
+  return `+${earned} (total ${total})`;
+}
+
 export function Banner() {
   const runState = useStore((s) => s.runState);
   const { height: windowHeight } = useWindowDimensions();
@@ -155,30 +160,30 @@ export function Banner() {
         {endlessRun ? (
           <View style={[styles.statBlock, compact && styles.statBlockCompact]}>
             <StatRow compact={compact} index={0} label={summary!.mode === 'daily' ? `Best today (${summary!.day})` : 'Best distance'} value={`${summary!.bestM} m`} />
-            <StatRow compact={compact} index={1} label="Coins earned" value={`+${summary!.coinsEarned}`} />
-            <StatRow compact={compact} index={2} label="Coins" value={String(summary!.coinsTotal)} />
-            <StatRow compact={compact} index={3} label="Lives used" value={String(stats?.livesUsed ?? 0)} />
+            <StatRow compact={compact} index={1} label="Coins" value={coinsLine(summary!.coinsEarned, summary!.coinsTotal)} />
+            <StatRow compact={compact} index={2} label="Lives used" value={String(stats?.livesUsed ?? 0)} />
           </View>
         ) : stats && (
           <View style={[styles.statBlock, compact && styles.statBlockCompact]}>
-            {/* Each row shows its full-marks target, so players can see
-                what the stars ask for (scoring.ts). */}
-            <StatRow compact={compact} index={0} label="Times spotted" value={String(stats.timesSeen)} target={`${STAR_FILLED} ${STAT_TIMES_3}`} />
+            {/* A cleared card shows each row's full-marks target, so
+                players can see what the stars ask for (scoring.ts). A
+                caught card has no stars to earn, so no targets. */}
+            <StatRow compact={compact} index={0} label="Times spotted" value={String(stats.timesSeen)} target={isCleared ? `${STAR_FILLED} ${STAT_TIMES_3}` : undefined} />
             <StatRow compact={compact}
               index={1}
               label="Time detected"
               value={`${stats.timeDetected.toFixed(1)}s`}
-              target={`${STAR_FILLED} ≤ ${STAT_DETECTED_3}s`}
+              target={isCleared ? `${STAR_FILLED} ≤ ${STAT_DETECTED_3}s` : undefined}
             />
             <StatRow compact={compact}
               index={2}
               label="Run time"
               value={`${stats.runDurationS.toFixed(1)}s`}
-              target={stats.timeTarget3 ? `${STAR_FILLED} ≤ ${stats.timeTarget3}s` : undefined}
+              target={isCleared && stats.timeTarget3 ? `${STAR_FILLED} ≤ ${stats.timeTarget3}s` : undefined}
             />
-            <StatRow compact={compact} index={3} label="Lives used" value={String(stats.livesUsed)} target={`${STAR_FILLED} 0`} />
+            <StatRow compact={compact} index={3} label="Lives used" value={String(stats.livesUsed)} target={isCleared ? `${STAR_FILLED} 0` : undefined} />
             {isCleared && summary ? (
-              <StatRow compact={compact} index={4} label="Coins earned" value={`+${summary.coinsEarned} · total ${summary.coinsTotal}`} />
+              <StatRow compact={compact} index={4} label="Coins" value={coinsLine(summary.coinsEarned, summary.coinsTotal)} />
             ) : null}
           </View>
         )}

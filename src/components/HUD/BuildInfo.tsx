@@ -10,7 +10,7 @@ import { formatTextureRow } from '../../util/textureSource';
 import { formatFontRow, getFontStatus } from '../../ui/fonts';
 import { formatAuditRows, getRenderAudit } from '../../util/renderAudit';
 import { composeVitalsText } from '../../util/support';
-import { color as ui, type as T } from '../../ui/theme';
+import { color as ui, type as T, touch } from '../../ui/theme';
 
 // Build / Update Info: everything needed to tell exactly which code
 // is running. Tap a row with a shortened value (update ID, commit) to
@@ -130,7 +130,9 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 16,
+    minHeight: touch.min,
+    justifyContent: 'center',
+    borderRadius: 22,
     backgroundColor: 'rgba(120,200,255,0.22)',
     borderWidth: 1,
     borderColor: 'rgba(140,220,255,0.7)',

@@ -3,7 +3,7 @@ import { BackHandler, Pressable, ScrollView, StyleSheet, View } from 'react-nati
 import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
-import { color as ui, fonts, radius, type as T } from '../../ui/theme';
+import { color as ui, fonts, radius, type as T, touch } from '../../ui/theme';
 
 // How to Play: a short rules reference, opened from the start screen
 // (with WATCH INTRO to replay the animated tutorial) and from the pause
@@ -212,7 +212,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   btn: {
-    minHeight: 40,
+    minHeight: touch.min,
     paddingHorizontal: 16,
     borderRadius: radius.pill,
     borderWidth: 2,

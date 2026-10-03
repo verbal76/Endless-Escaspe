@@ -25,7 +25,7 @@ import { composeBugReportUrl, composeFeatureRequestUrl, composeVitalsText, openS
 import { BuildInfo } from './BuildInfo';
 import { HowToPlay } from './HowToPlay';
 import { CARD_BORDER, CARD_PADDING, PANEL_MARGIN, pausePanelHeights } from '../../ui/pauseLayout';
-import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts } from '../../ui/theme';
+import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts, touch } from '../../ui/theme';
 import { SETTINGS_GEAR } from '../../ui/iconData';
 
 const SLIDER_TRACK_W = 220;
@@ -96,11 +96,16 @@ function Toggle({
   onChange: (v: boolean) => void;
 }) {
   return (
+    // 44 dp hit area around the 50x28 track.
     <Pressable
       onPress={() => onChange(!value)}
-      style={[styles.toggleTrack, value && styles.toggleTrackOn]}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: value }}
+      style={styles.toggleHit}
     >
-      <View style={[styles.toggleKnob, value && styles.toggleKnobOn]} />
+      <View style={[styles.toggleTrack, value && styles.toggleTrackOn]}>
+        <View style={[styles.toggleKnob, value && styles.toggleKnobOn]} />
+      </View>
     </Pressable>
   );
 }
@@ -452,9 +457,11 @@ const styles = StyleSheet.create({
     // alongside the right-hand Settings + About without overflow.
     marginVertical: 4,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    minHeight: touch.min,
     borderRadius: 10,
     alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
   },
   // Shared button system (theme.ts): one primary action, the rest
@@ -559,6 +566,8 @@ const styles = StyleSheet.create({
   feedbackBtn: {
     flex: 1,
     paddingVertical: 8,
+    minHeight: touch.min,
+    justifyContent: 'center',
     paddingHorizontal: 10,
     borderRadius: 8,
     borderWidth: 1,
@@ -604,6 +613,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(120, 200, 255, 0.85)',
   },
   // Toggle
+  toggleHit: {
+    minHeight: touch.min,
+    minWidth: touch.min + 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   toggleTrack: {
     width: 50,
     height: 28,

@@ -12,7 +12,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { saveSettings } from '../../util/storage';
-import { color as ui, type as T, fonts } from '../../ui/theme';
+import { color as ui, type as T, fonts, touch } from '../../ui/theme';
 
 // Top-down 2D intro cutscene. Auto-plays six beats: four animated
 // ones illustrating the core stealth loop (walk past a guard, get
@@ -84,6 +84,9 @@ const LANDSCAPE_LAYOUT: StageLayout = {
   beat2Target: { x: 130, y: 178 },
   beat3Target: { x: 130, y: 116 },
 };
+
+// Explainer card width cap in landscape (tablets).
+const TUTORIAL_CARD_MAX = 460;
 
 const BEAT_MS = 3500;
 const OUTRO_MS = 1300;
@@ -340,7 +343,8 @@ export function Tutorial() {
   // Card width: matches the stage in portrait; takes whatever's left
   // after the stage in landscape, with a minimum so the body text
   // doesn't compress to one word per line on narrow displays.
-  const cardWidth = isLandscape ? Math.max(220, win.width - L.W - 80) : L.W;
+  // Capped so a tablet doesn't get one 900 dp line of text (D-19).
+  const cardWidth = isLandscape ? Math.min(TUTORIAL_CARD_MAX, Math.max(220, win.width - L.W - 80)) : L.W;
 
   return (
     <View style={styles.root}>
@@ -506,9 +510,10 @@ const styles = StyleSheet.create({
   },
   skipBtn: {
     position: 'absolute',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 18,
+    paddingHorizontal: 18,
+    minHeight: touch.min,
+    justifyContent: 'center',
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.30)',
     backgroundColor: 'rgba(255,255,255,0.06)',

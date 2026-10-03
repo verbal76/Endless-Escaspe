@@ -211,23 +211,39 @@ export function Banner() {
             </Pressable>
           </View>
         ) : isCleared ? (
-          <Pressable
-            style={({ pressed }) => [styles.btn, compact && styles.btnCompact, pressed && styles.btnDown]}
-            onPress={() => resetForSegment(segmentSeed + 1)}
-          >
-            <Text style={styles.btnLabel}>NEXT STAGE</Text>
-          </Pressable>
+          <View style={styles.btnRow}>
+            <Pressable
+              style={({ pressed }) => [styles.btn, compact && styles.btnCompact, pressed && styles.btnDown]}
+              onPress={() => resetForSegment(segmentSeed + 1)}
+            >
+              <Text style={styles.btnLabel}>NEXT STAGE</Text>
+            </Pressable>
+            {/* A way to stop here (progress is already saved). */}
+            <Pressable
+              style={({ pressed }) => [styles.btn, compact && styles.btnCompact, styles.btnQuiet, pressed && styles.btnDeathDown]}
+              onPress={() => setRunState('idle')}
+            >
+              <Text style={[styles.btnLabel, styles.btnLabelQuiet]}>MAIN MENU</Text>
+            </Pressable>
+          </View>
         ) : (
-          // Caught panel: send the player back to the start screen
-          // when they're ready. No auto-dismiss - the user wanted to
-          // dwell on the death summary the same way they dwell on a
-          // win.
-          <Pressable
-            style={({ pressed }) => [styles.btn, compact && styles.btnCompact, styles.btnDeath, pressed && styles.btnDeathDown]}
-            onPress={() => setRunState('idle')}
-          >
-            <Text style={[styles.btnLabel, styles.btnLabelDeath]}>MAIN MENU</Text>
-          </Pressable>
+          // Caught card: retry the same stage in one tap (fresh hearts
+          // via the restart path), or back to the menu. No auto-dismiss
+          // - players dwell on the death summary like on a win.
+          <View style={styles.btnRow}>
+            <Pressable
+              style={({ pressed }) => [styles.btn, compact && styles.btnCompact, pressed && styles.btnDown]}
+              onPress={requestRestart}
+            >
+              <Text style={styles.btnLabel}>TRY AGAIN</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [styles.btn, compact && styles.btnCompact, styles.btnDeath, pressed && styles.btnDeathDown]}
+              onPress={() => setRunState('idle')}
+            >
+              <Text style={[styles.btnLabel, styles.btnLabelDeath]}>MAIN MENU</Text>
+            </Pressable>
+          </View>
         )}
         </ScrollView>
       </Animated.View>
@@ -394,6 +410,12 @@ const styles = StyleSheet.create({
   // Death panel button: red theme to match the cardCaught border so
   // the call-to-action reads as a "leave" rather than an "advance".
   btnDeath: buttonFill('danger'),
+  btnQuiet: buttonFill('secondary'),
+  btnLabelQuiet: {
+    ...buttonLabel('secondary'),
+    fontFamily: undefined,
+    fontWeight: '900',
+  },
   btnDeathDown: buttonPressed,
   btnLabelDeath: {
     ...buttonLabel('danger'),

@@ -2,7 +2,8 @@
 # Inspect a built APK (not the source config) and write apk-report.txt.
 # Usage: verify-apk.sh <apk> <expected-package> <expected-versionCode> <min-target-sdk>
 # Fails on: wrong package/versionCode, targetSdk below the Play requirement,
-# any native library whose ELF LOAD segments are not 16 KB aligned, or an APK
+# any 64-bit native library whose ELF LOAD segments are not 16 KB aligned (32-bit
+# ABIs are reported informationally: 16 KB-page devices are 64-bit only), or an APK
 # whose uncompressed .so files are not 16 KB aligned inside the zip.
 set -euo pipefail
 APK=$1; PKG=$2; VC=$3; MINTARGET=$4
@@ -48,7 +49,7 @@ set +e
 python3 - "$WORK" "$OUT" <<'PY'
 import os, struct, sys
 root, out = sys.argv[1], sys.argv[2]
-bad = 0; rows = []
+bad = 0; info32 = 0; rows = []
 for d, _, fs in os.walk(os.path.join(root, 'lib')):
     for f in sorted(fs):
         p = os.path.join(d, f)
@@ -68,11 +69,13 @@ for d, _, fs in os.walk(os.path.join(root, 'lib')):
                     aligns.append(struct.unpack_from('<Q', e, 48)[0] if is64 else struct.unpack_from('<I', e, 28)[0])
         abi = os.path.relpath(d, os.path.join(root, 'lib'))
         ok = all(a % 16384 == 0 for a in aligns) and bool(aligns)
-        if not ok: bad += 1
-        rows.append(f"{abi:12s} {f:40s} LOAD align={sorted(set(aligns))} {'OK' if ok else 'FAIL<16KB'}")
+        is32 = abi in ('armeabi-v7a', 'x86')
+        if not ok and not is32: bad += 1
+        if not ok and is32: info32 += 1
+        rows.append(f"{abi:12s} {f:40s} LOAD align={sorted(set(aligns))} {'OK' if ok else ('INFO 32-bit ABI, 4 KB aligned (Play 16 KB rule is 64-bit)' if is32 else 'FAIL<16KB')}")
 with open(out, 'a') as o:
     for r in rows: print(r); o.write(r + '\n')
-    s = f"native libs: {len(rows)}; not 16 KB aligned: {bad}"
+    s = f"native libs: {len(rows)}; 64-bit libs not 16 KB aligned: {bad}; 32-bit libs not 16 KB aligned (informational): {info32}"
     print(s); o.write(s + '\n')
 sys.exit(1 if bad else 0)
 PY

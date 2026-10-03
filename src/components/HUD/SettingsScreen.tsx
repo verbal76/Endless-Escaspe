@@ -120,6 +120,10 @@ export function SettingsScreen() {
   const weatherEnabled = useStore((s) => s.weatherEnabled);
   const setWeatherEnabled = useStore((s) => s.setWeatherEnabled);
   const segmentWeatherEnabled = useStore((s) => s.segmentWeatherEnabled);
+  // Off a live run (main menu, stage-clear / caught cards) the gear
+  // opens settings only: RESTART / LOAD RUN / MAIN MENU there started a
+  // run with no save behind it, or raced the card's own buttons.
+  const inRun = useStore((s) => s.runState === 'playing');
 
   const persistSettings = () => {
     const st = useStore.getState();
@@ -168,6 +172,7 @@ export function SettingsScreen() {
     // openPanel only uses stable setters.
   }, []);
   const onRestart = () => {
+    if (useStore.getState().runState !== 'playing') return close();
     setOpen(false);
     requestRestart();
     persistSettings();
@@ -249,7 +254,7 @@ export function SettingsScreen() {
         >
           <View style={[styles.card, { maxHeight: heights.card }]}>
             {/* Title spans both columns. */}
-            <Text style={styles.title}>GAME PAUSED</Text>
+            <Text style={styles.title}>{inRun ? 'GAME PAUSED' : 'SETTINGS'}</Text>
 
             {/* Two-column landscape layout: pause actions on the left,
                 Settings / Feedback / Build info on the right. Both
@@ -266,26 +271,30 @@ export function SettingsScreen() {
                   style={({ pressed }) => [styles.bigBtn, styles.btnResume, pressed && styles.btnPressed]}
                   onPress={onResume}
                 >
-                  <Text style={[styles.bigLabel, buttonLabel('primary')]}>RESUME</Text>
+                  <Text style={[styles.bigLabel, buttonLabel('primary')]}>{inRun ? 'RESUME' : 'CLOSE'}</Text>
                 </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
-                  onPress={onRestart}
-                >
-                  <Text style={styles.bigLabel}>RESTART</Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.bigBtn, styles.btnLoad, pressed && styles.btnPressed]}
-                  onPress={onLoadRun}
-                >
-                  <Text style={styles.bigLabel}>LOAD RUN</Text>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
-                  onPress={onMainMenu}
-                >
-                  <Text style={styles.bigLabel}>MAIN MENU</Text>
-                </Pressable>
+                {inRun ? (
+                  <>
+                  <Pressable
+                    style={({ pressed }) => [styles.bigBtn, styles.btnRestart, pressed && styles.btnPressed]}
+                    onPress={onRestart}
+                  >
+                    <Text style={styles.bigLabel}>RESTART</Text>
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [styles.bigBtn, styles.btnLoad, pressed && styles.btnPressed]}
+                    onPress={onLoadRun}
+                  >
+                    <Text style={styles.bigLabel}>LOAD RUN</Text>
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [styles.bigBtn, styles.btnMain, pressed && styles.btnPressed]}
+                    onPress={onMainMenu}
+                  >
+                    <Text style={styles.bigLabel}>MAIN MENU</Text>
+                  </Pressable>
+                  </>
+                ) : null}
               </ScrollView>
 
               <ScrollView

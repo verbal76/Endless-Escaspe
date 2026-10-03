@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -12,9 +12,12 @@ import { useStore } from '../../state/store';
 import { input } from '../../systems/InputSystem';
 import type { PickupKind } from '../../types/world';
 import { color as ui, hud, type as T } from '../../ui/theme';
+import { BTN_H, BTN_W, pickupLayout } from '../../ui/hudLayout';
 
-// Stack of pickup-use buttons sitting above the stance column on the
-// right edge of the screen. A button only shows while the player holds
+// Pickup-use buttons above the stance column on the right edge of the
+// screen (positions: ui/hudLayout.pickupLayout - on phones under
+// 406 dp tall the crowbar moves into the THROW row instead of climbing
+// to the top edge). A button only shows while the player holds
 // that item (count > 0); an empty slot keeps its space as an invisible
 // placeholder so the other controls never shift. Tapping sets the
 // matching one-shot input flag, which Game.tsx consumes on the next
@@ -167,47 +170,35 @@ export function PickupBag() {
   const inventory = useStore((s) => s.inventory);
   const runState = useStore((s) => s.runState);
   const crowbarInRange = useStore((s) => s.crowbarInRange);
+  const { height } = useWindowDimensions();
   if (runState !== 'playing') return null;
+  const pos = pickupLayout(height);
 
   return (
     <>
-    <View style={styles.rockSlot}>
-      <PickupSlot slot={ROCK_SLOT} count={inventory.rock} highlight={false} />
-    </View>
-    <View style={styles.col}>
+      <View style={[styles.slot, pos.rock]}>
+        <PickupSlot slot={ROCK_SLOT} count={inventory.rock} highlight={false} />
+      </View>
       {SLOTS.map((slot) => (
-        <PickupSlot
-          key={slot.kind}
-          slot={slot}
-          count={inventory[slot.kind]}
-          highlight={slot.kind === 'crowbar' && crowbarInRange && inventory.crowbar > 0}
-        />
+        <View key={slot.kind} style={[styles.slot, slot.kind === 'crowbar' ? pos.crowbar : pos.smoke]}>
+          <PickupSlot
+            slot={slot}
+            count={inventory[slot.kind]}
+            highlight={slot.kind === 'crowbar' && crowbarInRange && inventory.crowbar > 0}
+          />
+        </View>
       ))}
-    </View>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  rockSlot: {
+  slot: {
     position: 'absolute',
-    right: 63 + 78 + 10,
-    bottom: 230,
-  },
-  col: {
-    position: 'absolute',
-    // Sit above the stance column. ActionButtons.tsx uses right:63,
-    // bottom:100 with 56-tall buttons + 8 gap. Two stance buttons
-    // stack to ~120 px tall, so put the pickup column directly above
-    // that with the same right:63 alignment.
-    right: 63,
-    bottom: 230,
-    flexDirection: 'column',
-    gap: 8,
   },
   btn: {
-    width: 78,
-    height: 56,
+    width: BTN_W,
+    height: BTN_H,
     borderRadius: 28,
     backgroundColor: hud.fill,
     borderWidth: hud.ringWidth,
@@ -216,8 +207,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   placeholder: {
-    width: 78,
-    height: 56,
+    width: BTN_W,
+    height: BTN_H,
   },
   inRange: {
     borderColor: ui.gold,

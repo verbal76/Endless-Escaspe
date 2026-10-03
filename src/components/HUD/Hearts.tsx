@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { startingHeartsFor } from '../../util/progression';
 import { color as ui, type as T } from '../../ui/theme';
+import { heartsFrame } from '../../ui/hudLayout';
 
 const FILLED_COLOR = ui.danger;
 const EMPTY_COLOR = 'rgba(255,255,255,0.28)';
@@ -152,8 +153,7 @@ export function Hearts() {
   // the heart row's top floor lands at 64 with a small breathing
   // gap. The big top minimum still clears curved-display masks on
   // devices that hide the status bar (insets.top reports 0).
-  const top = Math.max(64, insets.top + 52);
-  const left = Math.max(16, insets.left + 12);
+  const { top, left } = heartsFrame(insets);
   return (
     <View style={[{ top, left }, styles.wrap]}>
       <View style={styles.row}>

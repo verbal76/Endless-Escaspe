@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import Animated, {
   Easing,
   useAnimatedStyle,
@@ -11,6 +11,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStore } from '../../state/store';
 import { type as T } from '../../ui/theme';
+import { toastFrame } from '../../ui/hudLayout';
 
 const HOLD_MS = 2600;
 // Tips are read while moving: they stay up longer.
@@ -27,8 +28,11 @@ const TONE_BORDER = {
   tip: 'rgba(255,209,74,0.8)',
 } as const;
 
-// Small top-centre notice. Never blocks input and never stacks: a new
-// toast replaces the current one.
+// Small notice. Never blocks input and never stacks: a new toast
+// replaces the current one. Where it goes comes from ui/hudLayout: top
+// centre on wide phones, otherwise in the band below the hearts and
+// left of the right-hand controls (it used to cover the hearts, the
+// BOSS PERK tag and THROW on narrow phones).
 export function Toast() {
   const toast = useStore((s) => s.toast);
   const runState = useStore((s) => s.runState);
@@ -37,11 +41,11 @@ export function Toast() {
   // camera-alarm bar beneath it (y 10-92).
   const bossTimer = useStore((s) => s.bossTimeRemaining > 0);
   const endless = useStore((s) => s.gameMode !== 'campaign');
-  // Follow the safe-area inset like the bars above it do (the camera
-  // alarm bar sits at max(32, inset + 16) and is ~30 dp tall).
+  const perkTag = useStore((s) => s.gameMode === 'campaign' && s.perkRemainingStages > 0);
+  const crowbar = useStore((s) => s.inventory.crowbar > 0);
   const insets = useSafeAreaInsets();
-  const base = bossTimer ? 126 : endless ? 98 : 64;
-  const top = Math.max(base, insets.top + base - 12);
+  const { width, height } = useWindowDimensions();
+  const frame = toastFrame(width, height, insets, { bossTimer, endless, perkTag, crowbar });
   const o = useSharedValue(0);
   const y = useSharedValue(-10);
 
@@ -69,25 +73,35 @@ export function Toast() {
   // restored save) shows on the menus too, so it is never silent.
   if (!toast || (runState !== 'playing' && toast.tone !== 'warn')) return null;
   return (
-    <Animated.View
+    <View
       pointerEvents="none"
       style={[
-        styles.box,
-        { top, backgroundColor: TONE_BG[toast.tone], borderColor: TONE_BORDER[toast.tone] },
-        style,
+        styles.lane,
+        frame.mode === 'centre'
+          ? { top: frame.top, left: 0, right: 0, alignItems: 'center' }
+          : { top: frame.top, left: frame.left, right: frame.right, alignItems: 'flex-start' },
       ]}
     >
-      <Text style={styles.text}>{toast.text}</Text>
-    </Animated.View>
+      <Animated.View
+        style={[
+          styles.box,
+          frame.mode === 'centre' && { maxWidth: frame.maxWidth },
+          { backgroundColor: TONE_BG[toast.tone], borderColor: TONE_BORDER[toast.tone] },
+          style,
+        ]}
+      >
+        <Text style={styles.text}>{toast.text}</Text>
+      </Animated.View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  box: {
+  lane: {
     position: 'absolute',
-    top: 64,
-    alignSelf: 'center',
-    maxWidth: '60%',
+  },
+  box: {
+    maxWidth: '100%',
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 12,

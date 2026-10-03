@@ -12,6 +12,7 @@ import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
 import type { Stance } from '../../types/world';
 import { hud, type as T } from '../../ui/theme';
+import { BTN_GAP, BTN_H, BTN_W, CLUSTER_RIGHT, STANCE_BOTTOM } from '../../ui/hudLayout';
 
 // Stance picker only. RUN is its own component (RunButton) sitting
 // near the joystick on the left side of the screen.
@@ -110,15 +111,15 @@ const styles = StyleSheet.create({
     // Shifted left half a button width (right:24 -> 63) plus pushed
     // up to bottom:100 to make room for the look-arrow row that
     // sits directly underneath the stack at bottom:30.
-    right: 63,
-    bottom: 100,
+    right: CLUSTER_RIGHT,
+    bottom: STANCE_BOTTOM,
     flexDirection: 'column',
-    gap: 8,
+    gap: BTN_GAP,
   },
   btn: {
-    width: 78,
-    height: 56,
-    borderRadius: 28,
+    width: BTN_W,
+    height: BTN_H,
+    borderRadius: BTN_H / 2,
     backgroundColor: hud.fill,
     borderWidth: hud.ringWidth,
     borderColor: hud.ring,

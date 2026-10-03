@@ -11,6 +11,7 @@ import Animated, {
 import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
 import { hud, type as T } from '../../ui/theme';
+import { RUN } from '../../ui/hudLayout';
 
 // RUN is a speed-toggle that doubles whatever stance speed is active.
 // Lives in the right-hand action cluster (left of the CROUCH / WALK
@@ -78,11 +79,11 @@ const styles = StyleSheet.create({
     // Right-hand cluster: the stance column sits at right:63 (78 wide,
     // bottom 100..220). RUN goes just left of it, centred on the
     // column, clear of the look arrows below (bottom 30).
-    right: 63 + 78 + 14,
-    bottom: 125,
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    right: RUN.right,
+    bottom: RUN.bottom,
+    width: RUN.size,
+    height: RUN.size,
+    borderRadius: RUN.size / 2,
     backgroundColor: hud.fill,
     borderWidth: hud.ringWidth,
     borderColor: hud.ring,

@@ -11,6 +11,7 @@ import Animated, {
 import { input } from '../../systems/InputSystem';
 import { useStore } from '../../state/store';
 import { hud } from '../../ui/theme';
+import { BTN_W, CLUSTER_RIGHT, LOOK, RUN } from '../../ui/hudLayout';
 
 // Hold-to-look arrows. Use react-native-gesture-handler instead of
 // Pressable so they coexist with the joystick's Pan gesture - with
@@ -24,7 +25,7 @@ import { hud } from '../../ui/theme';
 
 const LOOK_YAW_DEG = 45;
 const LOOK_YAW_RAD = (LOOK_YAW_DEG * Math.PI) / 180;
-const ARROW_SIZE = 50;
+const ARROW_SIZE = LOOK.size;
 
 function setYaw(v: number) {
   input.viewYaw = v;
@@ -81,7 +82,7 @@ export function LookButtons() {
 
 const baseBtn = {
   position: 'absolute' as const,
-  bottom: 30,
+  bottom: LOOK.bottom,
   width: ARROW_SIZE,
   height: ARROW_SIZE,
   borderRadius: ARROW_SIZE / 2,
@@ -95,11 +96,11 @@ const baseBtn = {
 const styles = StyleSheet.create({
   right: {
     ...baseBtn,
-    right: 63 + (78 - ARROW_SIZE) / 2,
+    right: CLUSTER_RIGHT + (BTN_W - ARROW_SIZE) / 2,
   },
   left: {
     ...baseBtn,
-    right: 63 + 78 + 14,
+    right: RUN.right,
   },
   // Drawn chevron (two sides of a small square, rotated): the same on
   // every phone, unlike the ‹ › font glyphs it replaces.

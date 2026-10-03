@@ -131,3 +131,85 @@ test('runRenderAudit works on an expo-gl style context (no gl.canvas, no resetSt
   assert.ok(a.gpu.length > 0);
   assert.equal(calls[calls.length - 2], 'bind-null', 'default framebuffer restored');
 });
+
+// One fake GL texture per texture key, answering with that key's texels.
+function perKeyGpu() {
+  const byKey = new Map<string, WebGLTexture>();
+  const keyOf = new Map<WebGLTexture, string>();
+  const isUploaded = (tex: THREE.Texture) => {
+    const key = tex.userData.textureKey as string;
+    let gl = byKey.get(key);
+    if (!gl) {
+      gl = {} as WebGLTexture;
+      byKey.set(key, gl);
+      keyOf.set(gl, key);
+    }
+    return gl;
+  };
+  const read = (gl: WebGLTexture, pts: Array<[number, number]>, mode: 'blank' | 'correct') =>
+    fakeGpu(keyOf.get(gl) as string, mode)(pts);
+  return { isUploaded, read };
+}
+
+// C-4: the GPU readback runs once per texture per session, not on
+// every rebuild / restart / outfit change.
+test('GPU check results are cached per texture: later audits do no readback', async () => {
+  const { clearGpuCheckCache } = await import('../src/util/renderAudit');
+  const { evaluateRenderLog } = await import('../scripts/ci/check-render-audit.mjs');
+  clearGpuCheckCache();
+  const { root } = scene({ playerTextured: true });
+  const gpu = perKeyGpu();
+  const isUploaded = gpu.isUploaded;
+  let reads = 0;
+  const reader = (t: WebGLTexture, pts: Array<[number, number]>) => {
+    reads += pts.length;
+    return gpu.read(t, pts, 'correct');
+  };
+  const first = auditScene(root, isUploaded, reader);
+  const firstReads = reads;
+  assert.ok(firstReads > 0);
+  for (let i = 0; i < 5; i++) {
+    // Same verdicts (so the same CI log line content), no readback.
+    assert.deepEqual(auditScene(root, isUploaded, reader), first);
+  }
+  assert.equal(reads, firstReads, 'no readPixels after the first audit');
+  // The CI log check still passes on a cached audit line.
+  const ok = { meshes: 1, textured: 1, flat: 0, notUploaded: 0 };
+  const audit = { ...first, groups: { ...first.groups, props: ok, ground: ok } };
+  const log = [
+    `I ReactNativeJS: [release] ${JSON.stringify({ line: 'x', source: 'embedded', gitSha: null })}`,
+    `I ReactNativeJS: [font] ${JSON.stringify({ state: 'loaded' })}`,
+    `I ReactNativeJS: [render-audit] ${JSON.stringify(audit)}`,
+  ].join('\n');
+  assert.deepEqual(evaluateRenderLog(log, null).problems, []);
+});
+
+test('GPU check cache: failures are re-read, and a new GL texture is re-checked', async () => {
+  const { clearGpuCheckCache } = await import('../src/util/renderAudit');
+  clearGpuCheckCache();
+  const { root } = scene({ playerTextured: true });
+  const gpu = perKeyGpu();
+  const isUploaded = gpu.isUploaded;
+  let reads = 0;
+  let mode: 'blank' | 'correct' = 'blank';
+  const reader = (t: WebGLTexture, pts: Array<[number, number]>) => {
+    reads++;
+    return gpu.read(t, pts, mode);
+  };
+  assert.ok(auditScene(root, isUploaded, reader).problems.some((p) => /blank/.test(p)));
+  const afterFail = reads;
+  mode = 'correct';
+  // Not cached: the retry audit reads again and now passes.
+  assert.deepEqual(auditScene(root, isUploaded, reader).problems, []);
+  assert.ok(reads > afterFail);
+  const afterOk = reads;
+  auditScene(root, isUploaded, reader);
+  assert.equal(reads, afterOk, 'verified texture not re-read');
+  // Same key, different GL texture object (re-upload / new context).
+  const fresh = perKeyGpu();
+  auditScene(root, fresh.isUploaded, (t, pts) => {
+    reads++;
+    return fresh.read(t, pts, 'correct');
+  });
+  assert.ok(reads > afterOk, 're-uploaded texture is checked again');
+});

@@ -133,6 +133,18 @@ export function checkTexture(key: string, flipY: boolean, read: (pts: Array<[num
   };
 }
 
+// GPU checks that passed, per texture key, with the GL texture object
+// they were read from. The textures are created once and never change,
+// so after the first audit a rebuild / restart / outfit change re-uses
+// the verdict instead of repeating ~60 blocking readPixels round trips
+// (each one flushes the frame on expo-gl). A texture that comes back
+// as a different GL object (re-upload, new context) is checked again;
+// failed checks are never cached, so the retry audits re-read them.
+const VERIFIED = new Map<string, WebGLTexture>();
+export function clearGpuCheckCache() {
+  VERIFIED.clear();
+}
+
 export function auditScene(
   scene: THREE.Object3D,
   isUploaded: (tex: THREE.Texture) => WebGLTexture | null,
@@ -177,8 +189,13 @@ export function auditScene(
       gpu.push({ key, status: 'not-uploaded' });
     } else if (!readTexels) {
       continue;
+    } else if (VERIFIED.get(key) === glTex) {
+      // Already read back from this very GL texture and matched.
+      gpu.push({ key, status: 'ok' });
     } else {
-      gpu.push(checkTexture(key, tex.flipY, (pts) => readTexels(glTex, pts)));
+      const check = checkTexture(key, tex.flipY, (pts) => readTexels(glTex, pts));
+      if (check.status === 'ok') VERIFIED.set(key, glTex);
+      gpu.push(check);
     }
   }
   for (const c of gpu) {

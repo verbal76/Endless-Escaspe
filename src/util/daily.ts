@@ -5,7 +5,7 @@
 // produce a different layout (generation, spawn tables, difficulty
 // curve). Players on different game versions then get different
 // dailies instead of "the same" daily that silently differs.
-export const DAILY_RULES_VERSION = 1;
+export const DAILY_RULES_VERSION = 2;
 
 // UTC calendar day as YYYY-MM-DD.
 export function utcDayKey(now: Date): string {

@@ -476,6 +476,9 @@ export const useStore = create<Store>((set) => ({
       alarmLevel: 0,
       lastStats: null,
       lastDeathCause: null,
+      // A restart is a fresh attempt: the world respawns its pickups,
+      // so the bag starts empty (otherwise items farm across restarts).
+      inventory: { ...EMPTY_INVENTORY },
     })),
   resetForSegment: (seed) =>
     set({

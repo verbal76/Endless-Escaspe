@@ -14,7 +14,9 @@ import { resetGuardMemory, updateGuard, hearNoiseAt, type GuardSenses } from '..
 import {
   EXTERNAL_FEED_GAIN,
   baseNoisePerSecond,
+  externalFeedFor,
   noiseRadius,
+  pointInSmoke,
   updateDetection,
   type DetectionResult,
 } from '../systems/DetectionSystem';
@@ -180,10 +182,8 @@ import {
 } from '../scenes/Backdrop';
 import {
   createWeather,
-  noiseMultiplier,
   pickWeather,
   updateWeather,
-  visionMultiplier,
   type Weather,
   type WeatherKind,
 } from '../scenes/Weather';
@@ -209,50 +209,19 @@ import { applyRunResult, type RunResult } from '../util/economy';
 import { RunTracker } from '../util/runStats';
 import { BossClock } from '../util/bossClock';
 import { resetNavState } from '../systems/Navigator';
+import { clearsCombatState, moodStageFor, weatherRules } from './runRules';
+import { seedSimRandom } from '../util/rng';
+import {
+  CROWBAR_DOG_REACH,
+  CROWBAR_DOG_REACH_SQ,
+  CROWBAR_RANGE,
+  CROWBAR_STUN_DURATION,
+  applyCrowbarStun,
+  crowbarCanReach,
+  crowbarTargetGuard,
+} from '../systems/Crowbar';
 
-// Crowbar tuning. Range is intentionally short so the player has to
-// commit to a melee approach; duration is long enough to clear a
-// chase past a chokepoint but not so long it's a free pass.
-const CROWBAR_RANGE = 3.0;
-const CROWBAR_RANGE_SQ = CROWBAR_RANGE * CROWBAR_RANGE;
-// Dogs are scared from a little further than a guard can be stunned;
-// the target ring / button highlight use the same reach.
-const CROWBAR_DOG_REACH = CROWBAR_RANGE + 0.5;
-const CROWBAR_DOG_REACH_SQ = CROWBAR_DOG_REACH * CROWBAR_DOG_REACH;
-const CROWBAR_STUN_DURATION = 4.0;
-
-// Stun the nearest non-stunned guard within CROWBAR_RANGE of (px, pz).
-// No-op if no guard is in range. Resets that guard's investigation
-// state so the unstun re-enters wander rather than re-aggroing the
-// player from where they were standing when they swung.
-// Returns true on a successful hit so the caller can fire the bonk
-// SFX + haptic feedback only when contact actually lands (a swing
-// into empty air should be silent).
-function applyCrowbarStun(
-  px: number,
-  pz: number,
-  guards: readonly Guard[],
-): boolean {
-  let nearest: Guard | null = null;
-  let nearestDistSq = CROWBAR_RANGE_SQ;
-  for (const g of guards) {
-    if (g.stunTimer > 0) continue;
-    const dx = g.x - px;
-    const dz = g.z - pz;
-    const dSq = dx * dx + dz * dz;
-    if (dSq <= nearestDistSq) {
-      nearestDistSq = dSq;
-      nearest = g;
-    }
-  }
-  if (!nearest) return false;
-  nearest.stunTimer = CROWBAR_STUN_DURATION;
-  nearest.state = 'wander';
-  nearest.investigationTarget = null;
-  nearest.behaviorTimer = 0;
-  nearest.fireCooldown = Math.max(nearest.fireCooldown, 0.5);
-  return true;
-}
+// Crowbar tuning and targeting: src/systems/Crowbar.ts.
 
 export function Game() {
   const loopRef = useRef<LoopHandle | null>(null);
@@ -390,6 +359,10 @@ export function Game() {
       segmentEndZ: number;
       weatherKind: WeatherKind;
       weatherEnabledAtInit: boolean;
+      // Weather the detection rules use (Daily: the rolled weather,
+      // whatever the visual toggle says).
+      rulesVision: number;
+      rulesNoise: number;
       weather: Weather;
       groundMat: THREE.MeshLambertMaterial;
       // Win-line material is null for arena variants (no win line).
@@ -607,12 +580,7 @@ export function Game() {
 
     // Endless / Daily: difficulty level for a world Z.
     const ENDLESS_SECTION_LEN = CHUNKS_AHEAD * CHUNK_LEN; // 120 m
-    // Endless / Daily: one mood per run, picked from the run's seed
-    // (day, afternoon, dusk or night - the moods of stages 1-4), so runs
-    // differ but a Daily is the same for everyone that day. Independent
-    // of the player's campaign progress.
-    const moodStageFor = (stage: number, mode: GameMode, seed: number) =>
-      mode === 'campaign' ? stage : 1 + (((seed >>> 0) * 2654435761) >>> 0) % 4;
+    // Endless / Daily mood per run: moodStageFor (runRules.ts).
     const levelAtZ = (z: number) => Math.min(30, 1 + Math.floor(Math.max(0, z) / ENDLESS_SECTION_LEN));
 
     const buildScene = (stage: number, seed: number, mode: GameMode = 'campaign'): Scene => {
@@ -659,6 +627,7 @@ export function Game() {
       useStore.getState().setSegmentWeatherEnabled(weatherEnabledAtInit);
       const weather: Weather = createWeather(weatherKind, 0, 1);
       root.add(weather.group);
+      const rules = weatherRules(mode, weatherEnabledAtInit, weatherKind, rolledWeatherKind);
       if (weatherKind === 'snow') {
         // Snow cover: the grass texture stays (faintly showing through)
         // but a cool white emissive base carries the ground, dimmed with
@@ -726,6 +695,8 @@ export function Game() {
         segmentEndZ: endless ? procgen.endZ() - 2 : segLen,
         weatherKind,
         weatherEnabledAtInit,
+        rulesVision: rules.vision,
+        rulesNoise: rules.noise,
         weather,
         ground,
         groundMat,
@@ -1045,6 +1016,10 @@ export function Game() {
       pendingCatch = null;
       hitStopRemaining = 0;
       tracker.reset();
+      // Guard / dog randomness replays from the run's seed, so the same
+      // seed and inputs give the same run (the Daily is the same for
+      // everyone).
+      seedSimRandom(Math.imul(useStore.getState().segmentSeed ^ 0x9e3779b9, 0x85ebca6b));
       bossClock.arm(scene.isBossArena ? scene.bossSurviveSeconds : 0);
       useStore.getState().setBossTimeRemaining(bossClock.displaySeconds());
       animTime = 0;
@@ -1245,6 +1220,11 @@ export function Game() {
       player.exhausted = false;
       st.setStance('walk');
       st.setStamina(1);
+      // The yard alarm resets with the guards: a respawn into a still-
+      // full alarm had the next camera glimpse summon everyone at once.
+      alarmLevel = 0;
+      st.setAlarmLevel(0);
+      scene.alarmWasFull = false;
       for (const g of scene.guards) {
         g.x = g.homeX;
         g.z = g.homeZ;
@@ -1457,9 +1437,11 @@ export function Game() {
         grantStartingHearts(st.stage);
         st.setLastStats(null);
         st.setRunState('playing');
-        // Endless / Daily streamed and trimmed the world as the player
-        // went; a restart starts the run over from a fresh build.
-        if (scene.endless) rebuildScene(st.stage, st.segmentSeed, st.gameMode);
+        // A restart is a fresh attempt in every mode: the world is
+        // rebuilt from its seed (Endless / Daily streamed and trimmed
+        // it; campaign pickups were collected) and the store empties
+        // the bag, so items can't be farmed across restarts.
+        rebuildScene(st.stage, st.segmentSeed, st.gameMode);
         resetSegment();
       }
       // Fresh transition into gameplay (typically from the start
@@ -1482,11 +1464,12 @@ export function Game() {
           st.gameMode === lastMode &&
           st.restartCounter === lastRestartCounter
         ) {
-          // Endless / Daily streamed and trimmed the previous world
-          // (and its distance): every new run needs a fresh build and
-          // fresh hearts, even when the seed is unchanged - e.g.
-          // starting today's Daily again from the menu.
-          if (scene.endless) rebuildScene(st.stage, st.segmentSeed, st.gameMode);
+          // Every new attempt needs a fresh build, even when the seed is
+          // unchanged: Endless / Daily streamed and trimmed the previous
+          // world (and its distance), and a campaign retry through
+          // MAIN MENU -> CONTINUE must get back the pickups collected
+          // on the failed attempt (startRun has emptied the bag).
+          rebuildScene(st.stage, st.segmentSeed, st.gameMode);
           resetSegment();
           if (scene.endless) grantStartingHearts(st.stage);
         }
@@ -1521,13 +1504,17 @@ export function Game() {
       }
 
       if (st.runState !== 'playing' || st.paused) {
-        projectiles.clear();
+        // Pause freezes the run as it is (bullets in flight, aim
+        // wind-ups); only leaving gameplay clears them.
+        if (clearsCombatState(st.runState)) {
+          projectiles.clear();
+          for (const e of scene.guardEntries) e.guard.aimTimer = 0;
+        }
         noiseRadiusNow = 0;
         crowbarTarget = null;
         st.setDangerLevel(0);
         const calmMix = musicIntensity.update(0, false, dt);
         music.setMix(calmMix.calmGain, calmMix.tensionGain, calmMix.rate);
-        for (const e of scene.guardEntries) e.guard.aimTimer = 0;
         // Silence the siren on pause / non-playing states so the
         // speaker doesn't keep wailing while the player is in menus.
         updateSiren(siren, 0, useStore.getState().masterVolume);
@@ -1723,9 +1710,12 @@ export function Game() {
       if (input.useCrowbar) {
         input.useCrowbar = false;
         if (st.consumePickup('crowbar')) {
-          let hit = applyCrowbarStun(player.x, player.z, scene.guards);
-          // The swing also scares off any dog within reach.
+          const obstacles = scene.procgen.obstacles();
+          let hit = applyCrowbarStun(player.x, player.z, scene.guards, obstacles);
+          // The swing also scares off any dog within reach (not
+          // through a wall).
           for (const d of scene.dogs) {
+            if (!crowbarCanReach(obstacles, player.x, player.z, d.x, d.z)) continue;
             if (scareDog(d, player.x, player.z, CROWBAR_DOG_REACH)) hit = true;
           }
           const arc = createSwingArc(player.x, player.z, CROWBAR_RANGE);
@@ -1830,15 +1820,17 @@ export function Game() {
       let lit = false;
       // Searchlight one-shot bump: when a tracking-capable tower
       // has held the player in its beam for long enough, every
-      // guard's detection meter takes a single jolt of this size.
+      // guard in sight range takes a single jolt of this size.
       let searchlightBump = 0;
+      // A player inside a smoke cloud can't be picked out by a beam.
+      const playerInSmoke = pointInSmoke(smokeRegions, player.x, player.z);
       for (const t of scene.lightTowers) {
         updateLightTower(t, effDt, player.x, player.z);
-        if (!lit && isPlayerLit(t, player.x, player.z)) {
+        if (!lit && !playerInSmoke && isPlayerLit(t, player.x, player.z)) {
           lit = true;
           offerTip('floodlight');
         }
-        if (consumeSearchlightTrigger(t)) {
+        if (consumeSearchlightTrigger(t) && !playerInSmoke) {
           // Late-stage searchlights bite harder. 0.4 is a discrete
           // jump - should yank the meter past the SEEN_THRESHOLD if
           // it was anywhere near it.
@@ -1853,12 +1845,10 @@ export function Game() {
       // toggle. weatherEnabled is fixed for the lifetime of the
       // segment (captured at init); changing the toggle takes effect
       // on the next segment.
-      const weatherVision = scene.weatherEnabledAtInit
-        ? visionMultiplier(scene.weather.kind)
-        : 1.10;
-      const weatherNoise = scene.weatherEnabledAtInit
-        ? noiseMultiplier(scene.weather.kind)
-        : 1.0;
+      // (The Daily applies its rolled weather's rules either way so it
+      // stays the same run for everyone - see weatherRules.)
+      const weatherVision = scene.rulesVision;
+      const weatherNoise = scene.rulesNoise;
       const litBonus = lightVisionBonusFor(stageNow);
       // Night moods shorten guard sight in the dark, but a player
       // standing in a floodlight is fully visible whatever the hour -
@@ -1951,8 +1941,7 @@ export function Game() {
         // is frozen and the moment the stun ends they're already at
         // chase. updateDetection above already handles the vision /
         // noise side of the freeze.
-        const stunned = g.stunTimer > 0;
-        const dogSmell = stunned ? 0 : dogSmellByHandler.get(g.id) ?? 0;
+        const dogSmell = dogSmellByHandler.get(g.id) ?? 0;
         // Route external feeds through updateDetection so they suppress
         // the decay branch. Critical for early-stage spotlights: the
         // floodlight rate (0.125/s) is below the decay rate (0.15/s)
@@ -1962,9 +1951,18 @@ export function Game() {
         // Floodlight and dog feeds now compete with decay whenever the
         // guard can't see the player, so they're scaled up to stay
         // meaningful; the searchlight jolt is a one-off and unscaled.
-        const externalBumps = stunned
-          ? 0
-          : (litAdd + dogSmell) * EXTERNAL_FEED_GAIN + searchlightBump;
+        // The light feeds only reach guards in sight range of the lit
+        // player (no smoke between them), and every guard fed this way
+        // gets a rough fix on the player (senses.external) so it has
+        // somewhere to search.
+        const externalBumps = externalFeedFor(
+          g,
+          player,
+          guardRange,
+          litAdd * EXTERNAL_FEED_GAIN + searchlightBump,
+          dogSmell * EXTERNAL_FEED_GAIN,
+          smokeRegions,
+        );
         entry.range = guardRange;
         const next = updateDetection(
           g,
@@ -1982,11 +1980,12 @@ export function Game() {
         nextDetection.set(g.id, next);
         let sense = guardSenses.get(g.id);
         if (!sense) {
-          sense = { visual: false, heard: false, aiTier };
+          sense = { visual: false, heard: false, aiTier, external: false };
           guardSenses.set(g.id, sense);
         }
         sense.visual = senseOut.visual;
         sense.heard = senseOut.heard;
+        sense.external = externalBumps > 0;
         sense.aiTier = aiTier;
         if (senseOut.visual) anyVisual = true;
         if (next > maxDetection) maxDetection = next;
@@ -2057,19 +2056,18 @@ export function Game() {
       // Crowbar reach: nearest un-stunned guard or active dog in range.
       crowbarTarget = null;
       if (st.inventory.crowbar > 0) {
-        let best = CROWBAR_RANGE_SQ;
-        for (const g of scene.guards) {
-          if (g.stunTimer > 0) continue;
-          const dSq = (g.x - player.x) ** 2 + (g.z - player.z) ** 2;
-          if (dSq <= best) {
-            best = dSq;
-            crowbarTarget = g;
-          }
-        }
+        const obstacles = scene.procgen.obstacles();
+        const targetGuard = crowbarTargetGuard(player.x, player.z, scene.guards, obstacles);
+        crowbarTarget = targetGuard;
+        let best = targetGuard ? (targetGuard.x - player.x) ** 2 + (targetGuard.z - player.z) ** 2 : Infinity;
         for (const d of scene.dogs) {
           if (d.state === 'flee') continue;
           const dSq = (d.x - player.x) ** 2 + (d.z - player.z) ** 2;
-          if (dSq <= CROWBAR_DOG_REACH_SQ && (crowbarTarget === null || dSq < best)) {
+          if (
+            dSq <= CROWBAR_DOG_REACH_SQ &&
+            (crowbarTarget === null || dSq < best) &&
+            crowbarCanReach(obstacles, player.x, player.z, d.x, d.z)
+          ) {
             best = dSq;
             crowbarTarget = d;
           }

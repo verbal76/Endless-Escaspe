@@ -16,6 +16,7 @@ import {
 import { PICKUP_RADIUS, buildPickupMesh } from '../scenes/Pickup';
 import { NavGrid, type Cell } from './NavGrid';
 import { createPropShadows } from '../scenes/BlobShadows';
+import { batchStaticMeshes } from '../scenes/StaticBatch';
 import { disposeSubtree } from '../util/dispose';
 
 let nextObstacleId = 1;
@@ -535,6 +536,27 @@ export function generateChunk(
   throw new Error('procgen: empty chunk failed walkability');
 }
 
+// Distance culling of whole chunks (ProcgenSystem.updateVisibility).
+// The camera trails the player 8 m back, 7 m up, and can yaw at most
+// 45 deg, so it never sees behind CULL_BEHIND. CULL_AHEAD is where a
+// prop is down to a few pixels and well into the fog.
+export const CULL_AHEAD = 140;
+export const CULL_BEHIND = 40;
+// Props reach a little past their chunk's ends (a car's OBB is ~4.4 m).
+const CULL_MARGIN = 5;
+
+// Is any part of a chunk [startZ, endZ] inside the drawn range around
+// viewZ? null = culling not started: everything is drawn.
+export function chunkVisible(
+  c: { startZ: number; endZ: number },
+  viewZ: number | null,
+  ahead: number = CULL_AHEAD,
+  behind: number = CULL_BEHIND,
+): boolean {
+  if (viewZ === null) return true;
+  return c.startZ - CULL_MARGIN <= viewZ + ahead && c.endZ + CULL_MARGIN >= viewZ - behind;
+}
+
 // Guard / dog navigation grid resolution and clearance radius.
 export const NAV_CELL = 0.5;
 // Deliberately a little larger than the movers' collision radius
@@ -694,46 +716,70 @@ export class ProcgenSystem {
       this.nav.extendTo(chunk.endZ + 1);
       for (const o of chunk.obstacles) this.nav.addObstacle(o);
     }
+    // Everything the chunk draws hangs off one group: far chunks are
+    // hidden as a whole (updateVisibility) and despawn frees one tree.
+    const root = new THREE.Group();
+    root.name = 'chunk';
+    this.worldRoot.add(root);
+    chunk.root = root;
+    const props: THREE.Object3D[] = [];
     for (const o of chunk.obstacles) {
       const m = buildObstacleMesh(o);
       o.mesh = m;
-      this.worldRoot.add(m);
+      root.add(m);
+      props.push(m);
     }
+    // One instanced draw per prop part instead of one per prop.
+    batchStaticMeshes(root, props);
     for (const p of chunk.pickups) {
       const m = buildPickupMesh(p.kind);
       m.position.set(p.x, 0.08, p.z);
       p.mesh = m;
-      this.worldRoot.add(m);
+      root.add(m);
     }
     chunk.shadow = createPropShadows(chunk.obstacles);
-    if (chunk.shadow) this.worldRoot.add(chunk.shadow);
+    if (chunk.shadow) root.add(chunk.shadow);
+    root.visible = chunkVisible(chunk, this.viewZ);
     this.chunks.push(chunk);
   }
+
+  // Distance culling. Chunks wholly beyond CULL_AHEAD in front of the
+  // player (or CULL_BEHIND behind) are hidden: past that range a prop
+  // is a few pixels tall, yet they were ~45 % of all draw calls. Call
+  // once per frame with the player's Z (cheap: one compare per chunk).
+  updateVisibility(playerZ: number) {
+    this.viewZ = playerZ;
+    for (const c of this.chunks) {
+      if (!c.root) continue;
+      const v = chunkVisible(c, playerZ);
+      if (c.root.visible !== v) c.root.visible = v;
+    }
+  }
+  private viewZ: number | null = null;
 
   // Detach AND free a chunk's meshes. (Previously meshes were only
   // detached here, before the scene-level dispose walk ran, so every
   // obstacle's per-instance GPU buffers leaked on each rebuild -
   // roughly 2000 geometries per stage change.)
   private despawnChunk(chunk: Chunk) {
-    for (const o of chunk.obstacles) {
-      if (o.mesh) {
-        this.worldRoot.remove(o.mesh);
-        disposeSubtree(o.mesh);
-        o.mesh = null;
-      }
-    }
+    // A pickup collected moments ago may still be fading out under the
+    // chunk group; the game holds it and removes it itself.
     for (const p of chunk.pickups) {
       if (p.mesh) {
-        this.worldRoot.remove(p.mesh);
+        p.mesh.parent?.remove(p.mesh);
         disposeSubtree(p.mesh);
         p.mesh = null;
       }
     }
-    if (chunk.shadow) {
-      this.worldRoot.remove(chunk.shadow);
-      (chunk.shadow as THREE.InstancedMesh).dispose?.();
-      chunk.shadow = null;
+    if (chunk.root) {
+      this.worldRoot.remove(chunk.root);
+      // Frees the instanced batches and per-chunk shadow buffers;
+      // shared template geometry / materials are skipped.
+      disposeSubtree(chunk.root);
+      chunk.root = null;
     }
+    for (const o of chunk.obstacles) o.mesh = null;
+    chunk.shadow = null;
   }
 
   private rebuildCaches() {

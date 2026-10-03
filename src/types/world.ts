@@ -91,6 +91,9 @@ export type Chunk = {
   isHorizon?: boolean;
   // Instanced contact shadows for this chunk's props.
   shadow?: Object3D | null;
+  // Scene group holding every mesh of this chunk (props, pickups,
+  // shadows), so the chunk can be hidden as a whole when far away.
+  root?: Object3D | null;
   // Risk / reward fork, if this chunk is one (see ProcgenSystem).
   fork?: ForkInfo;
 };

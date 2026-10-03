@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { BackHandler, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { BackHandler, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable } from '../../ui/Pressable';
 import { Text } from '../../ui/Text';
 import Animated, {
   Easing,

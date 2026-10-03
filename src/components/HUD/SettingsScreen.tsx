@@ -4,13 +4,13 @@ import {
   BackHandler,
   Image,
   Modal,
-  Pressable,
   ScrollView,
   Share,
   StyleSheet,
   useWindowDimensions,
   View,
 } from 'react-native';
+import { Pressable } from '../../ui/Pressable';
 import { Text } from '../../ui/Text';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, {
@@ -91,15 +91,18 @@ function VolumeSlider({
 function Toggle({
   value,
   onChange,
+  label,
 }: {
   value: boolean;
   onChange: (v: boolean) => void;
+  label: string;
 }) {
   return (
     // 44 dp hit area around the 50x28 track.
     <Pressable
       onPress={() => onChange(!value)}
       accessibilityRole="switch"
+      accessibilityLabel={label}
       accessibilityState={{ checked: value }}
       style={styles.toggleHit}
     >
@@ -124,6 +127,8 @@ export function SettingsScreen() {
   const setMusicVolume = useStore((s) => s.setMusicVolume);
   const weatherEnabled = useStore((s) => s.weatherEnabled);
   const setWeatherEnabled = useStore((s) => s.setWeatherEnabled);
+  const hapticsEnabled = useStore((s) => s.hapticsEnabled);
+  const setHapticsEnabled = useStore((s) => s.setHapticsEnabled);
   const segmentWeatherEnabled = useStore((s) => s.segmentWeatherEnabled);
   // Off a live run (main menu, stage-clear / caught cards) the gear
   // opens settings only: RESTART / LOAD RUN / MAIN MENU there started a
@@ -342,7 +347,14 @@ export function SettingsScreen() {
                       {weatherEnabled !== segmentWeatherEnabled ? ' - from the next stage' : ''}
                     </Text>
                   </View>
-                  <Toggle value={weatherEnabled} onChange={setWeatherEnabled} />
+                  <Toggle label="Weather effects" value={weatherEnabled} onChange={setWeatherEnabled} />
+                </View>
+                <View style={styles.settingRow}>
+                  <View style={styles.toggleLabelWrap}>
+                    <Text style={styles.settingLabel}>Vibration</Text>
+                    <Text style={styles.subLabel}>{hapticsEnabled ? 'On' : 'Off'}</Text>
+                  </View>
+                  <Toggle label="Vibration" value={hapticsEnabled} onChange={setHapticsEnabled} />
                 </View>
 
                 <Text style={styles.sectionHeading}>Feedback</Text>

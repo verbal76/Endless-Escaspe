@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
+import { ActivityIndicator, AppState, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -129,8 +129,22 @@ export default function App() {
     <SafeAreaProvider>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <StatusBar style="light" hidden />
-        {texturesReady && <Game />}
+        {texturesReady ? (
+          <Game />
+        ) : (
+          // Boot screen while textures / font / saves load (bounded to a
+          // few seconds), so a slow phone never shows a blank view.
+          <View style={styles.boot}>
+            <Text style={styles.bootTitle} maxFontSizeMultiplier={1.3}>ENDLESS ESCAPE</Text>
+            <ActivityIndicator color="#ffd14a" />
+          </View>
+        )}
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  boot: { flex: 1, backgroundColor: '#0b0d12', alignItems: 'center', justifyContent: 'center', gap: 16 },
+  bootTitle: { color: '#ffd14a', fontSize: 28, fontWeight: '900', letterSpacing: 3 },
+});

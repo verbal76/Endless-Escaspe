@@ -38,7 +38,12 @@ export function startSettingsAutosave<S extends AutosaveFields>(
   store: Source<S>,
   save: (patch: AutosaveFields) => unknown,
   delayMs = 400,
-  timers: { set: typeof setTimeout; clear: typeof clearTimeout } = { set: setTimeout, clear: clearTimeout },
+  // Wrapped, not passed as methods: calling the host's setTimeout with
+  // `this` set to this object throws "Illegal invocation" in browsers.
+  timers: { set: typeof setTimeout; clear: typeof clearTimeout } = {
+    set: ((fn: () => void, ms?: number) => setTimeout(fn, ms)) as typeof setTimeout,
+    clear: ((h?: ReturnType<typeof setTimeout>) => clearTimeout(h)) as typeof clearTimeout,
+  },
 ): SettingsAutosave {
   let written = pick(store.getState());
   let timer: ReturnType<typeof setTimeout> | null = null;

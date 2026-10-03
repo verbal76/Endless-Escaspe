@@ -91,3 +91,23 @@ test('settings autosave: a throwing or rejecting save never reaches the store', 
   assert.doesNotThrow(() => a.flush());
   assert.equal(n, 2);
 });
+
+test('settings autosave: default timers are not called as methods (host setTimeout needs this=global)', async () => {
+  const store = fakeStore({ masterVolume: 0.7, musicVolume: 0.5, weatherEnabled: true, hapticsEnabled: true, other: 0 });
+  const real = globalThis.setTimeout;
+  // Emulate the browser: setTimeout throws unless called with the global as `this`.
+  (globalThis as { setTimeout: unknown }).setTimeout = function (this: unknown, fn: () => void, ms?: number) {
+    if (this !== undefined && this !== globalThis) throw new TypeError('Illegal invocation');
+    return real(fn, ms);
+  };
+  try {
+    const writes: unknown[] = [];
+    const a = startSettingsAutosave(store, (p) => writes.push(p), 1);
+    assert.doesNotThrow(() => store.set({ hapticsEnabled: false }));
+    await new Promise((r) => real(r, 20));
+    assert.equal(writes.length, 1);
+    a.stop();
+  } finally {
+    globalThis.setTimeout = real;
+  }
+});

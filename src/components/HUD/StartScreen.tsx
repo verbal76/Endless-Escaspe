@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BackHandler,
-  Pressable,
   ScrollView,
   StyleSheet,
   useWindowDimensions,
@@ -9,6 +8,8 @@ import {
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { Pressable } from '../../ui/Pressable';
+import { playUiSfx } from '../../scenes/Sfx';
 import { FixedText, Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
@@ -524,6 +525,7 @@ export function StartScreen() {
               return;
             }
             commitSave(key, r.save);
+            playUiSfx('purchase');
             setPulse((p) => ({ id, seq: (p?.seq ?? 0) + 1 }));
           },
         },

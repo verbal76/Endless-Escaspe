@@ -82,13 +82,16 @@ export function buildAbout(s: AboutSources): AboutSection[] {
   return [
     {
       title: 'Application',
-      rows: [{ label: 'Name', value: u(s.appName) }],
+      rows: [
+        { label: 'Product', value: u(s.appName) },
+        { label: 'Version', value: r.publicVersion !== null ? `v${r.publicVersion}` : `${UNAVAILABLE} (build predates public versions)` },
+      ],
     },
     {
       title: 'Install',
       rows: [
         { label: 'Package ID', value: u(s.packageId) },
-        { label: 'Version', value: u(r.appVersion) },
+        { label: 'App version (technical)', value: u(r.appVersion) },
         { label: 'Native / runtime version', value: u(r.runtimeVersion) },
         { label: 'Android build (versionCode)', value: u(r.buildNumber) },
         { label: 'Source commit', value: u(r.gitSha) },

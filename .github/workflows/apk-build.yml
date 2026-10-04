@@ -66,6 +66,18 @@ jobs:
       - name: Check out repo
         uses: actions/checkout@v4
 
+      # A public version identifies exactly one delivered build: refuse to
+      # publish a second binary under a version that already has a release.
+      - name: Refuse to reuse a public version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="$(node -p "require('./release.json').productName") v$(node -p "require('./release.json').publicVersion")"
+          if gh release list --repo "${{ github.repository }}" --limit 200 --json name --jq '.[].name' | grep -Fxq "$TITLE"; then
+            echo "::error::A release titled '$TITLE' already exists. Bump publicVersion in release.json (docs/RELEASING.md)."
+            exit 1
+          fi
+
       # A release build of the new-architecture native code fills most of
       # the runner disk; run 9 died in the post-build cache save with
       # "No space left on device". Drop preinstalled toolchains this
@@ -171,7 +183,12 @@ jobs:
             exit 1
           fi
           echo "path=$APK" >> "$GITHUB_OUTPUT"
-          echo "name=endless-escape-build-${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
+          # Public name: <Product>-v<N>.apk, N from release.json (docs/RELEASING.md).
+          SLUG=$(node -p "require('./release.json').fileSlug")
+          PV=$(node -p "require('./release.json').publicVersion")
+          echo "name=${SLUG}-v${PV}.apk" >> "$GITHUB_OUTPUT"
+          echo "product=$(node -p "require('./release.json').productName")" >> "$GITHUB_OUTPUT"
+          echo "pv=$PV" >> "$GITHUB_OUTPUT"
 
       - name: Read app version
         id: ver
@@ -191,9 +208,11 @@ jobs:
       # Can this APK install over the previous build? Same package AND same
       # signing certificate. Compares against the published Build 13 asset.
       - name: Compare signing certificate with Build 13
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          curl -fsSL -o build13.apk "https://github.com/${{ github.repository }}/releases/download/build-13/endless-escape-build-13.apk"
+          gh release download build-13 --repo "${{ github.repository }}" --pattern '*.apk' --output build13.apk
           NEW=$("$BT/apksigner" verify --print-certs "${{ steps.apk.outputs.name }}" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
           OLD=$("$BT/apksigner" verify --print-certs build13.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
           {
@@ -231,13 +250,18 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          name: 'APK build #${{ github.run_number }}'
-          prerelease: ${{ github.ref != 'refs/heads/claude/game-review-suggestions-cjxiqh' }}
-          make_latest: ${{ github.ref == 'refs/heads/claude/game-review-suggestions-cjxiqh' }}
+          name: '${{ steps.apk.outputs.product }} v${{ steps.apk.outputs.pv }}'
+          prerelease: false
+          make_latest: true
           body: |
+            # ${{ steps.apk.outputs.product }} v${{ steps.apk.outputs.pv }}
+
+            **Android:** `${{ steps.apk.outputs.name }}`
+
+            ## Technical details (engineers only)
             Auto-built from commit `${{ github.sha }}`.
 
-            **Version ${{ steps.ver.outputs.version }} • Build ${{ github.run_number }}** (runtime ${{ steps.ver.outputs.version }}, update channel `preview`)
+            Android versionName ${{ steps.ver.outputs.version }} • versionCode ${{ github.run_number }} • tag `build-${{ github.run_number }}` (runtime ${{ steps.ver.outputs.version }}, update channel `preview`)
 
             Native fingerprint (android): `${{ steps.fp.outputs.hash }}`
 

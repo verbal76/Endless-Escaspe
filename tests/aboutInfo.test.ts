@@ -13,7 +13,7 @@ const relSrc = (p: Partial<ReleaseSources> = {}): ReleaseSources => ({
   runtimeVersion: '0.2.1',
   channel: 'preview',
   createdAt: new Date('2026-10-03T01:30:38Z'),
-  manifest: { extra: { expoClient: { extra: { release: { gitSha: SHA, otaSequence: 131, targetSdk: 36 } } } } },
+  manifest: { extra: { expoClient: { extra: { release: { gitSha: SHA, otaSequence: 131, targetSdk: 36, publicVersion: 13 } } } } },
   ...p,
 });
 const sources = (p: Partial<AboutSources> = {}): AboutSources => ({
@@ -33,7 +33,9 @@ const flat = (s: AboutSources) => Object.fromEntries(buildAbout(s).flatMap((sec)
 test('about: running OTA shows install, OTA, Play and device identity', () => {
   const f = flat(sources());
   assert.equal(f['Install/Package ID'], 'com.verbal76.endlessescaspe');
-  assert.equal(f['Install/Version'], '0.2.1');
+  assert.equal(f['Application/Product'], 'Endless Escape');
+  assert.equal(f['Application/Version'], 'v13');
+  assert.equal(f['Install/App version (technical)'], '0.2.1');
   assert.equal(f['Install/Native / runtime version'], '0.2.1');
   assert.equal(f['Install/Android build (versionCode)'], '13');
   assert.equal(f['Install/Source commit'], SHA);
@@ -47,6 +49,11 @@ test('about: running OTA shows install, OTA, Play and device identity', () => {
   assert.equal(f['Google Play readiness/Signing'], 'Debug (not for release)');
   assert.equal(f['Device/Model'], 'Pixel 8');
   assert.equal(f['Device/Captured at'], '2026-10-03 12:00 UTC');
+});
+
+test('about: a build without the public version says so instead of guessing', () => {
+  const f = flat(sources({ release: resolveReleaseInfo(relSrc({ manifest: { extra: { expoClient: { extra: { release: { gitSha: SHA } } } } } })) }));
+  assert.match(f['Application/Version'], /^Unavailable/);
 });
 
 test('about: unknown values are labelled unavailable, never invented', () => {

@@ -27,6 +27,17 @@
 const fs = require('fs');
 const path = require('path');
 const INT = /^\d+$/;
+
+// The public product version ("Endless Escape v15") lives in release.json
+// and nowhere else; docs/RELEASING.md explains the convention.
+function readPublicVersion(root) {
+  try {
+    const n = JSON.parse(fs.readFileSync(path.join(root, 'release.json'), 'utf8')).publicVersion;
+    return Number.isInteger(n) && n > 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
 const SHA = /^[0-9a-f]{7,40}$/i;
 const CHANNEL = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
@@ -50,6 +61,8 @@ module.exports = ({ config }) => {
   const release = {};
   if (SHA.test(env.EE_GIT_SHA || '')) release.gitSha = env.EE_GIT_SHA.toLowerCase();
   if (INT.test(env.EE_OTA_SEQUENCE || '')) release.otaSequence = Number(env.EE_OTA_SEQUENCE);
+  const publicVersion = readPublicVersion(__dirname);
+  if (publicVersion) release.publicVersion = publicVersion;
   const sdk = readSdkLevels(__dirname);
   if (sdk.targetSdk) release.targetSdk = sdk.targetSdk;
   const SIGNING = /^(debug|internal|upload|production)$/;
@@ -73,3 +86,4 @@ module.exports = ({ config }) => {
 };
 
 module.exports.readSdkLevels = readSdkLevels;
+module.exports.readPublicVersion = readPublicVersion;

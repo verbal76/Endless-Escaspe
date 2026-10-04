@@ -8,7 +8,7 @@ OTA only after the owner releases the freeze (see docs on `claude/ledger-docs`: 
 |---|---|
 | 1 Self-discovering OTA | EXISTING expo-updates pipeline audited and preserved; gap repaired: automatic safe activation + throttled resume check (code on this branch) |
 | 2 Settings > About + Copy Diagnostics | IMPLEMENTED on this branch (held) |
-| 3 Hot Attic Games opening studio splash | PREPARED / HELD: mechanism + tests done; canonical asset `branding/Hot_Attic_Games_Master_Logo.png` is MISSING from the repository |
+| 3 Hot Attic Games opening studio splash | ACTIVE on the qualification line: canonical `Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png` wired in, 2.5 s, JS-only (OTA-capable); see studio-splash.md. Device test required. |
 | 4 "Please wait, applying update" | IMPLEMENTED on this branch (held) |
 | Play/API audit | Verified compliant (target API 36 = requirement); no Class A/B work |
 
@@ -16,7 +16,7 @@ Files: `play-identity.md` (A), `ota.md` (B + applying experience C), `about-scre
 Nothing was built, published, signed or submitted. Physical-device behaviour is NOT verified.
 
 ## Follow-up round (blocker resolution)
-- Logo: exhaustive search, not found anywhere reachable -> see studio-splash.md (needs owner / portfolio manager supply). Splash stays disabled.
+- Logo: RESOLVED. The owner supplied `Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png`; the splash is enabled on the qualification line (see studio-splash.md). The earlier "not found" status is obsolete.
 - Package ID: classified A by repository evidence (Play Console UNVERIFIED -> owner confirms); rename NOT performed because the save-transfer path is not live/proven -> package-id.md.
 - Saves backup (export / import) implemented on this branch as the prerequisite: `src/util/saveExport.ts`, `saveBackup.ts`, Settings > Saves backup, tests/saveBackup.test.ts. HELD with the rest of PR #6.
 - Identity drift guard: tests/identity.test.ts.

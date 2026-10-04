@@ -28,9 +28,11 @@ export default function App() {
   // be resolved before the renderer reads texture.image - otherwise
   // the GL upload silently falls back to a 1-pixel default.
   const [texturesReady, setTexturesReady] = useState(false);
-  // Opening studio card (shown once per launch, never on resume; boot
-  // below keeps running underneath it). Off until the canonical logo is
-  // added - see src/ui/studioSplashSource.ts.
+  // Hot Attic Games studio card: first thing the app draws, shown once per
+  // process launch (this state lives only as long as the process, so a
+  // resume from the background never replays it). Boot below keeps running
+  // underneath it, so the card masks startup work. See
+  // src/ui/studioSplashSource.ts and docs/infra/studio-splash.md.
   const [splashDone, setSplashDone] = useState(!splashPlan(STUDIO_SPLASH_SOURCE).show);
   // OTA activation runs only where expo-updates is active (native
   // release builds); never on web / dev builds.

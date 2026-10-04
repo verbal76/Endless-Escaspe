@@ -1,19 +1,34 @@
 # E. Hot Attic Games opening studio splash
 
-- Canonical asset: `branding/Hot_Attic_Games_Master_Logo.png` - **NOT FOUND (second, exhaustive search, 2026-10-03)**. Searched: the working tree; all 29 refs of this repository (every branch,
-  tag and PR ref) by path and by content (every PNG blob in the object database, reachable and unreachable, with its dimensions: only the app's own icon / splash / UI / texture images exist - the
-  1254x1254 `assets/icon.png`, `adaptive-icon.png`, `splash-icon.png` are Endless Escape artwork, not the studio logo); git worktrees; the container filesystem (including the owner's earlier uploads in the
-  session: phone screenshots and the settings-gear image); the studio site repo `verbal76/HotAtticGames.github.io` (README only); the public sibling repos Tartaria-RPG, Ragdoll-Rally, Axolotl, Idle-game,
-  Manual-J, My-Personal-Crossow0rd, Cfm-calculator, Zombie-squisher (every branch, tree listing for branding paths); and the private template repo Personal-Assistant- (its only splash is its own microphone icon).
-  Not searched: the other private repos (voiceforge, Spiroglyphics, Ocean-spore, Web_Auditor, Purgatory-Dungeon) - attaching private repositories for a speculative search was not authorized.
-  Status: CANONICAL HOT ATTIC GAMES ASSET REQUIRES OWNER / PORTFOLIO MANAGER SUPPLY. No substitute was drawn or generated; the splash stays disabled.
-- Implemented and tested without the asset: `src/ui/StudioSplash.tsx` (solid black `#000`, image centred, `resizeMode="contain"` = whole artwork, original aspect ratio,
-  never cropped/distorted, ~1.5 s, silent, ends at once if the image fails to load so it cannot hang), `src/util/studioSplash.ts` (plan + clamp), wiring in `App.tsx`
-  (shown once per process launch - not on resume or navigation; the existing boot keeps running underneath it; Game mounts only after splash + boot; offline-safe, no network).
-  Startup order: native splash (#0b0d12, unchanged) -> studio card -> game boot screen -> title/menu. The launcher icon is untouched.
-- Held switch: `src/ui/studioSplashSource.ts` exports `null` until the file exists; the one-line change to `require()` it is in that file's comment, and
-  `tests/studioSplash.test.ts` fails if the file exists while the source is still `null` (or the reverse).
-- OTA classification: the splash is JS + a bundled asset => OTA-SAFE once the asset is added (verified: it is an ordinary Metro asset). The native Android splash screen
-  (app.json `splash`) is unchanged, so nothing native is required. If the owner later wants the studio card as the NATIVE splash, that is a native build.
-- Verified (web harness with a throwaway placeholder PNG that is NOT in the repo): black background, centred, contained, ~1.5 s, game mounts afterwards. NOT verified on a
-  device: cold-launch feel, white flash between native splash and the card, orientations/screen sizes.
+**Status: ACTIVE.** The canonical artwork was supplied by the owner as
+`Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png` (repository root; 1536x1024 RGBA,
+real transparency: 475,725 fully transparent pixels, the rest opaque, no baked-in
+checkerboard; git blob `e11f8c576652b82780967a02ee4b4acd12e8a3c8`, SHA-256
+`e3d9bb5653eafb783eede827606e7ac73a4e45564a1c25b1ed13ad1429f48c4e`). It is byte-identical to
+the file on `main`; it is never redrawn, cropped, recoloured or replaced.
+The earlier blocker ("`branding/Hot_Attic_Games_Master_Logo.png` not found, requires owner supply") is
+**obsolete and resolved**; that old path must not be referenced anywhere.
+
+- Mechanism (unchanged design, now enabled): `src/ui/StudioSplash.tsx` (card), `src/util/studioSplash.ts` (plan),
+  `src/ui/studioSplashSource.ts` (`require()` of the canonical PNG), wiring in `App.tsx`.
+- Launch order on a cold start: Android system splash (game icon on `#0b0d12`, unchanged and not removable on
+  Android 12+) -> **Hot Attic Games card** -> the game's own opening (boot -> title / menu) -> normal play.
+- Card: the whole logo, centred, `resizeMode="contain"` (original aspect ratio, never cropped or stretched), on `#0b0d12`
+  (the same colour as the system splash and the boot screen, so there is no flash; the PNG's transparency shows it), inside the
+  safe-area insets plus 24 dp. Fade in 350 ms, hold, fade out 350 ms; **2.5 s total** (clamped 2-3 s). Silent, no text, no buttons, offline.
+- Startup work is not delayed: settings, saves, textures and the display font load behind the card (the mount effect in
+  `App.tsx`); `Game` mounts when both the card and boot are done.
+- Cold launch only: the card's "done" state lives in `App`'s React state, which exists for the life of the process, so
+  background / resume never replays it. It can't strand the user: it ends on its animation, on a backstop timer, and at once
+  if the image fails to load (`onError`).
+- Native build required: **NO**. The change is JavaScript plus a bundled asset, so it is OTA-capable. It does not touch the native
+  fingerprint (runtime 0.3.0 = `b32bf103...` unchanged). The system splash (`app.json` `splash`) was deliberately left alone: on Android 12+
+  the system always draws an icon splash, so removing the image gains nothing.
+- Tests (`tests/studioSplash.test.ts`): canonical filename and exact git blob hash; PNG header (1536x1024, RGBA); alpha decoded from the
+  file (transparent corners, opaque artwork); the bundled source requires exactly that file and not the old path; duration within 2-3 s
+  and fades add up; `contain`, safe-area use, error backstop, no text / buttons / sound; cold-launch order in `App.tsx`; resume
+  never touches the splash.
+- Verified in the browser harness with the real file: the card shows the complete logo (natural 1536x1024, fitted by `contain`), on the dark
+  background with transparent edges, for ~2.5 s, then the title screen; no console errors. NOT verified on a device: the fade
+  feel, the system-splash -> card hand-off, orientations and cutouts. The browser harness could not sample the fade opacity.
+- Standing studio requirement: every Hot Attic Games app opens with this card (see `CLAUDE.md`).

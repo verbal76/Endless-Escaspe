@@ -16,10 +16,14 @@ export function StudioSplash({ source, onDone }: { source: ImageSourcePropType; 
   const finish = () => {
     if (done.current) return;
     done.current = true;
+    console.log('[studio-splash] done');
     onDone();
   };
   useEffect(() => {
     const plan = splashPlan(source);
+    // Logged so the emulator check can prove the card showed once per cold
+    // launch, for about its planned time, and not again on resume.
+    console.log(`[studio-splash] shown planMs=${plan.durationMs}`);
     const anim = Animated.sequence([
       Animated.timing(opacity, { toValue: 1, duration: plan.fadeMs, useNativeDriver: true }),
       Animated.delay(plan.holdMs),

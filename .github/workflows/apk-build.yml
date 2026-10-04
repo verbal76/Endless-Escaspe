@@ -56,6 +56,12 @@ jobs:
       # softprops/action-gh-release needs write access to publish the
       # release + upload the APK as an asset.
       contents: write
+    outputs:
+      name: ${{ steps.apk.outputs.name }}
+      product: ${{ steps.apk.outputs.product }}
+      pv: ${{ steps.apk.outputs.pv }}
+      version: ${{ steps.ver.outputs.version }}
+      fingerprint: ${{ steps.fp.outputs.hash }}
     # Release metadata baked into the APK (see app.config.js): the
     # versionCode is this workflow's run number (= the build-N release
     # tag) and the embedded manifest records the source commit.
@@ -205,6 +211,11 @@ jobs:
       - name: Verify APK (artifact-level compliance)
         run: bash scripts/ci/verify-apk.sh "${{ steps.apk.outputs.name }}" com.verbal76.endlessescaspe "${{ github.run_number }}" 36
 
+      # What is packaged inside: studio logo, studio splash code, app icon,
+      # runtime and native fingerprint. See scripts/ci/verify-apk-content.sh.
+      - name: Verify packaged content
+        run: bash scripts/ci/verify-apk-content.sh "${{ steps.apk.outputs.name }}" "${{ steps.ver.outputs.version }}" "${{ steps.fp.outputs.hash }}"
+
       # Can this APK install over the previous build? Same package AND same
       # signing certificate. Compares against the published Build 13 asset.
       - name: Compare signing certificate with Build 13
@@ -236,38 +247,68 @@ jobs:
           name: ${{ steps.apk.outputs.name }}
           path: ${{ steps.apk.outputs.name }}
           if-no-files-found: error
-          # The same file is attached to the GitHub release.
+          # The same file is attached to the GitHub release (publish job).
           retention-days: 30
 
-      # Publish a GitHub Release for every run (push AND manual
-      # workflow_dispatch runs) so testers always have a stable URL for
-      # the latest build. The build-N tag is created at the commit that
-      # was built (without target_commitish GitHub tags the default
-      # branch, which is how build-9..13 ended up on main).
+  # Emulator smoke test of the SAME commit (x86_64 build of identical JS,
+  # assets and native modules; the emulator cannot run the ARM phone APK):
+  # install, cold launch, studio card, game boot + render audit, restart,
+  # background / resume. The release is published only if it passes.
+  smoke-test:
+    name: Emulator smoke test
+    uses: ./.github/workflows/android-render-check.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish GitHub Release
+    needs: [build, smoke-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.name }}
+          path: dist
+
+      - name: Checksum
+        id: sum
+        run: |
+          cd dist
+          echo "sha=$(sha256sum "${{ needs.build.outputs.name }}" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "size=$(stat -c %s "${{ needs.build.outputs.name }}")" >> "$GITHUB_OUTPUT"
+
+      # The newest delivered playable build is the Latest release (see
+      # docs/RELEASING.md). The build-N tag is created at the commit that
+      # was built (without target_commitish GitHub tags the default branch).
       - name: Publish GitHub Release
         # v2.6.2, pinned by commit: third-party action with contents: write.
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           tag_name: build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          name: '${{ steps.apk.outputs.product }} v${{ steps.apk.outputs.pv }}'
+          name: '${{ needs.build.outputs.product }} v${{ needs.build.outputs.pv }}'
           prerelease: false
           make_latest: true
           body: |
-            # ${{ steps.apk.outputs.product }} v${{ steps.apk.outputs.pv }}
+            # ${{ needs.build.outputs.product }} v${{ needs.build.outputs.pv }}
 
-            **Android:** `${{ steps.apk.outputs.name }}`
+            **Android:** `${{ needs.build.outputs.name }}`
 
             ## Technical details (engineers only)
             Auto-built from commit `${{ github.sha }}`.
 
-            Android versionName ${{ steps.ver.outputs.version }} • versionCode ${{ github.run_number }} • tag `build-${{ github.run_number }}` (runtime ${{ steps.ver.outputs.version }}, update channel `preview`)
+            Android versionName ${{ needs.build.outputs.version }} • versionCode ${{ github.run_number }} • tag `build-${{ github.run_number }}` (runtime ${{ needs.build.outputs.version }}, update channel `preview`)
 
-            Native fingerprint (android): `${{ steps.fp.outputs.hash }}`
+            Native fingerprint (android): `${{ needs.build.outputs.fingerprint }}`
 
-            Release-variant APK (debug-keystore signed) with OTA updates enabled. Install via:
+            SHA-256: `${{ steps.sum.outputs.sha }}` • ${{ steps.sum.outputs.size }} bytes
+
+            Release-variant APK (debug-keystore signed, same certificate as Build 13) with OTA updates enabled. Install via:
             1. Download the APK below.
             2. On your Android device, allow "install from unknown sources" for your browser / file manager.
             3. Open the downloaded APK to install.
-          files: ${{ steps.apk.outputs.name }}
+          files: dist/${{ needs.build.outputs.name }}
           token: ${{ secrets.GITHUB_TOKEN }}

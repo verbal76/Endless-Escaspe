@@ -93,8 +93,18 @@ wait_until() {
   done
 }
 
+# Hot Attic Games studio card (only on builds that contain it): capture frames
+# during the first launch so the card can be inspected, and assert its log
+# markers below.
+SPLASH_EXPECTED=0
+if [ -f Hot_Attic_Games_Master_Logo_ALPHA_FINAL.png ] && grep -q 'studio-splash' src/ui/StudioSplash.tsx 2>/dev/null; then SPLASH_EXPECTED=1; fi
+
 adb logcat -c
 launch
+if [ "$SPLASH_EXPECTED" = 1 ]; then
+  ( for i in $(seq 1 30); do adb exec-out screencap -p > "$OUT/splash-$(printf '%02d' "$i").png" 2>/dev/null; sleep 1; done ) &
+  SPLASH_CAPTURE_PID=$!
+fi
 wait_for_audit "$OUT/logcat-launch1.txt" 240
 adb exec-out screencap -p > "$OUT/launch1.png"
 STALE_PID=$(adb shell pidof "$PKG" | tr -d '\r' | awk '{print $1}')
@@ -119,6 +129,24 @@ echo "--- app log lines (launch 2) ---"
 grep -E "\[release\]|\[textures\]|\[font\]|\[render-audit\]|FATAL EXCEPTION|ReactNativeJS.*(Error|Warn)" "$OUT/logcat-launch2.txt" | cut -c1-2500 || true
 node scripts/ci/check-render-audit.mjs "$OUT/logcat-launch2.txt"
 status=$?
+
+# Studio card: shown once per cold launch, for about its planned time.
+splash_ms() {
+  # milliseconds between the 'shown' and 'done' log lines of one launch
+  awk '/\[studio-splash\] shown/ && !a {split($2,t,/[:.]/); a=((t[1]*60+t[2])*60+t[3])*1000+t[4]} /\[studio-splash\] done/ && !b {split($2,t,/[:.]/); b=((t[1]*60+t[2])*60+t[3])*1000+t[4]} END {if (a && b) print b-a}' "$1"
+}
+if [ "$SPLASH_EXPECTED" = 1 ]; then
+  [ -n "${SPLASH_CAPTURE_PID:-}" ] && wait "$SPLASH_CAPTURE_PID" 2>/dev/null
+  for f in "$OUT/logcat-launch1.txt" "$OUT/logcat-launch2.txt"; do
+    n_shown=$(grep -c '\[studio-splash\] shown' "$f")
+    ms=$(splash_ms "$f")
+    echo "studio splash in $f: shown x$n_shown, shown->done ${ms:-n/a} ms"
+    if [ "$n_shown" != 1 ] || [ -z "$ms" ] || [ "$ms" -lt 2000 ] || [ "$ms" -gt 4500 ]; then
+      echo "STUDIO SPLASH CHECK FAILED in $f (expected one card of ~2500 ms)"
+      status=1
+    fi
+  done
+fi
 
 # Lifecycle: send the app to the background and bring it back; it must
 # resume (same process, no crash) rather than die or restart.
@@ -147,5 +175,13 @@ elif [ -z "$pid_after" ] || [ "$pid_before" != "$pid_after" ]; then
   status=1
 else
   echo "LIFECYCLE CHECK OK: resumed in the same process without errors"
+fi
+if [ "$SPLASH_EXPECTED" = 1 ]; then
+  if grep -q '\[studio-splash\] shown' "$OUT/logcat-resume.txt"; then
+    echo "STUDIO SPLASH CHECK FAILED: the card replayed on resume"
+    status=1
+  else
+    echo "STUDIO SPLASH CHECK OK: not replayed on background / resume"
+  fi
 fi
 exit $status

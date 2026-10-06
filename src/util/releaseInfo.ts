@@ -47,6 +47,10 @@ export type ReleaseInfo = {
   source: 'ota' | 'embedded' | 'disabled';
   updateId: string | null;
   otaSequence: number | null;
+  // The public product version (Endless Escape v15): a plain sequential
+  // integer from release.json via extra.release.publicVersion. Null for
+  // builds / updates that predate the convention.
+  publicVersion: number | null;
   gitSha: string | null;
   // When the running bundle was created (embedded: build time;
   // OTA: publish time), as reported by expo-updates.
@@ -59,7 +63,7 @@ export type ReleaseInfo = {
 
 export const UNAVAILABLE = 'Unavailable';
 
-type ReleaseExtra = { gitSha?: unknown; otaSequence?: unknown };
+type ReleaseExtra = { gitSha?: unknown; otaSequence?: unknown; publicVersion?: unknown; targetSdk?: unknown; signing?: unknown };
 
 function asObject(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' ? (v as Record<string, unknown>) : null;
@@ -132,6 +136,7 @@ export function resolveReleaseInfo(src: ReleaseSources): ReleaseInfo {
     // Never show it for embedded / disabled launches, even if some
     // stale value were present in the manifest.
     otaSequence: source === 'ota' ? parseSequence(release?.otaSequence) : null,
+    publicVersion: parseSequence(release?.publicVersion),
     gitSha: parseSha(release?.gitSha),
     createdAt: src.createdAt && !isNaN(src.createdAt.getTime()) ? src.createdAt : null,
     emergency: source !== 'disabled' && !!src.isEmergencyLaunch,
@@ -146,7 +151,10 @@ export function formatOtaSequence(n: number): string {
 // Compact main-menu line, e.g. "v0.2.0 • Build 9 • OTA 101".
 export function formatMenuLine(info: ReleaseInfo): string {
   const parts: string[] = [];
-  parts.push(info.appVersion ? `v${info.appVersion}` : `Version ${UNAVAILABLE.toLowerCase()}`);
+  // The public version leads when the build carries it; the technical
+  // app version / Android build follow for engineers.
+  if (info.publicVersion !== null) parts.push(`v${info.publicVersion}`);
+  parts.push(info.appVersion ? (info.publicVersion !== null ? info.appVersion : `v${info.appVersion}`) : `Version ${UNAVAILABLE.toLowerCase()}`);
   parts.push(info.buildNumber ? `Build ${info.buildNumber}` : `Build ${UNAVAILABLE.toLowerCase()}`);
   if (info.source === 'ota') {
     parts.push(info.otaSequence !== null ? `OTA ${formatOtaSequence(info.otaSequence)}` : `OTA ${shortId(info.updateId) ?? UNAVAILABLE.toLowerCase()}`);
@@ -169,6 +177,7 @@ export type InfoRow = { label: string; value: string; full?: string };
 export function formatDetailRows(info: ReleaseInfo): InfoRow[] {
   const u = (v: string | null) => v ?? UNAVAILABLE;
   return [
+    ...(info.publicVersion !== null ? [{ label: 'Product version', value: `v${info.publicVersion}` }] : []),
     { label: 'Version', value: u(info.appVersion) },
     { label: 'Android build', value: u(info.buildNumber) },
     { label: 'Runtime', value: u(info.runtimeVersion) },
@@ -238,4 +247,22 @@ export function formatVitalsText(menuLine: string, rows: InfoRow[], os: string, 
     '',
     ...formatInfoLines(menuLine, rows, os),
   ].join('\n');
+}
+
+// Build facts that travel in the same `extra.release` block (written by
+// app.config.js): the Android target SDK the app was built against and
+// the signing state of the APK. Both are optional - an older build or
+// update simply doesn't carry them and About shows them as unavailable.
+export type BuildExtra = { targetSdk: number | null; signing: string | null };
+
+export function readBuildExtra(...manifests: unknown[]): BuildExtra {
+  for (const m of manifests) {
+    const r = readReleaseExtra(m);
+    if (!r) continue;
+    const n = typeof r.targetSdk === 'number' ? r.targetSdk : typeof r.targetSdk === 'string' && /^\d+$/.test(r.targetSdk) ? Number(r.targetSdk) : NaN;
+    const targetSdk = Number.isInteger(n) && n >= 1 && n <= 99 ? n : null;
+    const signing = nonEmptyString(r.signing);
+    if (targetSdk !== null || signing !== null) return { targetSdk, signing };
+  }
+  return { targetSdk: null, signing: null };
 }

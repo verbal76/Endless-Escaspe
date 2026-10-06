@@ -27,6 +27,9 @@ on:
     # A push is skipped only if EVERY changed file matches; any change
     # to src/, App.tsx, assets/ etc. still publishes.
     paths-ignore:
+      # A public-version bump (release.json) delivers an APK (apk-build.yml); on its own it
+      # must not publish an OTA.
+      - 'release.json'
       - 'package.json'
       - 'package-lock.json'
       - 'app.json'

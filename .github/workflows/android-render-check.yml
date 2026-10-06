@@ -15,18 +15,11 @@ name: Android render check
 
 on:
   workflow_dispatch:
-  # eas-update.yml calls this check for every commit it would publish
-  # and publishes only if it passes (same commit, same run).
+  # Called by eas-update.yml (OTA gate) and apk-build.yml (release gate).
+  # There is deliberately NO push trigger: an emulator run costs 15-40
+  # minutes, and editing scripts/ci/** is exercised by the next release
+  # gate (or run this workflow manually). docs/ACTIONS-BUDGET.md.
   workflow_call:
-  # Standalone runs only for changes to the check itself (those are
-  # paths-ignored by eas-update.yml); app changes are covered by the
-  # OTA pipeline's call above.
-  push:
-    branches:
-      - claude/game-review-suggestions-cjxiqh
-    paths:
-      - 'scripts/ci/**'
-      - '.github/workflows/android-render-check.yml'
 
 concurrency:
   # Under workflow_call github.workflow is the caller's name, so a

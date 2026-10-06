@@ -13,29 +13,20 @@ name: APK Build (GitHub-hosted)
 
 on:
   workflow_dispatch:
+  # A build is the delivery of a new public version (docs/RELEASING.md), so
+  # it starts ONLY when release.json changes (the version bump), never on
+  # ordinary native-file edits (GitHub Actions minutes are a scarce, shared
+  # budget: docs/ACTIONS-BUDGET.md). Obsolete branches were removed.
   push:
     branches:
-      - claude/endless-escape-game-android-gRlFH
-      - Github-APK-Transition-Escap
       - claude/game-review-suggestions-cjxiqh
+      - claude/api36-native-qualification
     paths:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'app.json'
-      - 'app.config.js'
-      - 'eas.json'
-      - 'babel.config.js'
-      - 'metro.config.js'
-      - 'android/**'
-      - 'ios/**'
-      - 'assets/icon.png'
-      - 'assets/adaptive-icon.png'
-      - 'assets/splash-icon.png'
-      - 'assets/adaptive-icon-background.png'
+      - 'release.json'
     # This file deliberately does NOT list itself: GitHub evaluates the
     # pushed version of the workflow, so an edit to the pipeline alone
-    # must not cut a new APK + release (and a new versionCode). Test a
-    # workflow change with a manual run (workflow_dispatch) instead.
+    # must not cut a new APK + release. Test a workflow change with a
+    # manual run (workflow_dispatch) instead.
 
 permissions:
   contents: read
@@ -53,6 +44,12 @@ jobs:
       # softprops/action-gh-release needs write access to publish the
       # release + upload the APK as an asset.
       contents: write
+    outputs:
+      name: ${{ steps.apk.outputs.name }}
+      product: ${{ steps.apk.outputs.product }}
+      pv: ${{ steps.apk.outputs.pv }}
+      version: ${{ steps.ver.outputs.version }}
+      fingerprint: ${{ steps.fp.outputs.hash }}
     # Release metadata baked into the APK (see app.config.js): the
     # versionCode is this workflow's run number (= the build-N release
     # tag) and the embedded manifest records the source commit.
@@ -62,6 +59,18 @@ jobs:
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
+
+      # A public version identifies exactly one delivered build: refuse to
+      # publish a second binary under a version that already has a release.
+      - name: Refuse to reuse a public version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="$(node -p "require('./release.json').productName") v$(node -p "require('./release.json').publicVersion")"
+          if gh release list --repo "${{ github.repository }}" --limit 200 --json name --jq '.[].name' | grep -Fxq "$TITLE"; then
+            echo "::error::A release titled '$TITLE' already exists. Bump publicVersion in release.json (docs/RELEASING.md)."
+            exit 1
+          fi
 
       # A release build of the new-architecture native code fills most of
       # the runner disk; run 9 died in the post-build cache save with
@@ -168,7 +177,12 @@ jobs:
             exit 1
           fi
           echo "path=$APK" >> "$GITHUB_OUTPUT"
-          echo "name=endless-escape-build-${{ github.run_number }}.apk" >> "$GITHUB_OUTPUT"
+          # Public name: <Product>-v<N>.apk, N from release.json (docs/RELEASING.md).
+          SLUG=$(node -p "require('./release.json').fileSlug")
+          PV=$(node -p "require('./release.json').publicVersion")
+          echo "name=${SLUG}-v${PV}.apk" >> "$GITHUB_OUTPUT"
+          echo "product=$(node -p "require('./release.json').productName")" >> "$GITHUB_OUTPUT"
+          echo "pv=$PV" >> "$GITHUB_OUTPUT"
 
       - name: Read app version
         id: ver
@@ -179,37 +193,110 @@ jobs:
       - name: Rename APK for upload
         run: cp "${{ steps.apk.outputs.path }}" "${{ steps.apk.outputs.name }}"
 
+      # Inspect the built APK itself (package, versionCode, targetSdk,
+      # permissions, signing, 16 KB alignment); fails the build on a
+      # violation. See scripts/ci/verify-apk.sh.
+      - name: Verify APK (artifact-level compliance)
+        run: bash scripts/ci/verify-apk.sh "${{ steps.apk.outputs.name }}" com.verbal76.endlessescaspe "${{ github.run_number }}" 36
+
+      # What is packaged inside: studio logo, studio splash code, app icon,
+      # runtime and native fingerprint. See scripts/ci/verify-apk-content.sh.
+      - name: Verify packaged content
+        run: bash scripts/ci/verify-apk-content.sh "${{ steps.apk.outputs.name }}" "${{ steps.ver.outputs.version }}" "${{ steps.fp.outputs.hash }}"
+
+      # Can this APK install over the previous build? Same package AND same
+      # signing certificate. Compares against the published Build 13 asset.
+      - name: Compare signing certificate with Build 13
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          gh release download build-13 --repo "${{ github.repository }}" --pattern '*.apk' --output build13.apk
+          NEW=$("$BT/apksigner" verify --print-certs "${{ steps.apk.outputs.name }}" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          OLD=$("$BT/apksigner" verify --print-certs build13.apk | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          {
+            echo "--- signing continuity vs Build 13"
+            echo "build13 cert sha256: $OLD"
+            echo "this    cert sha256: $NEW"
+            if [ -n "$NEW" ] && [ "$NEW" = "$OLD" ]; then echo "SAME CERTIFICATE: can update Build 13 in place"; else echo "DIFFERENT CERTIFICATE: cannot update Build 13 in place"; fi
+          } | tee -a apk-report.txt
+          rm -f build13.apk
+
+      - name: Upload APK report
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-report-${{ github.run_number }}
+          path: apk-report.txt
+          retention-days: 30
+
       - name: Upload APK as workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.apk.outputs.name }}
           path: ${{ steps.apk.outputs.name }}
           if-no-files-found: error
-          # The same file is attached to the GitHub release.
-          retention-days: 7
+          # The same file is attached to the GitHub release (publish job).
+          retention-days: 30
 
-      # Publish a GitHub Release for every run (push AND manual
-      # workflow_dispatch runs) so testers always have a stable URL for
-      # the latest build. The build-N tag is created at the commit that
-      # was built (without target_commitish GitHub tags the default
-      # branch, which is how build-9..13 ended up on main).
+  # Emulator smoke test of the SAME commit (x86_64 build of identical JS,
+  # assets and native modules; the emulator cannot run the ARM phone APK):
+  # install, cold launch, studio card, game boot + render audit, restart,
+  # background / resume. The release is published only if it passes.
+  smoke-test:
+    name: Emulator smoke test
+    uses: ./.github/workflows/android-render-check.yml
+    permissions:
+      contents: read
+
+  publish:
+    name: Publish GitHub Release
+    needs: [build, smoke-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the verified APK
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.name }}
+          path: dist
+
+      - name: Checksum
+        id: sum
+        run: |
+          cd dist
+          echo "sha=$(sha256sum "${{ needs.build.outputs.name }}" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "size=$(stat -c %s "${{ needs.build.outputs.name }}")" >> "$GITHUB_OUTPUT"
+
+      # The newest delivered playable build is the Latest release (see
+      # docs/RELEASING.md). The build-N tag is created at the commit that
+      # was built (without target_commitish GitHub tags the default branch).
       - name: Publish GitHub Release
         # v2.6.2, pinned by commit: third-party action with contents: write.
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           tag_name: build-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
-          name: 'APK build #${{ github.run_number }}'
+          name: '${{ needs.build.outputs.product }} v${{ needs.build.outputs.pv }}'
+          prerelease: false
+          make_latest: true
           body: |
+            # ${{ needs.build.outputs.product }} v${{ needs.build.outputs.pv }}
+
+            **Android:** `${{ needs.build.outputs.name }}`
+
+            ## Technical details (engineers only)
             Auto-built from commit `${{ github.sha }}`.
 
-            **Version ${{ steps.ver.outputs.version }} • Build ${{ github.run_number }}** (runtime ${{ steps.ver.outputs.version }}, update channel `preview`)
+            Android versionName ${{ needs.build.outputs.version }} • versionCode ${{ github.run_number }} • tag `build-${{ github.run_number }}` (runtime ${{ needs.build.outputs.version }}, update channel `preview`)
 
-            Native fingerprint (android): `${{ steps.fp.outputs.hash }}`
+            Native fingerprint (android): `${{ needs.build.outputs.fingerprint }}`
 
-            Release-variant APK (debug-keystore signed) with OTA updates enabled. Install via:
+            SHA-256: `${{ steps.sum.outputs.sha }}` • ${{ steps.sum.outputs.size }} bytes
+
+            Release-variant APK (debug-keystore signed, same certificate as Build 13) with OTA updates enabled. Install via:
             1. Download the APK below.
             2. On your Android device, allow "install from unknown sources" for your browser / file manager.
             3. Open the downloaded APK to install.
-          files: ${{ steps.apk.outputs.name }}
+          files: dist/${{ needs.build.outputs.name }}
           token: ${{ secrets.GITHUB_TOKEN }}

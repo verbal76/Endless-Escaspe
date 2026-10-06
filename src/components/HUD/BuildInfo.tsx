@@ -2,29 +2,20 @@ import React, { useState } from 'react';
 import { Share, StyleSheet, View } from 'react-native';
 import { Pressable } from '../../ui/Pressable';
 import { Text } from '../../ui/Text';
-import { formatDetailRows } from '../../util/releaseInfo';
 import { checkForNewUpdate, getReleaseInfo, reloadIntoUpdate } from '../../util/releaseRuntime';
 import { flushDebugLog } from '../../util/debug';
 import { flushPendingSettings } from '../../util/settingsAutosave';
-import { getTextureStatus } from '../../util/textures';
-import { formatTextureRow } from '../../util/textureSource';
-import { formatFontRow, getFontStatus } from '../../ui/fonts';
-import { formatAuditRows, getRenderAudit } from '../../util/renderAudit';
-import { composeVitalsText } from '../../util/support';
+import { composeAboutText, technicalRows } from '../../util/support';
 import { color as ui, type as T, touch } from '../../ui/theme';
 
-// Build / Update Info: everything needed to tell exactly which code
-// is running. Tap a row with a shortened value (update ID, commit) to
-// show it in full. COPY / SHARE INFO hands all of it, as text, to the
+// The "Technical" part of Settings > About: texture / font / render-audit
+// diagnostics, a manual CHECK FOR UPDATE (diagnostics only - updates are
+// discovered and applied automatically, see util/updateFlow.ts) and COPY
+// DIAGNOSTICS, which hands the whole About report, as plain text, to the
 // Android share sheet (Copy, or send it to any app).
-export function BuildInfo() {
+export function BuildInfo({ hideShare = false }: { hideShare?: boolean } = {}) {
   const info = getReleaseInfo();
-  const rows = [
-    ...formatDetailRows(info),
-    formatTextureRow(getTextureStatus()),
-    formatFontRow(getFontStatus()),
-    ...formatAuditRows(getRenderAudit()),
-  ];
+  const rows = technicalRows();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -51,14 +42,6 @@ export function BuildInfo() {
     else {
       setReady(true);
       setStatus('New update downloaded. Tap again to restart into it (a run in progress ends).');
-    }
-  };
-
-  const onShare = async () => {
-    try {
-      await Share.share({ message: composeVitalsText(), title: 'Endless Escape - Build / Update Info' });
-    } catch (e) {
-      setStatus(`Share failed: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -91,13 +74,7 @@ export function BuildInfo() {
             <Text style={styles.btnLabel}>{ready ? 'RESTART INTO UPDATE' : 'CHECK FOR UPDATE'}</Text>
           </Pressable>
         ) : null}
-        <Pressable
-          accessibilityLabel="Copy or share build and update info"
-          onPress={onShare}
-          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
-        >
-          <Text style={styles.btnLabel}>COPY / SHARE INFO</Text>
-        </Pressable>
+        {hideShare ? null : <CopyDiagnosticsButton />}
       </View>
       {status ? <Text style={styles.status}>{status}</Text> : null}
     </View>
@@ -142,3 +119,29 @@ const styles = StyleSheet.create({
   btnLabel: { color: '#dff4ff', fontSize: T.caption, fontWeight: '900', letterSpacing: 1 },
   status: { color: 'rgba(255,255,255,0.85)', fontSize: T.caption, marginTop: 6 },
 });
+
+// COPY DIAGNOSTICS: the whole About report (identity, OTA, Play readiness,
+// device, technical rows) as plain text through the Android share sheet.
+export function CopyDiagnosticsButton() {
+  const [status, setStatus] = useState<string | null>(null);
+  const onShare = async () => {
+    try {
+      await Share.share({ message: composeAboutText(), title: 'Endless Escape - About / Diagnostics' });
+      setStatus(null);
+    } catch (e) {
+      setStatus(`Share failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
+  return (
+    <View>
+      <Pressable
+        accessibilityLabel="Copy diagnostics: share or copy the About report as text"
+        onPress={onShare}
+        style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+      >
+        <Text style={styles.btnLabel}>COPY DIAGNOSTICS</Text>
+      </Pressable>
+      {status ? <Text style={styles.status}>{status}</Text> : null}
+    </View>
+  );
+}

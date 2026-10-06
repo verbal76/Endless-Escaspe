@@ -3,10 +3,16 @@
 // behaviour - babel.config.js is in the path-trigger list and a
 // touch here is the cheapest way to ask for a build on demand.
 //   build #1 (2025-05-08) - GitHub-hosted Gradle smoke test
+//   (2026-10-04) Endless Escape v15 build (claude/api36-native-qualification)
+//
+// No explicit 'react-native-worklets/plugin': babel-preset-expo
+// (>= 54) adds it itself whenever react-native-worklets is installed
+// (see babel-preset-expo/build/index.js), and listing it again ran the
+// transform twice. It must stay LAST among plugins if one is ever
+// added by hand again.
 module.exports = function (api) {
   api.cache(true);
   return {
     presets: ['babel-preset-expo'],
-    plugins: ['react-native-worklets/plugin'],
   };
 };

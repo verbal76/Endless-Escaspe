@@ -1,12 +1,20 @@
 name: CI
 
-# Fast checks for every pull request and every pushed branch; also the
-# `validate` stage of eas-update.yml (workflow_call), so the commit that
-# gets published passed exactly these checks.
+# Fast checks for READY pull requests; also the `validate` stage of
+# eas-update.yml (workflow_call), so the commit that gets published passed
+# exactly these checks. GitHub Actions minutes are a scarce, shared budget
+# (docs/ACTIONS-BUDGET.md), so this deliberately does NOT run:
+#   - on plain pushes (a PR branch push was validated twice, and a push to
+#     the live branch that publishes is validated by eas-update.yml anyway),
+#   - for docs-only changes,
+#   - for draft PRs (validate locally; marking the PR ready runs this once).
 
 on:
   pull_request:
-  push:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
   workflow_call:
   workflow_dispatch:
 
@@ -22,6 +30,7 @@ concurrency:
 jobs:
   check:
     name: Typecheck, tests, native fingerprint, Android bundle
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

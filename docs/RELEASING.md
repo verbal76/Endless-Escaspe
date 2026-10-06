@@ -45,7 +45,7 @@ releases map to their own build number (v2, v4, v5, v7, v9, v10, v12).
 | v15 | (next) | next run | this branch | first build whose About shows its public version |
 
 ## Per-release checklist
-1. Bump `release.json` `publicVersion`, commit, push.
+1. Validate locally (see `docs/ACTIONS-BUDGET.md`). Bump `release.json` `publicVersion`, commit, push: the push that changes `release.json` is what starts the build (nothing else does).
 2. The `APK Build` workflow produces `Endless-Escape-v<N>.apk` and the release
    `Endless Escape v<N>` (Latest) with technical provenance below the headline.
 3. If a release ever needs retitling or reassigning Latest by hand (sessions

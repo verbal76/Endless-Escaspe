@@ -19,6 +19,13 @@ The public version is one sequential integer, **Endless Escape v<N>**, set in `r
 release title, the APK filename, About and Copy Diagnostics. See `docs/RELEASING.md`. Bump it once per delivered build; never
 reuse a number. Git SHA, versionCode, runtime, OTA ids are technical metadata, not the version.
 
+## GitHub Actions budget (standing owner directive)
+Actions minutes are shared across the owner's projects with a small monthly budget. Prove things locally first (typecheck, tests,
+native-fingerprint gate, `expo export`, `expo prebuild`); use Actions only for final candidate validation, an APK the owner needs,
+OTA publication and its safety gates, and checks that cannot run locally. Docs-only changes use zero minutes (`[skip ci]`).
+Never push just to "see if CI passes"; never rebuild the same SHA; never build platforms nobody asked for; never weaken a release
+safety gate to save minutes. Details and the workflow trigger table: `docs/ACTIONS-BUDGET.md`.
+
 ## Release hold
 The live branch `claude/game-review-suggestions-cjxiqh` (OTA 131, runtime 0.2.1) is frozen until the owner lifts the hold:
 no pushes, no OTAs. Native / next-version work happens on `claude/api36-native-qualification` (draft PR #7, do not merge).

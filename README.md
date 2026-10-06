@@ -106,14 +106,14 @@ pull request and every pushed branch, and never publishes anything.
 
 | Change | Workflow | Result |
 | --- | --- | --- |
-| Native: `package.json`, `package-lock.json`, `app.json`, `app.config.js`, icons, splash, Gradle config | `apk-build.yml` | Release-variant APK, published as GitHub Release `Endless Escape v<N>` (N from `release.json`; see `docs/RELEASING.md`), tagged `build-<run>` at the built commit |
+| A public-version bump: `release.json` (see `docs/RELEASING.md`; native-file edits alone do not build) | `apk-build.yml` | Release-variant APK, published as GitHub Release `Endless Escape v<N>` (N from `release.json`; see `docs/RELEASING.md`), tagged `build-<run>` at the built commit |
 | JS / assets only | `eas-update.yml` | EAS Update on channel `preview` (OTA sequence = run number) |
 
-Both trigger on pushes to `claude/game-review-suggestions-cjxiqh` (the
-only branch that publishes OTAs; `apk-build.yml` also still lists the
-two older branches) and can be run manually. Pushes that only touch
-docs, tests, scripts or workflows publish nothing. Editing
-`apk-build.yml` alone does not build an APK (run it manually to test).
+`eas-update.yml` triggers on pushes to `claude/game-review-suggestions-cjxiqh` (the
+only branch that publishes OTAs); `apk-build.yml` starts only when `release.json`
+changes on the live or qualification branch. Both can be run manually. Pushes that
+only touch docs, tests, scripts or workflows publish nothing. GitHub Actions minutes
+are a scarce shared budget: see `docs/ACTIONS-BUDGET.md`.
 
 An OTA is published only after, for the same commit:
 

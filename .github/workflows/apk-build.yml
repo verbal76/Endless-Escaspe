@@ -13,32 +13,20 @@ name: APK Build (GitHub-hosted)
 
 on:
   workflow_dispatch:
+  # A build is the delivery of a new public version (docs/RELEASING.md), so
+  # it starts ONLY when release.json changes (the version bump), never on
+  # ordinary native-file edits (GitHub Actions minutes are a scarce, shared
+  # budget: docs/ACTIONS-BUDGET.md). Obsolete branches were removed.
   push:
     branches:
-      - claude/endless-escape-game-android-gRlFH
-      - Github-APK-Transition-Escap
       - claude/game-review-suggestions-cjxiqh
-      # Isolated API-36 native qualification line (this branch only; its
-      # runtime 0.3.0 never reaches the live OTA train). See docs/native-qualification.md.
       - claude/api36-native-qualification
     paths:
-      - 'package.json'
-      - 'package-lock.json'
-      - 'app.json'
-      - 'app.config.js'
-      - 'eas.json'
-      - 'babel.config.js'
-      - 'metro.config.js'
-      - 'android/**'
-      - 'ios/**'
-      - 'assets/icon.png'
-      - 'assets/adaptive-icon.png'
-      - 'assets/splash-icon.png'
-      - 'assets/adaptive-icon-background.png'
+      - 'release.json'
     # This file deliberately does NOT list itself: GitHub evaluates the
     # pushed version of the workflow, so an edit to the pipeline alone
-    # must not cut a new APK + release (and a new versionCode). Test a
-    # workflow change with a manual run (workflow_dispatch) instead.
+    # must not cut a new APK + release. Test a workflow change with a
+    # manual run (workflow_dispatch) instead.
 
 permissions:
   contents: read

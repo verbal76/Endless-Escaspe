@@ -1,6 +1,10 @@
-// Build provenance: one JSON record per artifact so any APK traces to its
+// Build manifest (build-manifest.json): one JSON record per artifact so any APK traces to its
 // exact source revision (docs/RELEASING.md). Written by apk-build.yml next to
 // the APK and attached to the release / workflow artifact.
+//
+// verifyManifest() checks the manifest against the actual packaged file
+// (studio standard step 5: verify manifests against the packaged files).
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const read = (p) => readFileSync(p, 'utf8');
@@ -11,6 +15,7 @@ export function composeProvenance(i) {
   return {
     schema: 1,
     product: i.release.productName,
+    buildNumber: i.release.publicVersion,
     publicVersion: i.release.publicVersion,
     platform: i.platform,
     artifact: i.artifactName,
@@ -22,6 +27,20 @@ export function composeProvenance(i) {
     compatibility: { runtime: i.versionName, runtimePolicy: 'appVersion', nativeFingerprint: i.fingerprint },
     toolchain: i.toolchain,
   };
+}
+
+/** Pure: compare a manifest with the actual artifact (name, size, SHA-256) and the checksums file. */
+/** @param {string} [checksums] contents of checksums.sha256 (omit to skip that check) */
+export function verifyManifest(manifest, actual, checksums) {
+  const errors = [];
+  if (manifest.artifact !== actual.name) errors.push(`manifest names ${manifest.artifact}, the file is ${actual.name}`);
+  if (manifest.sizeBytes !== actual.size) errors.push(`manifest size ${manifest.sizeBytes} != actual ${actual.size}`);
+  if (manifest.sha256 !== actual.sha256) errors.push(`manifest sha256 ${manifest.sha256} != actual ${actual.sha256}`);
+  if (checksums !== undefined) {
+    const line = checksums.split('\n').map((l) => l.trim()).filter(Boolean).find((l) => l.endsWith(actual.name));
+    if (!line || line.split(/\s+/)[0] !== actual.sha256) errors.push('checksums.sha256 does not list the artifact with its actual SHA-256');
+  }
+  return errors;
 }
 
 export function readToolchain(env = process.env) {
@@ -68,10 +87,21 @@ export function main(env = process.env) {
     fingerprint: env.FINGERPRINT,
     toolchain: readToolchain(env),
   });
-  const out = env.PROVENANCE_OUT || 'provenance.json';
+  const out = env.PROVENANCE_OUT || 'build-manifest.json';
   writeFileSync(out, JSON.stringify(rec, null, 2) + '\n');
   console.log(`wrote ${out}`);
   return rec;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  if (process.argv[2] === '--verify') {
+    // node scripts/ci/write-provenance.mjs --verify build-manifest.json checksums.sha256 <artifact>
+    const [, , , manifestPath, sumsPath, artifact] = process.argv;
+    const bytes = readFileSync(artifact);
+    const errors = verifyManifest(JSON.parse(readFileSync(manifestPath, 'utf8')), { name: artifact.split('/').pop(), size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') }, readFileSync(sumsPath, 'utf8'));
+    for (const e of errors) console.error(`::error::${e}`);
+    console.log(errors.length ? 'manifest verification FAILED' : 'manifest verified against the packaged file');
+    process.exit(errors.length ? 1 : 0);
+  }
+  main();
+}

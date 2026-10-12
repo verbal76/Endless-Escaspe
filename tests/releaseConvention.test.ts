@@ -21,7 +21,7 @@ test('APK workflow derives title, filename and Latest from release.json', () => 
   assert.match(wf, /name: '\$\{\{ needs\.build\.outputs\.product \}\} v\$\{\{ needs\.build\.outputs\.pv \}\}'/);
   assert.match(wf, /needs: \[resolve, build, smoke-test\]/, 'the release is published only after the build and the emulator smoke test');
   assert.match(wf, /make_latest: true/);
-  assert.match(wf, /Decide whether this build may publish a release/);
+  assert.match(wf, /Validate build-number uniqueness for the destination/);
   assert.doesNotMatch(wf, /name: 'APK build #/);
 });
 

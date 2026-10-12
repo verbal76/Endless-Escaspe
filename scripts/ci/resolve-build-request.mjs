@@ -13,13 +13,17 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 
-export const PLATFORMS = ['android'];
+// The studio standard names three targets. Only android exists in this repository; windows / linux / all
+// are accepted as values so a request fails VISIBLY instead of silently producing a partial release.
+export const PLATFORMS = ['android', 'windows', 'linux', 'all'];
+export const BUILDABLE = ['android'];
+export const DESTINATIONS = ['github_releases', 'local_only'];
 export const CHANNELS = ['preview'];
 export const REQUEST_FILE = '.github/build-request.json';
 
 /**
  * Validate a raw request and return the normalised one.
- * @returns {{sourceSha:string, platform:string, channel:string, publishRelease:boolean, expectedVersion:number|null, id:string}}
+ * @returns {{sourceSha:string, platform:string, buildNumber:number, destination:string, channel:string, id:string}}
  */
 export function normaliseRequest(raw) {
   const r = raw && typeof raw === 'object' ? raw : {};
@@ -28,18 +32,17 @@ export function normaliseRequest(raw) {
     throw new Error('sourceSha must be the full 40-character commit SHA of the approved source (not a branch name or abbreviation)');
   }
   const platform = String(r.platform ?? 'android').trim().toLowerCase();
-  if (!PLATFORMS.includes(platform)) throw new Error(`platform "${platform}" is not supported by this repository (supported: ${PLATFORMS.join(', ')})`);
+  if (!PLATFORMS.includes(platform)) throw new Error(`platform "${platform}" is unknown (expected one of ${PLATFORMS.join(', ')})`);
+  if (!BUILDABLE.includes(platform)) {
+    throw new Error(`platform "${platform}" cannot be built: this repository has no Windows or Linux target (docs/PLATFORM_SUPPORT.md). "all" is refused too: a partial build must never be presented as a complete release`);
+  }
+  const buildNumber = Number(r.buildNumber);
+  if (!Number.isInteger(buildNumber) || buildNumber < 1) throw new Error('buildNumber must be the positive integer build number of this release (release.json publicVersion)');
+  const destination = String(r.destination ?? 'github_releases').trim().toLowerCase();
+  if (!DESTINATIONS.includes(destination)) throw new Error(`destination "${destination}" is not allowed (allowed: ${DESTINATIONS.join(', ')})`);
   const channel = String(r.channel ?? 'preview').trim().toLowerCase();
   if (!CHANNELS.includes(channel)) throw new Error(`channel "${channel}" is not allowed here (allowed: ${CHANNELS.join(', ')}; production builds use production-build.yml)`);
-  const pr = r.publishRelease;
-  const publishRelease = pr === undefined || pr === null || pr === '' ? true : pr === true || pr === 'true';
-  let expectedVersion = null;
-  if (r.expectedVersion !== undefined && r.expectedVersion !== null && String(r.expectedVersion).trim() !== '') {
-    const n = Number(r.expectedVersion);
-    if (!Number.isInteger(n) || n < 1) throw new Error('expectedVersion must be a positive integer public version');
-    expectedVersion = n;
-  }
-  return { sourceSha, platform, channel, publishRelease, expectedVersion, id: String(r.id ?? '').slice(0, 80) };
+  return { sourceSha, platform, buildNumber, destination, channel, id: String(r.id ?? '').slice(0, 80) };
 }
 
 /** The source must be part of the history of the commit that carries the request. */
@@ -88,9 +91,9 @@ export function requestFromEnv(env, readFile = (p) => readFileSync(p, 'utf8')) {
     return {
       sourceSha: env.IN_SOURCE_SHA,
       platform: env.IN_PLATFORM,
+      buildNumber: env.IN_BUILD_NUMBER,
+      destination: env.IN_DESTINATION,
       channel: env.IN_CHANNEL,
-      publishRelease: env.IN_PUBLISH_RELEASE,
-      expectedVersion: env.IN_EXPECTED_VERSION,
       id: 'manual',
     };
   }
@@ -106,8 +109,8 @@ export function main(env = process.env) {
     source_sha: req.sourceSha,
     platform: req.platform,
     channel: req.channel,
-    publish_release: String(req.publishRelease),
-    expected_version: req.expectedVersion === null ? '' : String(req.expectedVersion),
+    build_number: String(req.buildNumber),
+    destination: req.destination,
     request_commit: env.GITHUB_SHA || '',
     request_ref: env.GITHUB_REF_NAME || '',
   };

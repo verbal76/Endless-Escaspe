@@ -80,3 +80,16 @@ test('one codebase, many targets: platform differences are isolated and document
     .filter((f) => /Platform\.(OS|select)/.test(readFileSync(`src/${f}`, 'utf8')));
   assert.ok(hits.length <= 6, `platform-specific code should stay isolated (found in ${hits.length} files: ${hits.join(', ')})`);
 });
+
+test('platform and Steam documentation tells the truth about what exists', () => {
+  const plat = readFileSync('docs/PLATFORM_SUPPORT.md', 'utf8');
+  assert.match(plat, /Windows x86-64 \| \*\*Not supported/);
+  assert.match(plat, /Linux x86-64 \| \*\*Not supported/);
+  const steam = readFileSync('docs/STEAM_HARDWARE_CHECKLIST.md', 'utf8');
+  assert.match(steam, /Valve Verified status is never claimed/);
+  assert.match(steam, /No Windows or Linux build exists/);
+  assert.doesNotMatch(steam, /\| PASS \|(?!.*Android)/, 'a Steam item may only PASS with evidence (the one PASS is the Android launcher check)');
+  // The build workflow refuses targets that do not exist instead of faking a release.
+  assert.match(readFileSync('scripts/ci/resolve-build-request.mjs', 'utf8'), /no Windows or Linux target/);
+  assert.match(readFileSync('docs/COMPLIANCE-AUDIT.md', 'utf8'), /F-22[\s\S]*publishing workflows/);
+});

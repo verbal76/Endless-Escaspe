@@ -33,21 +33,20 @@ No development or qualification run starts an emulator, a native compile or an A
 | rollback / production build | manual runs only (`ota-rollback.yml`, `production-build.yml`) | |
 
 ### Build request (`apk-build.yml`)
-A request names: **`sourceSha`** (full 40-char SHA of the approved source), **platform** (`android`), **channel** (`preview`), whether to
-**publish a release**, and optionally the **expected public version** at that SHA. Two equivalent ways to make it:
+The inputs follow the studio standard: **`platform`** (`android`; `windows`, `linux` and `all` are accepted values that **fail visibly**, because this repository has no such
+target), **`source_sha`** (full 40-char SHA of the approved source), **`build_number`** (must equal `release.json` `publicVersion` at that SHA) and **`destination`**
+(`github_releases` or `local_only`), plus `channel` (`preview`). Two equivalent ways to make the request:
 1. *Run workflow* on `APK Build` with those inputs (owner / UI), or
-2. commit **`.github/build-request.json`** (this is what an agent session uses, since it cannot dispatch workflows):
+2. commit **`.github/build-request.json`** (what an agent session uses, since it cannot dispatch workflows):
    ```json
-   { "sourceSha": "<40 hex>", "platform": "android", "channel": "preview", "publishRelease": true, "expectedVersion": 16, "id": "free text, change it to request a rebuild" }
+   { "sourceSha": "<40 hex>", "platform": "android", "buildNumber": 16, "destination": "github_releases", "channel": "preview", "id": "free text, change it to request a rebuild" }
    ```
 The workflow builds **exactly `sourceSha`** (never the commit carrying the request; it must be an ancestor of it and lie on the authoritative line, see `docs/RELEASING.md`), stamps it into the APK, and
-writes a provenance record (`<Product>-v<N>.provenance.json`: source SHA, request commit and ref, public version, versionName, versionCode,
-platform, channel, configuration, runtime, native fingerprint, SHA-256, build time, toolchain versions, run URL). A **rebuild needs no version bump**: if the
-version already has a release (or `publishRelease` is false) the result is a workflow artifact only; a public version is never overwritten.
-Only commit the request file in the commit that requests a build.
+publishes `build-manifest.json` (source SHA, request commit and ref, build number, platform, channel, configuration, runtime, native fingerprint, versionName / versionCode, SHA-256, size, build time,
+toolchain versions, run URL) plus `checksums.sha256`, after verifying both against the packaged file. `github_releases` needs an **unused** build number (checked before the expensive build; a number is never
+reused for different source); `local_only` produces a workflow artifact only, so an authorized **rebuild needs no new number**. Only commit the request file in the commit that requests a build.
 
-A coordinated multi-platform release uses **one request with one `sourceSha`**; every platform artifact is built from it. This repository
-currently targets Android only.
+A coordinated multi-platform release uses **one request with one `sourceSha`**; every platform artifact is built from it. Only Android exists today.
 
 ## Rules of thumb
 - One build per delivered version; one request per build. Do not push to "retry"; read the logs, fix, then request once.

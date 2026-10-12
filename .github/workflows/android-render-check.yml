@@ -41,7 +41,9 @@ permissions:
 jobs:
   render-check:
     name: Release APK renders textures (emulator)
-    runs-on: ubuntu-latest
+    # Pinned: this job depends on /dev/kvm + the udev rule, the preinstalled Android SDK layout and
+    # Temurin / NDK versions, which can differ on a new image (docs/COMPLIANCE-AUDIT.md F-14).
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     # Same release metadata stamping as apk-build.yml, so the [release]
     # log line identifies this commit.

@@ -45,7 +45,10 @@ test('apk-build.yml: a native build needs an explicit request naming the source 
     assert.ok(!push.includes(bad), `apk-build must not trigger on ${bad}`);
   }
   assert.match(on, /workflow_dispatch:\s*\n\s*inputs:/);
-  for (const input of ['source_sha', 'platform', 'channel', 'publish_release', 'expected_version']) assert.match(on, new RegExp(`${input}:`));
+  // The studio standard's manual-workflow inputs.
+  for (const input of ['platform', 'source_sha', 'build_number', 'destination', 'channel']) assert.match(on, new RegExp(`${input}:`));
+  assert.match(on, /options: \[github_releases, local_only\]/);
+  assert.match(on, /options: \[android, windows, linux, all\]/);
   // Built from exactly the approved SHA, everywhere it matters.
   assert.match(s, /ref: \$\{\{ needs\.resolve\.outputs\.source_sha \}\}/);
   assert.match(s, /EE_GIT_SHA: \$\{\{ needs\.resolve\.outputs\.source_sha \}\}/);
@@ -55,9 +58,11 @@ test('apk-build.yml: a native build needs an explicit request naming the source 
   // A release build is never cancelled by a newer request.
   assert.match(s, /group: apk-build\n\s+cancel-in-progress: false/);
   // A rebuild of a released version is artifact-only, and provenance is recorded.
-  assert.match(s, /Decide whether this build may publish a release/);
-  assert.match(s, /write-provenance\.mjs/);
-  assert.match(s, /dist\/\*\.provenance\.json/);
+  assert.match(s, /Validate build-number uniqueness for the destination/);
+  assert.match(s, /Check the build number/);
+  assert.match(s, /write-provenance\.mjs --verify/, 'the manifest is verified against the packaged file');
+  assert.match(s, /sha256sum -c checksums\.sha256/);
+  for (const asset of ['dist/build-manifest.json', 'dist/checksums.sha256']) assert.ok(s.includes(asset), `${asset} is a release asset`);
 });
 
 test('android-render-check.yml: callable on an exact ref, never started by a push, release runs never cancelled', () => {
@@ -76,6 +81,12 @@ test('OTA and native builds are independent', () => {
   // eas-update never calls the APK workflow, and the APK workflow never publishes OTAs.
   assert.doesNotMatch(eas, /apk-build\.yml/);
   assert.doesNotMatch(wf('apk-build'), /eas update|expo-github-action|EXPO_TOKEN/);
+});
+
+test('Android jobs that depend on the runner image are pinned (ubuntu-latest moves to 26.04 from 2026-10-19)', () => {
+  assert.match(wf('android-render-check'), /runs-on: ubuntu-24\.04/);
+  const apk = wf('apk-build');
+  assert.match(apk.slice(apk.indexOf('  build:'), apk.indexOf('  smoke-test:')), /runs-on: ubuntu-24\.04/);
 });
 
 test('manual-only workflows stay manual', () => {

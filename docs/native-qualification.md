@@ -12,7 +12,7 @@ Incorporated (merge commits, no other changes to gameplay):
 Excluded on purpose: ci-hardening (#4), scenarios (#3), ledger docs (#2).
 
 Package stays `com.verbal76.endlessescaspe` (rename deferred). Signing stays the
-template debug keystore. Build with a manual `APK Build` dispatch on this branch:
+template debug keystore. A build starts only from an explicit build request naming the approved source SHA (`.github/build-request.json` or `APK Build` dispatch inputs; see docs/RELEASING.md):
 the run publishes a *prerelease* `build-N` and an artifact, never an OTA, and
 `scripts/ci/verify-apk.sh` inspects the real APK (package, versionCode,
 targetSdk, permissions, signing, 16 KB alignment) and compares the signing

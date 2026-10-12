@@ -29,6 +29,10 @@ Every commit on them is an ancestor of, or patch-equivalent to, a commit on the 
 "Rendering: no per-frame shader program re-resolution") is integrated as live 7428134: 15 of 16 files are byte-identical; `LightTower.ts` differs
 only by an unused import that live already removed. No unique work was found on any local-only branch.
 
+**Publishing hazard on old branches (finding F-22, docs/COMPLIANCE-AUDIT.md):** `claude/endless-escape-game-android-gRlFH` and `Github-APK-Transition-Escap` still contain `apk-build.yml` and
+`eas-update.yml` that start on a push to either branch (and `main` holds legacy `eas-build.yml` / `eas-update.yml` that trigger on the first). A push there could publish an OTA or take over the "Latest"
+release. Do not push to those branches; the owner can block it without code with a GitHub ruleset that restricts updates to them.
+
 ## Missing-work ledger (outside the authoritative line)
 
 | Item | Where | Class | Proposed disposition |

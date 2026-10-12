@@ -23,28 +23,29 @@ name: APK Build (GitHub-hosted)
 on:
   workflow_dispatch:
     inputs:
+      platform:
+        description: 'Target platform. Only android can be built here; windows / linux / all are refused visibly (docs/PLATFORM_SUPPORT.md)'
+        type: choice
+        options: [android, windows, linux, all]
+        default: android
       source_sha:
         description: 'Approved source commit: the full 40-character SHA (not a branch name)'
         type: string
         required: true
-      platform:
-        description: 'Target platform'
+      build_number:
+        description: 'Coordinated build number of this release (must equal release.json publicVersion at the source SHA)'
+        type: string
+        required: true
+      destination:
+        description: 'github_releases publishes a numbered release (the number must be unused); local_only builds a workflow artifact only (a rebuild needs no new number)'
         type: choice
-        options: [android]
-        default: android
+        options: [github_releases, local_only]
+        default: github_releases
       channel:
         description: 'Release channel baked into the build'
         type: choice
         options: [preview]
         default: preview
-      publish_release:
-        description: 'Publish a GitHub release for this version (forced off if the version already has one)'
-        type: boolean
-        default: true
-      expected_version:
-        description: 'Optional: the public version release.json must have at the source SHA'
-        type: string
-        required: false
   push:
     branches:
       - claude/game-review-suggestions-cjxiqh
@@ -73,8 +74,8 @@ jobs:
       source_sha: ${{ steps.req.outputs.source_sha }}
       platform: ${{ steps.req.outputs.platform }}
       channel: ${{ steps.req.outputs.channel }}
-      publish_release: ${{ steps.req.outputs.publish_release }}
-      expected_version: ${{ steps.req.outputs.expected_version }}
+      build_number: ${{ steps.req.outputs.build_number }}
+      destination: ${{ steps.req.outputs.destination }}
       request_commit: ${{ steps.req.outputs.request_commit }}
       request_ref: ${{ steps.req.outputs.request_ref }}
     steps:
@@ -91,15 +92,17 @@ jobs:
         env:
           IN_SOURCE_SHA: ${{ inputs.source_sha }}
           IN_PLATFORM: ${{ inputs.platform }}
+          IN_BUILD_NUMBER: ${{ inputs.build_number }}
+          IN_DESTINATION: ${{ inputs.destination }}
           IN_CHANNEL: ${{ inputs.channel }}
-          IN_PUBLISH_RELEASE: ${{ inputs.publish_release }}
-          IN_EXPECTED_VERSION: ${{ inputs.expected_version }}
         run: node scripts/ci/resolve-build-request.mjs
 
   build:
     name: Build Android APK
     needs: resolve
-    runs-on: ubuntu-latest
+    # Pinned: Gradle / NDK / Android SDK layout and release signing depend on the runner image
+    # (docs/COMPLIANCE-AUDIT.md F-14). The cheap resolve / publish jobs stay on ubuntu-latest as canaries.
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read
@@ -126,32 +129,34 @@ jobs:
         with:
           ref: ${{ needs.resolve.outputs.source_sha }}
 
-      - name: Check the expected version
-        if: needs.resolve.outputs.expected_version != ''
+      # The coordinated build number is the public version in release.json at the approved source.
+      - name: Check the build number
         run: |
           GOT=$(node -p "require('./release.json').publicVersion")
-          if [ "$GOT" != "${{ needs.resolve.outputs.expected_version }}" ]; then
-            echo "::error::release.json at ${{ needs.resolve.outputs.source_sha }} says v$GOT, the request expected v${{ needs.resolve.outputs.expected_version }}"
+          if [ "$GOT" != "${{ needs.resolve.outputs.build_number }}" ]; then
+            echo "::error::release.json at ${{ needs.resolve.outputs.source_sha }} says build $GOT, the request says build ${{ needs.resolve.outputs.build_number }}"
             exit 1
           fi
 
-      # A public version identifies exactly one delivered build: a rebuild of a
-      # version that already has a release (or a request that says not to
-      # publish) yields a workflow artifact only, never a second binary under
-      # the same public version, and needs no artificial version bump.
-      - name: Decide whether this build may publish a release
+      # A build number identifies exactly one delivered build. Publishing to GitHub Releases needs an
+      # unused number (checked here, before the expensive build); `local_only` produces a workflow
+      # artifact without a release, so an authorized rebuild never needs an artificial new number.
+      - name: Validate build-number uniqueness for the destination
         id: decide
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TITLE="$(node -p "require('./release.json').productName") v$(node -p "require('./release.json').publicVersion")"
-          CAN=true
-          if [ "${{ needs.resolve.outputs.publish_release }}" != "true" ]; then
-            CAN=false; echo "::notice::The request asked for a build artifact only (no release)."
-          elif gh release list --repo "${{ github.repository }}" --limit 200 --json name --jq '.[].name' | grep -Fxq "$TITLE"; then
-            CAN=false; echo "::notice::A release titled '$TITLE' already exists; this rebuild is a workflow artifact only (a public version is never overwritten)."
+          if [ "${{ needs.resolve.outputs.destination }}" = "github_releases" ]; then
+            if gh release list --repo "${{ github.repository }}" --limit 200 --json name --jq '.[].name' | grep -Fxq "$TITLE"; then
+              echo "::error::A release titled '$TITLE' already exists: a build number is never reused for different source content. Use a new build number, or destination local_only for a rebuild."
+              exit 1
+            fi
+            echo "can_publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::destination local_only: building a workflow artifact only, no GitHub Release."
+            echo "can_publish=false" >> "$GITHUB_OUTPUT"
           fi
-          echo "can_publish=$CAN" >> "$GITHUB_OUTPUT"
 
       # A release build of the new-architecture native code fills most of
       # the runner disk; run 9 died in the post-build cache save with
@@ -264,7 +269,7 @@ jobs:
           echo "name=${SLUG}-v${PV}.apk" >> "$GITHUB_OUTPUT"
           echo "product=$(node -p "require('./release.json').productName")" >> "$GITHUB_OUTPUT"
           echo "pv=$PV" >> "$GITHUB_OUTPUT"
-          echo "provenance=${SLUG}-v${PV}.provenance.json" >> "$GITHUB_OUTPUT"
+          echo "provenance=build-manifest.json" >> "$GITHUB_OUTPUT"
 
       - name: Read app version
         id: ver
@@ -304,7 +309,7 @@ jobs:
           } | tee -a apk-report.txt
           rm -f build13.apk
 
-      - name: Checksum and provenance record
+      - name: Checksums and build manifest (verified against the packaged file)
         id: sum
         env:
           PLATFORM: ${{ needs.resolve.outputs.platform }}
@@ -324,6 +329,9 @@ jobs:
           SIZE=$(stat -c %s "${{ steps.apk.outputs.name }}")
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"; echo "size=$SIZE" >> "$GITHUB_OUTPUT"
           ARTIFACT_SHA256=$SHA ARTIFACT_SIZE=$SIZE node scripts/ci/write-provenance.mjs
+          sha256sum "${{ steps.apk.outputs.name }}" > checksums.sha256
+          sha256sum -c checksums.sha256
+          node scripts/ci/write-provenance.mjs --verify "$PROVENANCE_OUT" checksums.sha256 "${{ steps.apk.outputs.name }}"
           cat "$PROVENANCE_OUT"
 
       - name: Upload APK report
@@ -340,6 +348,7 @@ jobs:
           path: |
             ${{ steps.apk.outputs.name }}
             ${{ steps.apk.outputs.provenance }}
+            checksums.sha256
           if-no-files-found: error
           # The same file is attached to the GitHub release (publish job).
           retention-days: 30
@@ -389,7 +398,7 @@ jobs:
             **Android:** `${{ needs.build.outputs.name }}`
 
             ## Technical details (engineers only)
-            Built from approved source commit `${{ needs.resolve.outputs.source_sha }}` (request ref `${{ needs.resolve.outputs.request_ref }}` at `${{ needs.resolve.outputs.request_commit }}`); provenance record attached.
+            Built from approved source commit `${{ needs.resolve.outputs.source_sha }}` (request ref `${{ needs.resolve.outputs.request_ref }}` at `${{ needs.resolve.outputs.request_commit }}`); `build-manifest.json` and `checksums.sha256` attached.
 
             Android versionName ${{ needs.build.outputs.version }} • versionCode ${{ github.run_number }} • tag `build-${{ github.run_number }}` (runtime ${{ needs.build.outputs.version }}, update channel `preview`)
 
@@ -403,5 +412,6 @@ jobs:
             3. Open the downloaded APK to install.
           files: |
             dist/${{ needs.build.outputs.name }}
-            dist/*.provenance.json
+            dist/build-manifest.json
+            dist/checksums.sha256
           token: ${{ secrets.GITHUB_TOKEN }}

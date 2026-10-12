@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { isDocsOnly, changedFiles } from '../scripts/ci/classify-changes.mjs';
 import { assertAncestor, normaliseRequest, requestFromEnv } from '../scripts/ci/resolve-build-request.mjs';
-import { composeProvenance } from '../scripts/ci/write-provenance.mjs';
+import { composeProvenance, verifyManifest } from '../scripts/ci/write-provenance.mjs';
 
 const SHA = 'c30232d13b12662bd6646df639fd529a06e87174';
 
@@ -16,27 +16,35 @@ test('classify: docs-only means only docs/** and markdown; anything else (or not
   assert.equal(changedFiles('a', 'b', () => 'docs/x.md\n\nREADME.md\n').join(','), 'docs/x.md,README.md');
 });
 
-test('build request: must name the full approved SHA, a supported platform and channel', () => {
-  const ok = normaliseRequest({ sourceSha: SHA.toUpperCase(), platform: 'android', channel: 'preview' });
-  assert.deepEqual(ok, { sourceSha: SHA, platform: 'android', channel: 'preview', publishRelease: true, expectedVersion: null, id: '' });
-  assert.throws(() => normaliseRequest({ sourceSha: 'c30232d' }), /40-character/);
-  assert.throws(() => normaliseRequest({ sourceSha: 'claude/api36-native-qualification' }), /40-character/);
-  assert.throws(() => normaliseRequest({}), /40-character/);
-  assert.throws(() => normaliseRequest({ sourceSha: SHA, platform: 'windows' }), /not supported/);
-  assert.throws(() => normaliseRequest({ sourceSha: SHA, channel: 'production' }), /not allowed/);
-  assert.equal(normaliseRequest({ sourceSha: SHA, publishRelease: 'false' }).publishRelease, false);
-  assert.equal(normaliseRequest({ sourceSha: SHA, publishRelease: false }).publishRelease, false);
-  assert.equal(normaliseRequest({ sourceSha: SHA, publishRelease: '' }).publishRelease, true);
-  assert.equal(normaliseRequest({ sourceSha: SHA, expectedVersion: '15' }).expectedVersion, 15);
-  assert.throws(() => normaliseRequest({ sourceSha: SHA, expectedVersion: 'v15' }), /positive integer/);
+test('build request: full approved SHA, a build number, a buildable platform, a known destination and channel', () => {
+  const ok = normaliseRequest({ sourceSha: SHA.toUpperCase(), platform: 'android', buildNumber: '15', destination: 'github_releases', channel: 'preview' });
+  assert.deepEqual(ok, { sourceSha: SHA, platform: 'android', buildNumber: 15, destination: 'github_releases', channel: 'preview', id: '' });
+  assert.throws(() => normaliseRequest({ sourceSha: 'c30232d', buildNumber: 15 }), /40-character/);
+  assert.throws(() => normaliseRequest({ sourceSha: 'claude/api36-native-qualification', buildNumber: 15 }), /40-character/);
+  assert.throws(() => normaliseRequest({ buildNumber: 15 }), /40-character/);
+  assert.throws(() => normaliseRequest({ sourceSha: SHA }), /buildNumber/);
+  assert.throws(() => normaliseRequest({ sourceSha: SHA, buildNumber: 'v15' }), /buildNumber/);
+  assert.throws(() => normaliseRequest({ sourceSha: SHA, buildNumber: 0 }), /buildNumber/);
+  assert.throws(() => normaliseRequest({ sourceSha: SHA, buildNumber: 15, platform: 'mac' }), /unknown/);
+  assert.throws(() => normaliseRequest({ sourceSha: SHA, buildNumber: 15, destination: 'steam' }), /not allowed/);
+  assert.throws(() => normaliseRequest({ sourceSha: SHA, buildNumber: 15, channel: 'production' }), /not allowed/);
+  assert.equal(normaliseRequest({ sourceSha: SHA, buildNumber: 15 }).destination, 'github_releases', 'default destination');
+  assert.equal(normaliseRequest({ sourceSha: SHA, buildNumber: 15, destination: 'local_only' }).destination, 'local_only');
 });
 
-test('build request: a rebuild needs no version bump (same version, new request id)', () => {
-  const a = normaliseRequest({ sourceSha: SHA, id: 'first' });
-  const b = normaliseRequest({ sourceSha: SHA, id: 'rebuild-2', publishRelease: false });
+test('build request: windows / linux / all fail visibly (no such target), never a partial "complete" release', () => {
+  for (const platform of ['windows', 'linux', 'all']) {
+    assert.throws(() => normaliseRequest({ sourceSha: SHA, buildNumber: 15, platform }), /cannot be built: this repository has no Windows or Linux target/, platform);
+  }
+});
+
+test('build request: a rebuild needs no new build number (local_only, same number, new request id)', () => {
+  const a = normaliseRequest({ sourceSha: SHA, buildNumber: 15, id: 'first' });
+  const b = normaliseRequest({ sourceSha: SHA, buildNumber: 15, id: 'rebuild-2', destination: 'local_only' });
   assert.equal(a.sourceSha, b.sourceSha);
+  assert.equal(a.buildNumber, b.buildNumber);
   assert.notEqual(a.id, b.id);
-  assert.equal(b.publishRelease, false);
+  assert.equal(b.destination, 'local_only');
 });
 
 test('build request: the source must be in the branch history', () => {
@@ -51,8 +59,9 @@ test('build request: the source must be in the branch history', () => {
 });
 
 test('build request: read from dispatch inputs or from the request file', () => {
-  const d = requestFromEnv({ GITHUB_EVENT_NAME: 'workflow_dispatch', IN_SOURCE_SHA: SHA, IN_PLATFORM: 'android', IN_CHANNEL: 'preview', IN_PUBLISH_RELEASE: 'true', IN_EXPECTED_VERSION: '' });
+  const d = requestFromEnv({ GITHUB_EVENT_NAME: 'workflow_dispatch', IN_SOURCE_SHA: SHA, IN_PLATFORM: 'android', IN_BUILD_NUMBER: '15', IN_DESTINATION: 'github_releases', IN_CHANNEL: 'preview' });
   assert.equal(d.sourceSha, SHA);
+  assert.equal(normaliseRequest(d).buildNumber, 15);
   const f = requestFromEnv({ GITHUB_EVENT_NAME: 'push' }, () => JSON.stringify({ sourceSha: SHA, id: 'x' }));
   assert.equal(f.sourceSha, SHA);
 });
@@ -80,10 +89,23 @@ test('provenance: records source, version, platform, configuration, runtime and 
   });
   assert.equal(p.source.sha, SHA);
   assert.equal(p.publicVersion, 15);
+  assert.equal(p.buildNumber, 15, 'the manifest records the coordinated build number');
   assert.equal(p.platform, 'android');
   assert.equal(p.android.versionCode, 16);
   assert.equal(p.build.configuration, 'release');
   assert.equal(p.compatibility.runtime, '0.3.0');
   assert.equal(p.compatibility.nativeFingerprint, 'b32bf103e9682e94fc5bdcd6f83cdf779058ac04');
   assert.equal(p.toolchain.agp, '8.11.0');
+});
+
+test('manifest verification: the manifest must match the packaged file and the checksums file', () => {
+  const sha = 'ab'.repeat(32);
+  const manifest = { artifact: 'Endless-Escape-v15.apk', sizeBytes: 100, sha256: sha };
+  const actual = { name: 'Endless-Escape-v15.apk', size: 100, sha256: sha };
+  assert.deepEqual(verifyManifest(manifest, actual, `${sha}  Endless-Escape-v15.apk\n`), []);
+  assert.match(verifyManifest({ ...manifest, sizeBytes: 99 }, actual).join(), /size/);
+  assert.match(verifyManifest({ ...manifest, sha256: 'cd'.repeat(32) }, actual).join(), /sha256/);
+  assert.match(verifyManifest({ ...manifest, artifact: 'other.apk' }, actual).join(), /names other\.apk/);
+  assert.match(verifyManifest(manifest, actual, `${'cd'.repeat(32)}  Endless-Escape-v15.apk\n`).join(), /checksums\.sha256/);
+  assert.match(verifyManifest(manifest, actual, '').join(), /checksums\.sha256/);
 });

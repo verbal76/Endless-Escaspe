@@ -42,12 +42,13 @@ releases map to their own build number (v2, v4, v5, v7, v9, v10, v12).
 |---|---|---|---|---|
 | v13 | build-13 | 13 | 0defe73 | Android 0.2.1, runtime 0.2.1; OTA 131 is an OTA revision of v13 |
 | v14 | build-15 | 15 | 95dcc77 | Android 0.3.0, runtime 0.3.0 (API 36 candidate). Built before the convention: its About screen shows "0.3.0 / Build 15", not "v14" |
-| v15 | (next) | next run | this branch | first build whose About shows its public version |
+| v15 | build-16 | 16 | c30232d | first build whose About shows its public version; built from an explicit source SHA from here on |
+| v16 | (next) | next run | a request names the approved SHA | bump `release.json` to 16 in that change; a rebuild of v15 needs no bump (artifact only) |
 
 ## Provenance and the single authoritative line
 - Every build comes from one approved **full source SHA** that lies on the authoritative line named in `release.json` (`authoritativeBranch`): an ancestor of its tip
   or a descendant of it. A commit on a diverged or abandoned branch is refused by `scripts/ci/resolve-build-request.mjs`, so an outdated branch cannot be published.
-- The build records `<Product>-v<N>.provenance.json` (source SHA, request commit and ref, public version, versionName / versionCode, platform, channel, configuration,
+- The build records `build-manifest.json` (source SHA, request commit and ref, build number, versionName / versionCode, platform, channel, configuration,
   runtime, native fingerprint, SHA-256, build time, toolchain versions, run URL) next to the APK; the release tag is created at the source SHA.
 - A coordinated multi-platform release uses one request with one `sourceSha`; all platform artifacts are built from it, and a failing platform is never rebuilt from a
   different revision.
@@ -57,9 +58,9 @@ releases map to their own build number (v2, v4, v5, v7, v9, v10, v12).
 ## Per-release checklist
 1. Validate locally (`docs/ACTIONS-BUDGET.md`). Bump `release.json` `publicVersion` in the change that delivers a new build. A version bump alone starts nothing.
 2. Authorize the native build explicitly (separate decision): run `APK Build` with the approved full source SHA, or commit `.github/build-request.json`
-   naming it (`{ "sourceSha": "<40 hex>", "platform": "android", "channel": "preview", "expectedVersion": <N> }`).
+   naming it (`{ "sourceSha": "<40 hex>", "platform": "android", "buildNumber": <N>, "destination": "github_releases", "channel": "preview" }`).
 3. The workflow builds exactly that SHA, verifies the APK and its packaged content, runs the emulator smoke test, and publishes `Endless Escape v<N>`
-   (Latest) with `Endless-Escape-v<N>.apk` and `Endless-Escape-v<N>.provenance.json`. A rebuild of an already-released version (no version bump needed)
+   (Latest) with `Endless-Escape-v<N>.apk`, `build-manifest.json` and `checksums.sha256` (both verified against the packaged APK). A rebuild of an already-released number (use destination `local_only`; no bump)
    produces a workflow artifact only.
 4. If a release ever needs retitling or reassigning Latest by hand (sessions without release-write access cannot), do it in GitHub: title
    `Endless Escape v<N>`, tick "Set as the latest release".

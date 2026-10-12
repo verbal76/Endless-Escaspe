@@ -19,6 +19,12 @@ The public version is one sequential integer, **Endless Escape v<N>**, set in `r
 release title, the APK filename, About and Copy Diagnostics. See `docs/RELEASING.md`. Bump it once per delivered build; never
 reuse a number. Git SHA, versionCode, runtime, OTA ids are technical metadata, not the version.
 
+## Governing studio standard
+The Hot Attic Games **Master Engineering Directive v2.0** (owner-held document; not copied here because this repository is public) governs: one authoritative source line, **three** targets
+(Android APK, Windows x86-64, native Linux x86-64), Steam as the primary destination, one build number per coordinated release, no automatic publishing of releases or OTA, safe updates, Steam Deck /
+Machine controller and display requirements, the approved glyph library, honest testing claims. **Actual status here:** only Android exists; Windows, Linux and Steam are not started (RED: engine / platform
+decision): `docs/PLATFORM_SUPPORT.md`, `docs/STEAM_HARDWARE_CHECKLIST.md`, `docs/COMPLIANCE-AUDIT.md`. Never claim a platform works because a package compiled, and never claim hardware testing that did not happen.
+
 ## Single source of truth (permanent engineering policy, all Hot Attic Games projects)
 Every change belongs to one authoritative product history. Every supported platform builds from that history. Every abandoned branch must be
 accounted for before valuable work is discarded.
@@ -40,6 +46,12 @@ accounted for before valuable work is discarded.
   an OTA never creates a second history. Not every change is OTA-compatible: the fingerprint gate decides.
 - **CI cannot lie.** No skipped / only / todo tests; no step swallows failures; the check job always reports; release workflows build only the approved source.
 - **Repository boundaries.** This policy is universal but each repository stays independent: never inspect, modify or merge another repository without explicit authorization.
+
+## Licensing and third-party material
+Do not assume an asset is commercially usable because it is in the repository. Asset licences live in `assets/LICENSES.md` (music is **Unconfirmed**: an owner gate); npm
+notices for the shipped bundle in `docs/THIRD-PARTY-NOTICES.md` (regenerate with `node scripts/gen-third-party-notices.mjs` when dependencies change; `tests/licenses.test.ts`
+fails on a non-permissive or unknown licence); the controller-glyph archive's provenance in `docs/GLYPH-LIBRARY.md` (not bundled: the game has no controller input). Never invent
+licence evidence and never substitute an unverified asset. The latest compliance audit and its finding queue: `docs/COMPLIANCE-AUDIT.md`.
 
 ## GitHub Actions budget (standing owner directive)
 **Development validation should be cheap, release validation should be thorough, and publishing must be intentional.**

@@ -1,8 +1,8 @@
 # B. OTA architecture and C. "Please wait, applying update" (as implemented on this branch)
 
 ## Detected / preserved
-Stack: Expo SDK 54 + `expo-updates` ~29.0.16. The OTA pipeline on the live branch is working and is PRESERVED unchanged
-(eas-update.yml: validate -> same-commit emulator render check -> publish with `eas update --channel preview` -> verify-ota.mjs;
+Stack: Expo SDK 54 + `expo-updates` ~29.0.16. The OTA pipeline on the live branch is working and is PRESERVED (its gates unchanged; only the trigger became request-based)
+(eas-update.yml, now started only by a manual run that names the SHA, never by a push: authorize -> validate -> same-commit emulator render check -> publish with `eas update --channel preview` -> verify-ota.mjs;
 native-fingerprint gate blocks OTAs that need native code; manual ota-rollback.yml). Updates config (app.json): url https://u.expo.dev/<project>,
 `enabled`, `checkAutomatically: ON_LOAD`, `fallbackToCacheTimeout: 0`, request header `expo-channel-name: preview`, runtime policy `appVersion` (0.2.1).
 

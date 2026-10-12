@@ -83,13 +83,13 @@ test('one codebase, many targets: platform differences are isolated and document
 
 test('platform and Steam documentation tells the truth about what exists', () => {
   const plat = readFileSync('docs/PLATFORM_SUPPORT.md', 'utf8');
-  assert.match(plat, /Windows x86-64 \| \*\*Not supported/);
-  assert.match(plat, /Linux x86-64 \| \*\*Not supported/);
+  assert.match(plat, /Windows x86-64 \| \*\*Implemented, packaged, NOT executed/);
+  assert.match(plat, /Linux x86-64 \| \*\*Implemented, packaged, smoke-tested under xvfb/);
   const steam = readFileSync('docs/STEAM_HARDWARE_CHECKLIST.md', 'utf8');
   assert.match(steam, /Valve Verified status is never claimed/);
-  assert.match(steam, /No Windows or Linux build exists/);
+  assert.match(steam, /No physical Steam Deck or Steam Machine test has been performed/);
   assert.doesNotMatch(steam, /\| PASS \|(?!.*Android)/, 'a Steam item may only PASS with evidence (the one PASS is the Android launcher check)');
-  // The build workflow refuses targets that do not exist instead of faking a release.
-  assert.match(readFileSync('scripts/ci/resolve-build-request.mjs', 'utf8'), /no Windows or Linux target/);
+  // The build workflow never publishes a partial release.
+  assert.match(readFileSync('scripts/ci/resolve-build-request.mjs', 'utf8'), /needs platform "all"/);
   assert.match(readFileSync('docs/COMPLIANCE-AUDIT.md', 'utf8'), /F-22[\s\S]*publishing workflows/);
 });

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 
 // Guards the Actions-budget policy (docs/ACTIONS-BUDGET.md): "development
 // validation is cheap, release validation is thorough, publishing is
@@ -62,7 +62,10 @@ test('apk-build.yml: a native build needs an explicit request naming the source 
   assert.match(s, /Check the build number/);
   assert.match(s, /write-provenance\.mjs --verify/, 'the manifest is verified against the packaged file');
   assert.match(s, /sha256sum -c checksums\.sha256/);
-  for (const asset of ['dist/build-manifest.json', 'dist/checksums.sha256']) assert.ok(s.includes(asset), `${asset} is a release asset`);
+  // The release is one coordinated bundle (manifest + checksums + every platform artifact), verified before publishing.
+  assert.match(s, /assemble-release\.mjs --in in --out bundle/);
+  assert.match(s, /assemble-release\.mjs --verify dist --platforms android,windows,linux/);
+  assert.match(s, /files: \|\n\s+dist\/\*/);
 });
 
 test('android-render-check.yml: callable on an exact ref, never started by a push, release runs never cancelled', () => {
@@ -74,13 +77,44 @@ test('android-render-check.yml: callable on an exact ref, never started by a pus
   assert.match(s, /cancel-in-progress: \$\{\{ github\.workflow == 'EAS Update \(OTA\)' \}\}/);
 });
 
-test('OTA and native builds are independent', () => {
+test('OTA and native builds are independent; an OTA is request-based, never started by a push', () => {
   const eas = wf('eas-update');
-  const ignore = eas.slice(eas.indexOf('paths-ignore:'), eas.indexOf('permissions:'));
-  for (const p of ['release.json', 'package.json', 'app.json', '.github/**']) assert.ok(ignore.includes(`'${p}'`), `eas-update ignores ${p}`);
+  const on = onBlock(eas);
+  assert.doesNotMatch(on, /^\s{2}(push|pull_request|schedule):/m, 'eas-update must not trigger on push, PR or schedule');
+  assert.match(on, /workflow_dispatch:\s*\n\s*inputs:\s*\n\s*source_sha:/);
+  assert.match(eas, /authorize:/);
+  assert.match(eas, /source_sha \$SRC is not the commit this run is on/);
+  assert.match(eas, /needs: \[authorize, validate, render-check\]/);
   // eas-update never calls the APK workflow, and the APK workflow never publishes OTAs.
   assert.doesNotMatch(eas, /apk-build\.yml/);
   assert.doesNotMatch(wf('apk-build'), /eas update|expo-github-action|EXPO_TOKEN/);
+});
+
+// Publishing-safety audit: every workflow that can publish (release, OTA, store / EAS build) and what starts it.
+test('publishing audit: only explicit requests can publish anything', () => {
+  const PUBLISH = /softprops\/action-gh-release|gh release (create|edit|upload)|eas update|eas build|eas submit|expo-github-action|r0adkll|upload-google-play|steamcmd|SteamPipe/;
+  const WRITE = /contents: write/;
+  const files = readdirSync('.github/workflows').filter((f) => f.endsWith('.yml'));
+  const capable: string[] = [];
+  for (const f of files) {
+    const s = code(readFileSync(`.github/workflows/${f}`, 'utf8'));
+    if (!PUBLISH.test(s) && !WRITE.test(s)) continue;
+    capable.push(f);
+    const on = onBlock(s);
+    assert.doesNotMatch(on, /^\s{2}(pull_request|schedule|release|create|workflow_run):/m, `${f}: a publishing workflow has no passive trigger`);
+    if (/^\s{2}push:/m.test(on)) {
+      // The one push path: a commit that changes the build request file (an auditable, explicit request).
+      assert.equal(f, 'apk-build.yml');
+      assert.match(on, /paths:\s*\n\s*- '\.github\/build-request\.json'/);
+    }
+  }
+  assert.deepEqual(capable.sort(), ['apk-build.yml', 'eas-update.yml', 'ota-rollback.yml', 'production-build.yml']);
+  // Nothing uploads to Steam or Google Play from CI.
+  for (const f of files) assert.doesNotMatch(code(readFileSync(`.github/workflows/${f}`, 'utf8')), /steamcmd|SteamPipe|upload-google-play|eas submit|STEAM_|PLAY_STORE/i, `${f} has no store upload`);
+  // Only the publish job of the coordinated build may hold contents: write.
+  const apk = wf('apk-build');
+  assert.equal((apk.match(/contents: write/g) || []).length, 1);
+  assert.ok(apk.indexOf('contents: write') > apk.indexOf('  publish:'));
 });
 
 test('Android jobs that depend on the runner image are pinned (ubuntu-latest moves to 26.04 from 2026-10-19)', () => {
@@ -104,7 +138,9 @@ test('release safety gates are still in place', () => {
   const apk = wf('apk-build');
   assert.match(apk, /verify-apk\.sh/);
   assert.match(apk, /verify-apk-content\.sh/);
-  assert.match(apk, /needs: \[resolve, build, smoke-test\]/);
+  assert.match(apk, /needs: \[resolve, validate, build, smoke-test, desktop\]/, 'the bundle needs every platform job and the emulator smoke test');
+  assert.match(apk, /needs: \[resolve, validate, bundle\]/, 'publish needs only the verified bundle');
+  assert.match(apk, /needs\.resolve\.outputs\.platform == 'all'/, 'a release is all-or-nothing');
   assert.match(apk, /Compare signing certificate with Build 13/);
 });
 

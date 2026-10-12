@@ -27,8 +27,8 @@ No development or qualification run starts an emulator, a native compile or an A
 | action | authorization | notes |
 | --- | --- | --- |
 | validate a change | open / update a PR | `ci.yml`. A plain push without a PR starts nothing (validate locally); a PR branch push used to run CI twice |
-| publish an OTA | a push to the **live branch** touching publishing paths (JS / assets), or a manual run | `eas-update.yml`, unchanged: validate, same-commit emulator render check, newest-commit gate, fingerprint gate, `verify-ota.mjs`. Never cancelled mid-publish |
-| bump the public version | edit `release.json` | version management only. **Starts nothing**, not a build and not an OTA (`release.json` is path-ignored by `eas-update.yml`) |
+| publish an OTA | **only** a manual run of `eas-update.yml` on the live branch that names the SHA being run (no push / merge trigger) | `authorize`, validate, same-commit emulator render check, branch-head gate, fingerprint gate, `verify-ota.mjs`. Never cancelled mid-publish |
+| bump the public version | edit `release.json` | version management only. **Starts nothing**, not a build and not an OTA (`release.json` triggers nothing) |
 | build an APK | an explicit **build request** naming the approved source commit | see below |
 | rollback / production build | manual runs only (`ota-rollback.yml`, `production-build.yml`) | |
 

@@ -1,8 +1,12 @@
-name: APK Build (GitHub-hosted)
+name: Coordinated Build (Android, Windows, Linux)
 
-# Builds ONE release-variant, debug-signed APK from an explicitly approved
-# source commit and publishes it (GitHub Actions' free runner minutes instead
-# of EAS build credits). `expo prebuild` generates android/ fresh each run.
+# Builds the release-variant debug-signed APK, the Windows x86-64 zip and the
+# Linux x86-64 archive of ONE build from ONE explicitly approved source commit
+# (GitHub Actions' free runner minutes instead of EAS build credits) and, only
+# when asked, publishes them together as one GitHub Release named
+# "Endless Escape Build NN". `expo prebuild` generates android/ fresh each run.
+# (The file keeps its historical name apk-build.yml: the workflow id, the
+# request file and the docs refer to it.)
 #
 # Native build authorization is its own decision (docs/RELEASING.md,
 # docs/ACTIONS-BUDGET.md). A source change, a branch push, a documentation
@@ -24,20 +28,20 @@ on:
   workflow_dispatch:
     inputs:
       platform:
-        description: 'Target platform. Only android can be built here; windows / linux / all are refused visibly (docs/PLATFORM_SUPPORT.md)'
+        description: 'Target platform. A GitHub Release needs all; a single platform is a workflow artifact only (destination local_only)'
         type: choice
         options: [android, windows, linux, all]
-        default: android
+        default: all
       source_sha:
         description: 'Approved source commit: the full 40-character SHA (not a branch name)'
         type: string
         required: true
       build_number:
-        description: 'Coordinated build number of this release (must equal release.json publicVersion at the source SHA)'
+        description: 'Coordinated build number NN of this release (must equal release.json publicVersion at the source SHA; the same NN names all three artifacts)'
         type: string
         required: true
       destination:
-        description: 'github_releases publishes a numbered release (the number must be unused); local_only builds a workflow artifact only (a rebuild needs no new number)'
+        description: 'github_releases publishes one coordinated release (platform all; the number must be unused); local_only builds a workflow artifact only (a rebuild needs no new number)'
         type: choice
         options: [github_releases, local_only]
         default: github_releases
@@ -97,9 +101,65 @@ jobs:
           IN_CHANNEL: ${{ inputs.channel }}
         run: node scripts/ci/resolve-build-request.mjs
 
+  # Cheap (seconds): the build number is consistent with the approved source and, for a release, unused.
+  validate:
+    name: Validate the build number
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      can_publish: ${{ steps.decide.outputs.can_publish }}
+      product: ${{ steps.num.outputs.product }}
+    steps:
+      # Exactly the approved source revision, never the requesting commit.
+      - name: Check out the approved source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+      # The coordinated build number is the public version in release.json at the approved source.
+      - name: Check the build number
+        id: num
+        run: |
+          GOT=$(node -p "require('./release.json').publicVersion")
+          if [ "$GOT" != "${{ needs.resolve.outputs.build_number }}" ]; then
+            echo "::error::release.json at ${{ needs.resolve.outputs.source_sha }} says build $GOT, the request says build ${{ needs.resolve.outputs.build_number }}"
+            exit 1
+          fi
+          echo "product=$(node -p "require('./release.json').productName")" >> "$GITHUB_OUTPUT"
+      # A build number identifies exactly one delivered build. A release needs an unused number: no release titled
+      # "<product> Build NN" or with the legacy "<product> vNN" title, and no tag of the new scheme. `local_only`
+      # produces a workflow artifact without a release, so an authorized rebuild never needs an artificial new number.
+      - name: Validate build-number uniqueness for the destination
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PRODUCT="$(node -p "require('./release.json').productName")"
+          N="${{ needs.resolve.outputs.build_number }}"
+          if [ "${{ needs.resolve.outputs.destination }}" = "github_releases" ]; then
+            NAMES="$(gh release list --repo "${{ github.repository }}" --limit 300 --json name --jq '.[].name')"
+            for TITLE in "$PRODUCT Build $N" "$PRODUCT v$N"; do
+              if printf '%s\n' "$NAMES" | grep -Fxq "$TITLE"; then
+                echo "::error::A release titled '$TITLE' already exists: a build number is never reused for different source content. Use a new build number, or destination local_only for a rebuild."
+                exit 1
+              fi
+            done
+            if gh release view "endless-escape-build-$N" --repo "${{ github.repository }}" > /dev/null 2>&1; then
+              echo "::error::The tag endless-escape-build-$N already exists."
+              exit 1
+            fi
+            echo "can_publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::destination local_only: building workflow artifacts only, no GitHub Release."
+            echo "can_publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
     name: Build Android APK
-    needs: resolve
+    needs: [resolve, validate]
+    if: needs.resolve.outputs.platform == 'android' || needs.resolve.outputs.platform == 'all'
     # Pinned: Gradle / NDK / Android SDK layout and release signing depend on the runner image
     # (docs/COMPLIANCE-AUDIT.md F-14). The cheap resolve / publish jobs stay on ubuntu-latest as canaries.
     runs-on: ubuntu-24.04
@@ -112,12 +172,10 @@ jobs:
       pv: ${{ steps.apk.outputs.pv }}
       version: ${{ steps.ver.outputs.version }}
       fingerprint: ${{ steps.fp.outputs.hash }}
-      can_publish: ${{ steps.decide.outputs.can_publish }}
-      sha256: ${{ steps.sum.outputs.sha }}
-      size: ${{ steps.sum.outputs.size }}
     # Release metadata baked into the APK (see app.config.js): the
-    # versionCode is this workflow's run number (= the build-N release
-    # tag) and the embedded manifest records the APPROVED source commit.
+    # versionCode is this workflow's run number (monotonic, Android update
+    # compatibility; unrelated to the public Build NN) and the embedded
+    # manifest records the APPROVED source commit.
     env:
       EE_BUILD_NUMBER: ${{ github.run_number }}
       EE_GIT_SHA: ${{ needs.resolve.outputs.source_sha }}
@@ -128,35 +186,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.resolve.outputs.source_sha }}
-
-      # The coordinated build number is the public version in release.json at the approved source.
-      - name: Check the build number
-        run: |
-          GOT=$(node -p "require('./release.json').publicVersion")
-          if [ "$GOT" != "${{ needs.resolve.outputs.build_number }}" ]; then
-            echo "::error::release.json at ${{ needs.resolve.outputs.source_sha }} says build $GOT, the request says build ${{ needs.resolve.outputs.build_number }}"
-            exit 1
-          fi
-
-      # A build number identifies exactly one delivered build. Publishing to GitHub Releases needs an
-      # unused number (checked here, before the expensive build); `local_only` produces a workflow
-      # artifact without a release, so an authorized rebuild never needs an artificial new number.
-      - name: Validate build-number uniqueness for the destination
-        id: decide
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TITLE="$(node -p "require('./release.json').productName") v$(node -p "require('./release.json').publicVersion")"
-          if [ "${{ needs.resolve.outputs.destination }}" = "github_releases" ]; then
-            if gh release list --repo "${{ github.repository }}" --limit 200 --json name --jq '.[].name' | grep -Fxq "$TITLE"; then
-              echo "::error::A release titled '$TITLE' already exists: a build number is never reused for different source content. Use a new build number, or destination local_only for a rebuild."
-              exit 1
-            fi
-            echo "can_publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::destination local_only: building a workflow artifact only, no GitHub Release."
-            echo "can_publish=false" >> "$GITHUB_OUTPUT"
-          fi
 
       # A release build of the new-architecture native code fills most of
       # the runner disk; run 9 died in the post-build cache save with
@@ -263,13 +292,13 @@ jobs:
             exit 1
           fi
           echo "path=$APK" >> "$GITHUB_OUTPUT"
-          # Public name: <Product>-v<N>.apk, N from release.json (docs/RELEASING.md).
-          SLUG=$(node -p "require('./release.json').fileSlug")
+          # Public name: "<Product> Build <NN> APK.apk", NN = the coordinated build number (docs/RELEASING.md).
+          PRODUCT=$(node -p "require('./release.json').productName")
           PV=$(node -p "require('./release.json').publicVersion")
-          echo "name=${SLUG}-v${PV}.apk" >> "$GITHUB_OUTPUT"
-          echo "product=$(node -p "require('./release.json').productName")" >> "$GITHUB_OUTPUT"
+          echo "name=${PRODUCT} Build ${PV} APK.apk" >> "$GITHUB_OUTPUT"
+          echo "product=$PRODUCT" >> "$GITHUB_OUTPUT"
           echo "pv=$PV" >> "$GITHUB_OUTPUT"
-          echo "provenance=build-manifest.json" >> "$GITHUB_OUTPUT"
+          echo "provenance=android.details.json" >> "$GITHUB_OUTPUT"
 
       - name: Read app version
         id: ver
@@ -309,10 +338,12 @@ jobs:
           } | tee -a apk-report.txt
           rm -f build13.apk
 
-      - name: Checksums and build manifest (verified against the packaged file)
+      # Android provenance (per-APK record, verified against the packaged file). The coordinated build-manifest.json
+      # and checksums.sha256 of the whole release are written by the `bundle` job from the final bytes.
+      - name: Android provenance record (verified against the packaged file)
         id: sum
         env:
-          PLATFORM: ${{ needs.resolve.outputs.platform }}
+          PLATFORM: android
           CHANNEL: ${{ needs.resolve.outputs.channel }}
           ARTIFACT_NAME: ${{ steps.apk.outputs.name }}
           SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
@@ -327,12 +358,13 @@ jobs:
         run: |
           SHA=$(sha256sum "${{ steps.apk.outputs.name }}" | cut -d' ' -f1)
           SIZE=$(stat -c %s "${{ steps.apk.outputs.name }}")
-          echo "sha=$SHA" >> "$GITHUB_OUTPUT"; echo "size=$SIZE" >> "$GITHUB_OUTPUT"
           ARTIFACT_SHA256=$SHA ARTIFACT_SIZE=$SIZE node scripts/ci/write-provenance.mjs
           sha256sum "${{ steps.apk.outputs.name }}" > checksums.sha256
           sha256sum -c checksums.sha256
           node scripts/ci/write-provenance.mjs --verify "$PROVENANCE_OUT" checksums.sha256 "${{ steps.apk.outputs.name }}"
           cat "$PROVENANCE_OUT"
+          # The sidecar is named for the platform so the bundle job can embed it.
+          mv "$PROVENANCE_OUT" android.details.json
 
       - name: Upload APK report
         uses: actions/upload-artifact@v4
@@ -341,16 +373,14 @@ jobs:
           path: apk-report.txt
           retention-days: 30
 
-      - name: Upload APK as workflow artifact
+      - name: Upload the Android artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.apk.outputs.name }}
+          name: platform-android
           path: |
             ${{ steps.apk.outputs.name }}
-            ${{ steps.apk.outputs.provenance }}
-            checksums.sha256
+            android.details.json
           if-no-files-found: error
-          # The same file is attached to the GitHub release (publish job).
           retention-days: 30
 
   # Emulator smoke test of the SAME commit (x86_64 build of identical JS,
@@ -359,59 +389,180 @@ jobs:
   # background / resume. The release is published only if it passes.
   smoke-test:
     name: Emulator smoke test
-    needs: resolve
+    needs: [resolve, validate]
+    if: needs.resolve.outputs.platform == 'android' || needs.resolve.outputs.platform == 'all'
     uses: ./.github/workflows/android-render-check.yml
     with:
       ref: ${{ needs.resolve.outputs.source_sha }}
     permissions:
       contents: read
 
+  # Windows x86-64 and Linux x86-64: the SAME web export and game source as Android (docs/PLATFORM_SUPPORT.md), wrapped
+  # in the Electron shell in desktop/. Both are cheap Linux-runner jobs. The Linux archive is unpacked and launched
+  # under xvfb (smoke test); the Windows zip is cross-packaged and structurally verified, it is NOT executed here.
+  desktop:
+    name: Desktop ${{ matrix.platform }}
+    needs: [resolve, validate]
+    if: needs.resolve.outputs.platform != 'android'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux, windows]
+    steps:
+      - name: Skip a platform that was not requested
+        id: want
+        run: |
+          REQ="${{ needs.resolve.outputs.platform }}"
+          if [ "$REQ" = "all" ] || [ "$REQ" = "${{ matrix.platform }}" ]; then echo "run=true" >> "$GITHUB_OUTPUT"; else echo "run=false" >> "$GITHUB_OUTPUT"; echo "::notice::${{ matrix.platform }} not requested"; fi
+      - name: Check out the approved source
+        if: steps.want.outputs.run == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+      - name: Set up Node
+        if: steps.want.outputs.run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Install dependencies
+        if: steps.want.outputs.run == 'true'
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck and unit tests
+        if: steps.want.outputs.run == 'true'
+        run: |
+          npm run typecheck
+          npm test
+      # The desktop shell must not change the Android runtime.
+      - name: Native fingerprint is unchanged by the desktop work
+        if: steps.want.outputs.run == 'true'
+        run: node scripts/check-native-fingerprint.mjs
+      - name: Install the desktop shell
+        if: steps.want.outputs.run == 'true'
+        run: npm ci --no-audit --no-fund --prefix desktop
+      - name: Package ${{ matrix.platform }}
+        if: steps.want.outputs.run == 'true'
+        env:
+          EE_PRODUCT: ${{ needs.validate.outputs.product }}
+          EE_BUILD: ${{ needs.resolve.outputs.build_number }}
+        run: |
+          node scripts/desktop/package.mjs --platform "${{ matrix.platform }}" --out out --name "$EE_PRODUCT Build $EE_BUILD $([ "${{ matrix.platform }}" = "linux" ] && echo Linux || echo EXE)"
+          ls -la out
+      - name: Smoke test the Linux build (real launch under xvfb)
+        if: steps.want.outputs.run == 'true' && matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libnss3 libgbm1 libasound2t64 libgtk-3-0t64 > /dev/null
+          mkdir unpacked && tar -xzf out/*.tar.gz -C unpacked
+          xvfb-run -a -s "-screen 0 1280x800x24" node scripts/desktop/smoke.mjs "unpacked/Endless Escape"
+      - name: Structurally verify the Windows zip (not executed)
+        if: steps.want.outputs.run == 'true' && matrix.platform == 'windows'
+        run: |
+          unzip -l out/*.zip | grep -F 'Endless Escape/EndlessEscape.exe'
+          unzip -l out/*.zip | grep -F 'Endless Escape/resources/app/web/index.html'
+          unzip -p out/*.zip 'Endless Escape/EndlessEscape.exe' | head -c 2 | grep -q MZ
+          echo "Windows x86-64 package assembled and checked structurally; it was not run on this Linux runner."
+      - name: Upload the ${{ matrix.platform }} artifact
+        if: steps.want.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-${{ matrix.platform }}
+          path: |
+            out/*.tar.gz
+            out/*.zip
+            out/${{ matrix.platform }}.details.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # Assemble ONE coordinated bundle (APK + EXE zip + Linux archive + build-manifest.json + checksums.sha256) from the
+  # verified platform artifacts, then verify the bundle again. A release is all-or-nothing: a missing or failed
+  # platform fails this job, so nothing partial can ever reach `publish`.
+  bundle:
+    name: Assemble and verify the coordinated bundle
+    needs: [resolve, validate, build, smoke-test, desktop]
+    # Skipped (not requested) platforms are fine; failed or cancelled ones are not.
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && needs.validate.result == 'success' && !contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the approved source (scripts and release.json)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+      - name: Download the platform artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: platform-*
+          merge-multiple: true
+          path: in
+      - name: Assemble the bundle
+        run: |
+          case "${{ needs.resolve.outputs.platform }}" in
+            all) PLATFORMS=android,windows,linux ;;
+            *) PLATFORMS="${{ needs.resolve.outputs.platform }}" ;;
+          esac
+          ls -la in
+          node scripts/ci/assemble-release.mjs --in in --out bundle --build "${{ needs.resolve.outputs.build_number }}" --source-sha "${{ needs.resolve.outputs.source_sha }}" --platforms "$PLATFORMS" --destination "${{ needs.resolve.outputs.destination }}" --run-id "${{ github.run_id }}" --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" --request-commit "${{ needs.resolve.outputs.request_commit }}" --request-ref "${{ needs.resolve.outputs.request_ref }}"
+          (cd bundle && sha256sum -c checksums.sha256)
+          cat bundle/build-manifest.json
+      - name: Upload the coordinated bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-build-${{ needs.resolve.outputs.build_number }}
+          path: bundle
+          if-no-files-found: error
+          retention-days: 30
+
+  # The ONLY job that can publish, and only for destination github_releases with platform all (enforced by resolve).
   publish:
     name: Publish GitHub Release
-    needs: [resolve, build, smoke-test]
-    if: needs.build.outputs.can_publish == 'true'
+    needs: [resolve, validate, bundle]
+    if: needs.validate.outputs.can_publish == 'true' && needs.resolve.outputs.destination == 'github_releases' && needs.resolve.outputs.platform == 'all'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download the verified APK
+      - name: Check out the approved source (scripts)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
+      - name: Download the verified bundle
         uses: actions/download-artifact@v4
         with:
-          name: ${{ needs.build.outputs.name }}
+          name: bundle-build-${{ needs.resolve.outputs.build_number }}
           path: dist
-
-      # The newest delivered playable build is the Latest release (see
-      # docs/RELEASING.md). The build-N tag is created at the commit that
-      # was built (without target_commitish GitHub tags the default branch).
+      - name: Re-verify the bundle (all three platforms, manifest and checksums agree)
+        run: node scripts/ci/assemble-release.mjs --verify dist --platforms android,windows,linux
+      # The newest delivered playable build is the Latest release (docs/RELEASING.md). The tag is created at the commit
+      # that was built (without target_commitish GitHub tags the default branch). Legacy build-N tags are untouched.
       - name: Publish GitHub Release
         # v2.6.2, pinned by commit: third-party action with contents: write.
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
-          tag_name: build-${{ github.run_number }}
+          tag_name: endless-escape-build-${{ needs.resolve.outputs.build_number }}
           target_commitish: ${{ needs.resolve.outputs.source_sha }}
-          name: '${{ needs.build.outputs.product }} v${{ needs.build.outputs.pv }}'
+          name: '${{ needs.validate.outputs.product }} Build ${{ needs.resolve.outputs.build_number }}'
           prerelease: false
           make_latest: true
           body: |
-            # ${{ needs.build.outputs.product }} v${{ needs.build.outputs.pv }}
+            # ${{ needs.validate.outputs.product }} Build ${{ needs.resolve.outputs.build_number }}
 
-            **Android:** `${{ needs.build.outputs.name }}`
+            | Platform | File |
+            | --- | --- |
+            | Android | `${{ needs.validate.outputs.product }} Build ${{ needs.resolve.outputs.build_number }} APK.apk` |
+            | Windows x86-64 | `${{ needs.validate.outputs.product }} Build ${{ needs.resolve.outputs.build_number }} EXE.zip` |
+            | Linux x86-64 | `${{ needs.validate.outputs.product }} Build ${{ needs.resolve.outputs.build_number }} Linux.tar.gz` |
 
             ## Technical details (engineers only)
-            Built from approved source commit `${{ needs.resolve.outputs.source_sha }}` (request ref `${{ needs.resolve.outputs.request_ref }}` at `${{ needs.resolve.outputs.request_commit }}`); `build-manifest.json` and `checksums.sha256` attached.
+            Built from approved source commit `${{ needs.resolve.outputs.source_sha }}` (request ref `${{ needs.resolve.outputs.request_ref }}` at `${{ needs.resolve.outputs.request_commit }}`). `build-manifest.json` (per-artifact SHA-256, size and toolchain) and `checksums.sha256` are attached.
 
-            Android versionName ${{ needs.build.outputs.version }} • versionCode ${{ github.run_number }} • tag `build-${{ github.run_number }}` (runtime ${{ needs.build.outputs.version }}, update channel `preview`)
-
-            Native fingerprint (android): `${{ needs.build.outputs.fingerprint }}`
-
-            SHA-256: `${{ needs.build.outputs.sha256 }}` • ${{ needs.build.outputs.size }} bytes
-
-            Release-variant APK (debug-keystore signed, same certificate as Build 13) with OTA updates enabled. Install via:
-            1. Download the APK below.
-            2. On your Android device, allow "install from unknown sources" for your browser / file manager.
-            3. Open the downloaded APK to install.
+            Android: release-variant APK, debug-keystore signed (same certificate as Build 13), OTA updates enabled on channel `preview`; install by allowing "install from unknown sources" and opening the APK.
+            Windows / Linux: unzip / untar and run `EndlessEscape.exe` / `./endless-escape.sh`. The Windows package was assembled on a Linux runner and has not been run by the build; the Linux package passed a launch smoke test.
           files: |
-            dist/${{ needs.build.outputs.name }}
-            dist/build-manifest.json
-            dist/checksums.sha256
+            dist/*
           token: ${{ secrets.GITHUB_TOKEN }}

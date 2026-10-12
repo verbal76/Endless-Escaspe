@@ -22,8 +22,9 @@ reuse a number. Git SHA, versionCode, runtime, OTA ids are technical metadata, n
 ## Governing studio standard
 The Hot Attic Games **Master Engineering Directive v2.0** (owner-held document; not copied here because this repository is public) governs: one authoritative source line, **three** targets
 (Android APK, Windows x86-64, native Linux x86-64), Steam as the primary destination, one build number per coordinated release, no automatic publishing of releases or OTA, safe updates, Steam Deck /
-Machine controller and display requirements, the approved glyph library, honest testing claims. **Actual status here:** only Android exists; Windows, Linux and Steam are not started (RED: engine / platform
-decision): `docs/PLATFORM_SUPPORT.md`, `docs/STEAM_HARDWARE_CHECKLIST.md`, `docs/COMPLIANCE-AUDIT.md`. Never claim a platform works because a package compiled, and never claim hardware testing that did not happen.
+Machine controller and display requirements, the approved glyph library, honest testing claims. **Actual status here:** Android is the protected baseline; Windows and Linux are implemented as an Electron shell around the
+unchanged web export (`desktop/`, `src/desktop/`; Windows never executed, Linux smoke-tested under xvfb, nothing physically tested); Steam work has not started (no credentials): `docs/PLATFORM_SUPPORT.md`,
+`docs/DESKTOP.md`, `docs/DESKTOP_INPUT.md`, `docs/STEAM_HARDWARE_CHECKLIST.md`, `docs/COMPLIANCE-AUDIT.md`. Never change Android gameplay for desktop; desktop code stays out of the Android bundle (`.native.tsx` split). Never claim a platform works because a package compiled, and never claim hardware testing that did not happen.
 
 ## Single source of truth (permanent engineering policy, all Hot Attic Games projects)
 Every change belongs to one authoritative product history. Every supported platform builds from that history. Every abandoned branch must be
@@ -59,7 +60,7 @@ Actions minutes are shared across the owner's projects with a small monthly budg
 native-fingerprint gate, `scripts/ci/check-workflows.py`, `expo export`, `expo prebuild`). `ci.yml` runs once per PR revision (draft and ready; docs-only
 changes do no heavy work; no push trigger). A source change, a branch push, a docs edit or a version bump (`release.json`) must never start a native build
 or an OTA. An APK is built only from an explicit build request naming the approved source SHA (`workflow_dispatch` inputs or `.github/build-request.json`),
-from exactly that SHA, with a provenance record; a rebuild needs no version bump. OTA publishing keeps its own gates and authorization. Never rebuild the same
+from exactly that SHA, with a provenance record; a rebuild needs no version bump. OTA publishing is request-based too (manual run naming the SHA; never a push) and keeps its gates. Never rebuild the same
 SHA needlessly, never build platforms nobody asked for, never weaken a release gate to save minutes. Details: `docs/ACTIONS-BUDGET.md`.
 
 ## Release hold

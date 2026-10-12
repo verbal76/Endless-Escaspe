@@ -6,6 +6,7 @@
 // Linux   -> <name>.tar.gz   (runs natively; ./endless-escape.sh)
 // Windows -> <name>.zip      (EndlessEscape.exe). Cross-packaged on Linux: it is NOT executed here.
 // The archives are deterministic for a given input (sorted entries, fixed mtimes, no owners). Nothing is uploaded.
+import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync, chmodSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -99,4 +100,16 @@ if (platform === 'linux') {
   run('sh', ['-c', 'cd "$1" && zip -X -q "$3" -@ < "$2"', 'sh', stageRoot, list, archive]);
 }
 rmSync(list, { force: true });
+// Sidecar for the coordinated build manifest (scripts/ci/assemble-release.mjs).
+const exe = join(stage, platform === 'linux' ? 'endless-escape-bin' : 'EndlessEscape.exe');
+const hashFile = (f) => createHash('sha256').update(readFileSync(f)).digest('hex');
+writeFileSync(join(out, `${platform}.details.json`), JSON.stringify({
+  arch: 'x64',
+  shell: 'electron',
+  electron: electronVersion,
+  runtimeExecutableSha256: hashFile(exe),
+  webIndexSha256: hashFile(join(webDir, 'index.html')),
+  deterministicArchive: true,
+  executedOnBuilder: platform === 'linux' ? 'see smoke test' : false,
+}, null, 2) + '\n');
 console.log(`packaged ${archive} (${statSync(archive).size} bytes, electron ${electronVersion})`);

@@ -17,8 +17,8 @@ test('classify: docs-only means only docs/** and markdown; anything else (or not
 });
 
 test('build request: full approved SHA, a build number, a buildable platform, a known destination and channel', () => {
-  const ok = normaliseRequest({ sourceSha: SHA.toUpperCase(), platform: 'android', buildNumber: '15', destination: 'github_releases', channel: 'preview' });
-  assert.deepEqual(ok, { sourceSha: SHA, platform: 'android', buildNumber: 15, destination: 'github_releases', channel: 'preview', id: '' });
+  const ok = normaliseRequest({ sourceSha: SHA.toUpperCase(), platform: 'all', buildNumber: '15', destination: 'github_releases', channel: 'preview' });
+  assert.deepEqual(ok, { sourceSha: SHA, platform: 'all', buildNumber: 15, destination: 'github_releases', channel: 'preview', id: '' });
   assert.throws(() => normaliseRequest({ sourceSha: 'c30232d', buildNumber: 15 }), /40-character/);
   assert.throws(() => normaliseRequest({ sourceSha: 'claude/api36-native-qualification', buildNumber: 15 }), /40-character/);
   assert.throws(() => normaliseRequest({ buildNumber: 15 }), /40-character/);
@@ -32,9 +32,13 @@ test('build request: full approved SHA, a build number, a buildable platform, a 
   assert.equal(normaliseRequest({ sourceSha: SHA, buildNumber: 15, destination: 'local_only' }).destination, 'local_only');
 });
 
-test('build request: windows / linux / all fail visibly (no such target), never a partial "complete" release', () => {
-  for (const platform of ['windows', 'linux', 'all']) {
-    assert.throws(() => normaliseRequest({ sourceSha: SHA, buildNumber: 15, platform }), /cannot be built: this repository has no Windows or Linux target/, platform);
+test('build request: all three targets are accepted; a GitHub Release needs platform "all" (never a partial release)', () => {
+  for (const platform of ['android', 'windows', 'linux', 'all']) {
+    assert.equal(normaliseRequest({ sourceSha: SHA, buildNumber: 16, platform, destination: 'local_only' }).platform, platform);
+  }
+  assert.equal(normaliseRequest({ sourceSha: SHA, buildNumber: 16, platform: 'all', destination: 'github_releases' }).platform, 'all');
+  for (const platform of ['android', 'windows', 'linux']) {
+    assert.throws(() => normaliseRequest({ sourceSha: SHA, buildNumber: 16, platform, destination: 'github_releases' }), /needs platform "all"/, platform);
   }
 });
 
@@ -59,7 +63,7 @@ test('build request: the source must be in the branch history', () => {
 });
 
 test('build request: read from dispatch inputs or from the request file', () => {
-  const d = requestFromEnv({ GITHUB_EVENT_NAME: 'workflow_dispatch', IN_SOURCE_SHA: SHA, IN_PLATFORM: 'android', IN_BUILD_NUMBER: '15', IN_DESTINATION: 'github_releases', IN_CHANNEL: 'preview' });
+  const d = requestFromEnv({ GITHUB_EVENT_NAME: 'workflow_dispatch', IN_SOURCE_SHA: SHA, IN_PLATFORM: 'all', IN_BUILD_NUMBER: '15', IN_DESTINATION: 'github_releases', IN_CHANNEL: 'preview' });
   assert.equal(d.sourceSha, SHA);
   assert.equal(normaliseRequest(d).buildNumber, 15);
   const f = requestFromEnv({ GITHUB_EVENT_NAME: 'push' }, () => JSON.stringify({ sourceSha: SHA, id: 'x' }));

@@ -13,10 +13,9 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync } from 'node:fs';
 
-// The studio standard names three targets. Only android exists in this repository; windows / linux / all
-// are accepted as values so a request fails VISIBLY instead of silently producing a partial release.
+// The studio standard names three targets, all built from the same source (docs/PLATFORM_SUPPORT.md).
+// A GitHub Release is coordinated: it needs platform "all", so a partial release can never be published.
 export const PLATFORMS = ['android', 'windows', 'linux', 'all'];
-export const BUILDABLE = ['android'];
 export const DESTINATIONS = ['github_releases', 'local_only'];
 export const CHANNELS = ['preview'];
 export const REQUEST_FILE = '.github/build-request.json';
@@ -31,15 +30,15 @@ export function normaliseRequest(raw) {
   if (!/^[0-9a-f]{40}$/.test(sourceSha)) {
     throw new Error('sourceSha must be the full 40-character commit SHA of the approved source (not a branch name or abbreviation)');
   }
-  const platform = String(r.platform ?? 'android').trim().toLowerCase();
+  const platform = String(r.platform ?? 'all').trim().toLowerCase();
   if (!PLATFORMS.includes(platform)) throw new Error(`platform "${platform}" is unknown (expected one of ${PLATFORMS.join(', ')})`);
-  if (!BUILDABLE.includes(platform)) {
-    throw new Error(`platform "${platform}" cannot be built: this repository has no Windows or Linux target (docs/PLATFORM_SUPPORT.md). "all" is refused too: a partial build must never be presented as a complete release`);
-  }
   const buildNumber = Number(r.buildNumber);
   if (!Number.isInteger(buildNumber) || buildNumber < 1) throw new Error('buildNumber must be the positive integer build number of this release (release.json publicVersion)');
   const destination = String(r.destination ?? 'github_releases').trim().toLowerCase();
   if (!DESTINATIONS.includes(destination)) throw new Error(`destination "${destination}" is not allowed (allowed: ${DESTINATIONS.join(', ')})`);
+  if (destination === 'github_releases' && platform !== 'all') {
+    throw new Error(`destination github_releases needs platform "all" (got "${platform}"): a coordinated release carries the APK, the Windows zip and the Linux archive of one build, never a partial set. Use destination local_only for a single-platform build`);
+  }
   const channel = String(r.channel ?? 'preview').trim().toLowerCase();
   if (!CHANNELS.includes(channel)) throw new Error(`channel "${channel}" is not allowed here (allowed: ${CHANNELS.join(', ')}; production builds use production-build.yml)`);
   return { sourceSha, platform, buildNumber, destination, channel, id: String(r.id ?? '').slice(0, 80) };

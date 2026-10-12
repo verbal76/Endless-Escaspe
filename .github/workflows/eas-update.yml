@@ -1,73 +1,72 @@
 name: EAS Update (OTA)
 
 # Publishes the JS bundle of the publishing branch to the `preview`
-# channel that every installed APK follows. Nothing is published unless,
-# for the same commit:
-#   1. validate      typecheck, unit tests, native fingerprint gate and
-#                    an Android bundle export (ci.yml)
-#   2. render-check  the release APK built from this commit draws its
-#                    textures on an Android emulator and survives a
-#                    background / foreground cycle (android-render-check.yml)
-#   3. publish       the native fingerprint still matches the one
-#                    recorded for app.json's version (an OTA must never
-#                    need native code the installed APKs lack), and the
-#                    commit is still the branch head (a re-run of an old
-#                    run must not roll devices back).
-# Native/build/config changes ship as a new APK instead (apk-build.yml).
-# Rollback: see README "Rolling back an OTA" (ota-rollback.yml).
+# channel that every installed APK follows. An OTA is an explicit release
+# decision (docs/RELEASING.md, docs/ACTIONS-BUDGET.md): a push, a merge or a
+# version bump NEVER publishes. It starts only from a manual run (Actions ->
+# EAS Update (OTA) -> Run workflow) on the publishing branch that names the exact
+# source commit (the full SHA of the branch head). Nothing is published unless,
+# for that same commit:
+#   0. authorize    the run is on the publishing branch and the named SHA is
+#                   the commit being run (nothing older, nothing else)
+#   1. validate     typecheck, unit tests, native fingerprint gate and
+#                   an Android bundle export (ci.yml)
+#   2. render-check the release APK built from this commit draws its
+#                   textures on an Android emulator and survives a
+#                   background / foreground cycle (android-render-check.yml)
+#   3. publish      the native fingerprint still matches the one
+#                   recorded for app.json's version (an OTA must never
+#                   need native code the installed APKs lack), and the
+#                   commit is still the branch head (a re-run of an old
+#                   run must not roll devices back).
+# OTA revision numbers (run numbers of this workflow) are independent of the
+# native Build NN numbers. Native/build/config changes ship as a new build
+# instead (apk-build.yml). Rollback: ota-rollback.yml.
 
 on:
   workflow_dispatch:
-  push:
-    # The single publishing branch. Older branches were removed from
-    # this list: all branches publish to the same channel, so a push to
-    # a stale branch would roll every device back.
-    branches:
-      - claude/game-review-suggestions-cjxiqh
-    # A push is skipped only if EVERY changed file matches; any change
-    # to src/, App.tsx, assets/ etc. still publishes.
-    paths-ignore:
-      # A public-version bump (release.json) delivers an APK (apk-build.yml); on its own it
-      # must not publish an OTA.
-      - 'release.json'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'app.json'
-      - 'app.config.js'
-      - 'eas.json'
-      - 'babel.config.js'
-      - 'metro.config.js'
-      - 'android/**'
-      - 'ios/**'
-      - 'assets/icon.png'
-      - 'assets/adaptive-icon.png'
-      - 'assets/splash-icon.png'
-      - 'assets/adaptive-icon-background.png'
-      - '.github/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'docs/**'
-      - '**/*.md'
-      - '.gitignore'
+    inputs:
+      source_sha:
+        description: 'Exact commit to publish: the full 40-character SHA of the publishing branch head (the run must be started on that branch)'
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 jobs:
+  # Seconds. Anything but the exact, current head of the publishing branch stops here, before any expensive job.
+  authorize:
+    name: Authorize the request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The request names the commit being run, on the publishing branch
+        env:
+          IN_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          SRC=$(printf '%s' "$IN_SOURCE_SHA" | tr 'A-F' 'a-f')
+          if ! printf '%s' "$SRC" | grep -Eq '^[0-9a-f]{40}$'; then echo "::error::source_sha must be the full 40-character commit SHA"; exit 1; fi
+          if [ "$GITHUB_REF" != "refs/heads/claude/game-review-suggestions-cjxiqh" ]; then echo "::error::An OTA is published only from the publishing branch (this run is on $GITHUB_REF)"; exit 1; fi
+          if [ "$SRC" != "$GITHUB_SHA" ]; then echo "::error::source_sha $SRC is not the commit this run is on ($GITHUB_SHA): start the run on the branch at the commit you mean to publish"; exit 1; fi
+          echo "authorized: OTA of $SRC from $GITHUB_REF"
+
   validate:
     name: Validate
+    needs: authorize
     uses: ./.github/workflows/ci.yml
 
   render-check:
     name: Render check
-    needs: validate
+    needs: [authorize, validate]
     uses: ./.github/workflows/android-render-check.yml
+    with:
+      ref: ${{ inputs.source_sha }}
 
   publish:
     name: Publish OTA bundle
-    needs: [validate, render-check]
-    # Only the publishing branch reaches the channel (a manual run on
-    # another branch validates and render-checks only).
+    needs: [authorize, validate, render-check]
+    # Only the publishing branch reaches the channel (authorize already refuses any other ref).
     if: github.ref == 'refs/heads/claude/game-review-suggestions-cjxiqh'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -105,13 +104,9 @@ jobs:
       - name: Native fingerprint gate
         run: node scripts/check-native-fingerprint.mjs
 
-      # The render check takes ~40 minutes. If the branch moved on
-      # meanwhile with a change that publishes (outside paths-ignore),
-      # that commit's own run publishes it, so this one stands down -
-      # publishing it now (or from a re-run of an old run) would roll
-      # devices back. If the newer commits only touch ignored paths
-      # (tests, docs, CI), no run of theirs publishes, so this one must.
-      - name: Still the newest publishable commit?
+      # The render check takes ~40 minutes. If the branch moved on meanwhile, publishing now (or from a re-run of an
+      # old run) would roll devices back, so a run that is no longer the branch head stands down.
+      - name: Still the branch head?
         id: head
         run: |
           git fetch --no-tags --quiet origin "$GITHUB_REF"
@@ -119,18 +114,8 @@ jobs:
           echo "branch head: $HEAD_SHA  this run: $GITHUB_SHA"
           if [ "$HEAD_SHA" = "$GITHUB_SHA" ]; then
             echo "current=true" >> "$GITHUB_OUTPUT"
-          elif ! git merge-base --is-ancestor "$GITHUB_SHA" "$HEAD_SHA"; then
-            echo "::notice::Not publishing $GITHUB_SHA: it is no longer on the branch (head $HEAD_SHA)"
-            echo "current=false" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "$GITHUB_SHA" "$HEAD_SHA" -- . \
-              ':!package.json' ':!package-lock.json' ':!app.json' ':!app.config.js' ':!eas.json' \
-              ':!babel.config.js' ':!metro.config.js' ':!android' ':!ios' \
-              ':!assets/icon.png' ':!assets/adaptive-icon.png' ':!assets/splash-icon.png' ':!assets/adaptive-icon-background.png' \
-              ':!.github' ':!scripts' ':!tests' ':!docs' ':!*.md' ':!.gitignore'; then
-            echo "::notice::Newer commits only touch paths that don't publish; publishing $GITHUB_SHA"
-            echo "current=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Not publishing $GITHUB_SHA: $HEAD_SHA carries newer app changes and publishes itself"
+            echo "::notice::Not publishing $GITHUB_SHA: the branch head is now $HEAD_SHA (start a new run for that commit)"
             echo "current=false" >> "$GITHUB_OUTPUT"
           fi
 

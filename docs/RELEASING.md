@@ -1,5 +1,11 @@
 # Releasing: the public version convention (Hot Attic Games, studio-wide)
 
+> **From the next release the coordinated naming below applies** (owner directive, desktop expansion): the release is titled **`Endless Escape Build NN`** and carries
+> `Endless Escape Build NN APK.apk`, `Endless Escape Build NN EXE.zip`, `Endless Escape Build NN Linux.tar.gz`, `build-manifest.json` and `checksums.sha256`. NN is the
+> number in `release.json` `publicVersion` at the source SHA (next valid: **16**; historical `vNN` releases and `build-N` tags stay untouched and still reserve their numbers).
+> The new release tag is `endless-escape-build-NN` (the old `build-<run>` scheme is not reused). Android versionCode stays the workflow run number (monotonic, update-compatible).
+> OTA revisions (`OTA NNN`, the run number of `eas-update.yml`) are numbered separately and never consume a Build number. Sections below describing the old `vNN` file names are the historical convention.
+
 **The public version is one plain integer: `Endless Escape v15`.** Nobody should
 have to decode a branch, SHA, build number, codename or OTA id to know which file
 to install. The next delivered build is always the previous number + 1.
@@ -55,12 +61,24 @@ releases map to their own build number (v2, v4, v5, v7, v9, v10, v12).
 - Historical tags `build-2 .. build-13` point at `main` commits, not at the built commits; the true source of each is in `docs/BRANCH-LEDGER.md` (builds 5 and 7 exist only
   on `Github-APK-Transition-Escap`: never delete it).
 
-## Per-release checklist
-1. Validate locally (`docs/ACTIONS-BUDGET.md`). Bump `release.json` `publicVersion` in the change that delivers a new build. A version bump alone starts nothing.
-2. Authorize the native build explicitly (separate decision): run `APK Build` with the approved full source SHA, or commit `.github/build-request.json`
-   naming it (`{ "sourceSha": "<40 hex>", "platform": "android", "buildNumber": <N>, "destination": "github_releases", "channel": "preview" }`).
-3. The workflow builds exactly that SHA, verifies the APK and its packaged content, runs the emulator smoke test, and publishes `Endless Escape v<N>`
-   (Latest) with `Endless-Escape-v<N>.apk`, `build-manifest.json` and `checksums.sha256` (both verified against the packaged APK). A rebuild of an already-released number (use destination `local_only`; no bump)
-   produces a workflow artifact only.
-4. If a release ever needs retitling or reassigning Latest by hand (sessions without release-write access cannot), do it in GitHub: title
-   `Endless Escape v<N>`, tick "Set as the latest release".
+## Per-release checklist (coordinated build)
+1. Validate locally (`docs/ACTIONS-BUDGET.md`): `npm run typecheck`, `npm test`, native fingerprint, `python3 scripts/ci/check-workflows.py`, actionlint, and a local `node scripts/desktop/package.mjs` run.
+2. Bump `release.json` `publicVersion` to the new Build number in the change that delivers it (a bump alone starts nothing).
+3. Authorize the build explicitly (a separate decision): run `Coordinated Build` (`apk-build.yml`) with `platform`, the approved full `source_sha`, `build_number`, `destination` (`github_releases` | `local_only`), or commit
+   `.github/build-request.json` naming them (`{ "sourceSha": "<40 hex>", "platform": "all", "buildNumber": <N>, "destination": "github_releases", "channel": "preview" }`).
+4. The workflow checks out exactly that SHA; `validate` confirms the number equals `release.json` and (for a release) is unused (no `Endless Escape Build N` / legacy `Endless Escape vN` release, no tag);
+   the Android job verifies the APK, runs the emulator smoke test; the Linux job unpacks and launches the archive under xvfb; the Windows job cross-packages and checks the zip structurally (never executed); `bundle`
+   assembles `Endless Escape Build NN ...` + `build-manifest.json` + `checksums.sha256` from the final bytes and verifies them; only then `publish` creates the release (Latest). A failing platform fails the whole run: nothing partial is published.
+5. A single-platform run or a rebuild of an already-released number uses `destination: local_only` (workflow artifact only, no new number, no release).
+6. If a release ever needs retitling or reassigning Latest by hand, do it in GitHub: title `Endless Escape Build <N>`, tick "Set as the latest release".
+
+## Publishing safeguards (what can publish, and what starts it)
+| Workflow | Can publish | Started only by | Guard |
+| --- | --- | --- | --- |
+| `apk-build.yml` | GitHub Release (APK + EXE zip + Linux archive) | `workflow_dispatch` with `source_sha` / `build_number`, or a commit that changes `.github/build-request.json` on the two active branches | `resolve` (full SHA, ancestor, authoritative line), `validate` (number matches `release.json`, unused), `bundle` verification, `publish` needs platform `all` and `destination: github_releases`; only job with `contents: write` |
+| `eas-update.yml` | OTA to channel `preview` | `workflow_dispatch` on the publishing branch naming the SHA being run | `authorize` job, ci.yml validate, emulator render check, branch-head check, fingerprint gate, `verify-ota.mjs`; no push / merge / tag / version-bump trigger |
+| `ota-rollback.yml` | OTA rollback / republish | `workflow_dispatch` only | needs a group id; manual |
+| `production-build.yml` | EAS Android build (AAB) | `workflow_dispatch` only | held; manual |
+| `ci.yml`, `android-render-check.yml` | nothing | PR / call | no write permission, no publish step |
+Nothing uploads to Steam or Google Play from CI. Steam (SteamPipe) is a manual owner step with owner credentials. `tests/actionsBudget.test.ts` ("publishing audit") fails if a publishing workflow gains a push / PR / schedule trigger,
+if a second job gains `contents: write`, or if a store upload appears. The two stale branches that still carry old publishing workflows are covered by `docs/BRANCH-PROTECTION.md` (ruleset prepared, **not active** until the owner imports it).

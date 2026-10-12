@@ -1,0 +1,15 @@
+{
+  "name": "endless-escape-desktop",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Desktop shell (Windows / Linux) for the Endless Escape web export",
+  "main": "main.js",
+  "author": "Hot Attic Games",
+  "license": "UNLICENSED",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "electron": "41.0.0"
+  }
+}

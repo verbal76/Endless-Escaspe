@@ -69,4 +69,5 @@ runs) is complementary, but adopting it needs the live branch and the unrelated 
 ## Verified on GitHub (2026-10-12)
 - `[skip ci]` suppressed every workflow, including the pull-request check, for commits 2f07df6 and 47791ea (0 runs each).
 - Draft PR #7, commit 06e6f1f: exactly one run (`CI` #46, event `pull_request`, 51 s, no push-triggered duplicate): classify ran (not docs-only), typecheck / unit tests / native fingerprint / workflow-config check ran, the Android bundle export was skipped (draft tier). No APK build, no emulator.
+- Docs-only classification must compare the previous head with the new head, not the whole PR (the first version compared `base...head`, so a docs-only push to a PR that also contained code ran the full tier; fixed in 4ccd016).
 - Not verified on a hosted runner (static tests, `actionlint` and local scripts only): the `apk-build.yml` resolve / build / smoke-test / publish chain with a build request, the ready-PR bundle-export step, the render-check `ref` input, and the cancellation rules. The first real build request is their first execution.

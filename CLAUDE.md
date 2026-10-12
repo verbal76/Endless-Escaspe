@@ -19,6 +19,28 @@ The public version is one sequential integer, **Endless Escape v<N>**, set in `r
 release title, the APK filename, About and Copy Diagnostics. See `docs/RELEASING.md`. Bump it once per delivered build; never
 reuse a number. Git SHA, versionCode, runtime, OTA ids are technical metadata, not the version.
 
+## Single source of truth (permanent engineering policy, all Hot Attic Games projects)
+Every change belongs to one authoritative product history. Every supported platform builds from that history. Every abandoned branch must be
+accounted for before valuable work is discarded.
+- **One codebase, many targets, not many products.** This repository is ONE game with one implementation (Android native builds + OTA, plus the web harness used
+  for development). Targets differ only through isolated, documented mechanisms (`Platform.OS` / `Platform.select`, expo config, build flags: currently confined to
+  `src/util/support.ts`, `textures.ts`, `releaseRuntime.ts`). Game logic (physics, progression, procedural generation, AI, balance, saves) is shared; never fork it per
+  platform. A fix for one target is evaluated for every target. Never degrade an established product to gain parity.
+- **Branches are temporary workspaces, not separate products.** A branch starts from the authoritative line (`claude/game-review-suggestions-cjxiqh`, named in
+  `release.json`), has one purpose, and is integrated after validation. Platform names in a branch name do not license a separate history. Parallel agents must not keep
+  independent implementations. Unmerged work stays discoverable in `docs/branch-ledger.json` (+ `docs/BRANCH-LEDGER.md`, with a classification and disposition per branch);
+  run `node scripts/ci/branch-inventory.mjs`. **Never delete or rewrite a branch because it looks obsolete**: some hold the source commits of shipped releases.
+- **Audit before discarding.** A commit missing from the authoritative line may be integrated (cherry-picked, rewritten), superseded, or intentionally removed: compare with
+  `git cherry`, merge bases and file bytes before concluding anything. Recover valuable missing work by targeted integration, not by merging old branches. Uncertain or
+  product-changing recoveries need owner approval.
+- **One approved source revision per release.** Every build is made from an explicit full SHA on the authoritative line (`scripts/ci/resolve-build-request.mjs` refuses
+  anything else) and records its provenance: source SHA, branch/ref, public version, versionName/versionCode, platform, channel, configuration, runtime, native fingerprint,
+  checksum, toolchain versions, timestamp. A coordinated multi-platform release uses one `sourceSha` for every target; if one platform fails, never substitute another revision.
+- **OTA and native stay independent but traceable.** Keep the existing OTA architecture (runtime = app version, native fingerprint gate, safe-point activation, rollback);
+  an OTA never creates a second history. Not every change is OTA-compatible: the fingerprint gate decides.
+- **CI cannot lie.** No skipped / only / todo tests; no step swallows failures; the check job always reports; release workflows build only the approved source.
+- **Repository boundaries.** This policy is universal but each repository stays independent: never inspect, modify or merge another repository without explicit authorization.
+
 ## GitHub Actions budget (standing owner directive)
 **Development validation should be cheap, release validation should be thorough, and publishing must be intentional.**
 Actions minutes are shared across the owner's projects with a small monthly budget. Prove things locally first (typecheck, tests,

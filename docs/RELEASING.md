@@ -44,6 +44,16 @@ releases map to their own build number (v2, v4, v5, v7, v9, v10, v12).
 | v14 | build-15 | 15 | 95dcc77 | Android 0.3.0, runtime 0.3.0 (API 36 candidate). Built before the convention: its About screen shows "0.3.0 / Build 15", not "v14" |
 | v15 | (next) | next run | this branch | first build whose About shows its public version |
 
+## Provenance and the single authoritative line
+- Every build comes from one approved **full source SHA** that lies on the authoritative line named in `release.json` (`authoritativeBranch`): an ancestor of its tip
+  or a descendant of it. A commit on a diverged or abandoned branch is refused by `scripts/ci/resolve-build-request.mjs`, so an outdated branch cannot be published.
+- The build records `<Product>-v<N>.provenance.json` (source SHA, request commit and ref, public version, versionName / versionCode, platform, channel, configuration,
+  runtime, native fingerprint, SHA-256, build time, toolchain versions, run URL) next to the APK; the release tag is created at the source SHA.
+- A coordinated multi-platform release uses one request with one `sourceSha`; all platform artifacts are built from it, and a failing platform is never rebuilt from a
+  different revision.
+- Historical tags `build-2 .. build-13` point at `main` commits, not at the built commits; the true source of each is in `docs/BRANCH-LEDGER.md` (builds 5 and 7 exist only
+  on `Github-APK-Transition-Escap`: never delete it).
+
 ## Per-release checklist
 1. Validate locally (`docs/ACTIONS-BUDGET.md`). Bump `release.json` `publicVersion` in the change that delivers a new build. A version bump alone starts nothing.
 2. Authorize the native build explicitly (separate decision): run `APK Build` with the approved full source SHA, or commit `.github/build-request.json`

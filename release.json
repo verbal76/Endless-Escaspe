@@ -1,5 +1,6 @@
 {
   "productName": "Endless Escape",
   "fileSlug": "Endless-Escape",
-  "publicVersion": 15
+  "publicVersion": 15,
+  "authoritativeBranch": "claude/game-review-suggestions-cjxiqh"
 }

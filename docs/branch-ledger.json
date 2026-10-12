@@ -1,0 +1,36 @@
+{
+  "snapshot": "2026-10-12",
+  "authoritativeBranch": "claude/game-review-suggestions-cjxiqh",
+  "classifications": ["authoritative", "working", "integrated", "integrated-equivalent", "missing-recoverable", "missing-conflict", "superseded", "intentionally-kept", "experimental", "recovered", "owner-review"],
+  "branches": [
+    { "name": "claude/game-review-suggestions-cjxiqh", "tip": "02e13eb", "class": "authoritative", "note": "Live line: OTA 131, runtime 0.2.1 (frozen by owner hold)", "disposition": "Remains the single authoritative history" },
+    { "name": "claude/api36-native-qualification", "tip": "83e3b5b", "class": "working", "note": "Qualification workspace (draft PR #7); descends from the authoritative tip; carries native batch (#5), infra/OTA/About/saves backup (#6), v15, studio splash, release conventions, CI budget policy", "disposition": "Merge into the authoritative line after the owner's physical test of v15 and the hold is lifted" },
+    { "name": "claude/hold-native-batch", "tip": "7131cdb", "class": "integrated", "note": "Merged into the qualification branch (fcbd03a); draft PR #5", "disposition": "Close PR #5 once the qualification branch is merged" },
+    { "name": "claude/hold-infra-ota-about-splash", "tip": "c734f31", "class": "integrated", "note": "Merged into the qualification branch (ccc7ef3); draft PR #6", "disposition": "Close PR #6 once the qualification branch is merged" },
+    { "name": "claude/hold-scenarios", "tip": "1c962e5", "class": "missing-conflict", "note": "Deterministic browser scenario runner + regression guards for fixed defects (draft PR #3). Needs web dev dependencies (react-dom / react-native-web: ledger F-23), so not safe to merge unreviewed", "disposition": "Owner decision; recover after the web-dependency question is settled" },
+    { "name": "claude/hold-ci-hardening", "tip": "5e8b92f", "class": "missing-conflict", "note": "OTA superseded-run early exit (still-newest), plan job, publish-gate scripts, docs/ci.md, and nine unrelated GitHub Action major-version upgrades never run in the emulator / APK workflows (draft PR #4). Overlaps the budget-policy workflow edits", "disposition": "Adopt the early-exit idea separately from the action upgrades; owner review" },
+    { "name": "claude/ledger-docs", "tip": "d2c9c4e", "class": "missing-recoverable", "note": "Docs only: pre-release review, findings status, music provenance audit, Play readiness, Game.tsx decomposition plan (draft PR #2)", "disposition": "Safe to merge as docs when the owner releases the hold" },
+    { "name": "main", "tip": "84f6b74", "class": "intentionally-kept", "note": "Default branch. Holds only legacy workflows (eas-build.yml, eas-update.yml targeting an obsolete branch; prune-artifacts.yml, which must live here to run on a schedule) and the canonical logo (integrated into the qualification branch). Stale game code. Release tags build-2..13 point at main commits, not at the built commits (see release provenance)", "disposition": "Owner decision: refresh the default branch from the authoritative line; do not delete" },
+    { "name": "Github-APK-Transition-Escap", "tip": "e970c74", "class": "superseded", "note": "Early APK workflow experiments (assembleRelease / assembleDebug flip, cleanup-artifacts -> prune-artifacts) now superseded by apk-build.yml. IT HOLDS THE SOURCE COMMITS OF RELEASE builds 5 (cdf9a35) AND 7 (eb34160); product code equals 1052b26", "disposition": "Keep: it is the provenance of builds 5 and 7. Never delete" },
+    { "name": "claude/boss-pickups-scene-rebuild-0YBha", "tip": "481e307", "class": "superseded", "note": "Pickups (crowbar, smoke bomb) already in the authoritative line; remaining unique commits are legacy workflow syncs", "disposition": "Keep (history); nothing to recover" },
+    { "name": "claude/endless-escape-game-android-gRlFH", "tip": "0171d65", "class": "integrated", "note": "Ancestor of the authoritative line (0 commits ahead). Legacy main workflows still name it as a trigger", "disposition": "Keep; retire the legacy triggers when main is refreshed" },
+    { "name": "claude/fix-apk-screen-issue-etmic", "tip": "b595f5d", "class": "recovered", "note": "Four docs commits: HANDOFF.md pipeline playbook (May 2026). Archived at docs/archive/HANDOFF-2026-05-11-fix-apk-screen-issue.md; superseded where it disagrees with RELEASING.md / ACTIONS-BUDGET.md", "disposition": "Recovered as an archived doc; branch kept" }
+  ],
+  "localOnlyRefs": [
+    { "name": "worktree-agent-* (8 agent worktree branches)", "class": "integrated-equivalent", "note": "Parallel-agent workspaces from the review rounds. Every commit is patch-equivalent to a commit on the authoritative line (git cherry), except worktree-agent-aa78c866's a0c51e5, which is integrated as live 7428134 (15 of 16 files byte-identical; LightTower.ts differs only by an unused import live already removed). abad67669 and ac6f708bb hold main's workflow commits only", "disposition": "Local to the agent container (not on the remote). No unique work; may be discarded with the container" },
+    { "name": "canary-local, packs-local", "class": "integrated", "note": "Ancestors of the authoritative line", "disposition": "No action" },
+    { "name": "packs-backup-d9b5073", "class": "integrated-equivalent", "note": "Patch-equivalent to authoritative-line commits", "disposition": "No action" }
+  ],
+  "releases": [
+    { "tag": "build-2", "tagSha": "934391b", "builtSha": "1052b26", "builtIn": "authoritative line", "note": "tag points at a main commit, not the built commit" },
+    { "tag": "build-4", "tagSha": "934391b", "builtSha": "0171d65", "builtIn": "authoritative line", "note": "tag points at a main commit, not the built commit" },
+    { "tag": "build-5", "tagSha": "934391b", "builtSha": "cdf9a35", "builtIn": "Github-APK-Transition-Escap only", "note": "built from an abandoned experiment branch; product code equals 1052b26" },
+    { "tag": "build-7", "tagSha": "934391b", "builtSha": "eb34160", "builtIn": "Github-APK-Transition-Escap only", "note": "built from an abandoned experiment branch; product code equals 1052b26" },
+    { "tag": "build-9", "tagSha": "df65081", "builtSha": "d1bc973", "builtIn": "authoritative line", "note": "tag points at a main commit" },
+    { "tag": "build-10", "tagSha": "df65081", "builtSha": "39b311e", "builtIn": "authoritative line", "note": "tag points at a main commit" },
+    { "tag": "build-12", "tagSha": "df65081", "builtSha": "3f639e0", "builtIn": "authoritative line", "note": "tag points at a main commit" },
+    { "tag": "build-13", "tagSha": "df65081", "builtSha": "0defe73", "builtIn": "authoritative line", "note": "owner's installed baseline (v13); tag points at a main commit" },
+    { "tag": "build-15", "tagSha": "95dcc77", "builtSha": "95dcc77", "builtIn": "qualification branch", "note": "Endless Escape v14; tag is exact" },
+    { "tag": "build-16", "tagSha": "c30232d", "builtSha": "c30232d", "builtIn": "qualification branch", "note": "Endless Escape v15; tag is exact and a provenance record is attached from the next build on" }
+  ]
+}

@@ -56,6 +56,33 @@ export function assertAncestor(sourceSha, headSha, run = (args) => execFileSync(
   }
 }
 
+/**
+ * Single authoritative line: a release build may only come from a commit ON that
+ * line, i.e. an ancestor of the authoritative branch tip (already integrated) or a
+ * descendant of it (a workspace branch built on top of it). A commit on an
+ * abandoned or diverged branch (main, old experiment branches) is refused, so an
+ * outdated branch can never be published silently.
+ */
+export function assertOnAuthoritativeLine(sourceSha, authoritativeBranch, run = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })) {
+  if (!authoritativeBranch) throw new Error('release.json must name the authoritativeBranch');
+  const tip = `origin/${authoritativeBranch}`;
+  try {
+    run(['rev-parse', '--verify', `${tip}^{commit}`]);
+  } catch {
+    throw new Error(`cannot find the authoritative branch ${tip} (fetch full history)`);
+  }
+  const isAncestor = (a, b) => {
+    try {
+      run(['merge-base', '--is-ancestor', a, b]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (isAncestor(sourceSha, tip) || isAncestor(tip, sourceSha)) return;
+  throw new Error(`sourceSha ${sourceSha} is on neither side of ${authoritativeBranch}: it comes from a diverged or abandoned line. Rebase / merge it onto the authoritative line first (CLAUDE.md "Single source of truth")`);
+}
+
 export function requestFromEnv(env, readFile = (p) => readFileSync(p, 'utf8')) {
   if (env.GITHUB_EVENT_NAME === 'workflow_dispatch') {
     return {
@@ -73,6 +100,8 @@ export function requestFromEnv(env, readFile = (p) => readFileSync(p, 'utf8')) {
 export function main(env = process.env) {
   const req = normaliseRequest(requestFromEnv(env));
   assertAncestor(req.sourceSha, env.GITHUB_SHA || 'HEAD');
+  const authoritative = JSON.parse(readFileSync('release.json', 'utf8')).authoritativeBranch;
+  assertOnAuthoritativeLine(req.sourceSha, authoritative);
   const out = {
     source_sha: req.sourceSha,
     platform: req.platform,

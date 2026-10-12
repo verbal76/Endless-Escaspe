@@ -40,7 +40,7 @@ A request names: **`sourceSha`** (full 40-char SHA of the approved source), **pl
    ```json
    { "sourceSha": "<40 hex>", "platform": "android", "channel": "preview", "publishRelease": true, "expectedVersion": 16, "id": "free text, change it to request a rebuild" }
    ```
-The workflow builds **exactly `sourceSha`** (never the commit carrying the request; it must be an ancestor of it), stamps it into the APK, and
+The workflow builds **exactly `sourceSha`** (never the commit carrying the request; it must be an ancestor of it and lie on the authoritative line, see `docs/RELEASING.md`), stamps it into the APK, and
 writes a provenance record (`<Product>-v<N>.provenance.json`: source SHA, request commit and ref, public version, versionName, versionCode,
 platform, channel, configuration, runtime, native fingerprint, SHA-256, build time, toolchain versions, run URL). A **rebuild needs no version bump**: if the
 version already has a release (or `publishRelease` is false) the result is a workflow artifact only; a public version is never overwritten.
@@ -70,4 +70,5 @@ runs) is complementary, but adopting it needs the live branch and the unrelated 
 - `[skip ci]` suppressed every workflow, including the pull-request check, for commits 2f07df6 and 47791ea (0 runs each).
 - Draft PR #7, commit 06e6f1f: exactly one run (`CI` #46, event `pull_request`, 51 s, no push-triggered duplicate): classify ran (not docs-only), typecheck / unit tests / native fingerprint / workflow-config check ran, the Android bundle export was skipped (draft tier). No APK build, no emulator.
 - Docs-only classification must compare the previous head with the new head, not the whole PR (the first version compared `base...head`, so a docs-only push to a PR that also contained code ran the full tier; fixed in 4ccd016).
+- Docs-only push, commit 83e3b5b: `CI` #49 ran 8 s, success, and skipped install / typecheck / tests / fingerprint / config check / bundle export (the check still reports, so it never stays pending). Across five pushes only `ci.yml` started: no APK, emulator or OTA run.
 - Not verified on a hosted runner (static tests, `actionlint` and local scripts only): the `apk-build.yml` resolve / build / smoke-test / publish chain with a build request, the ready-PR bundle-export step, the render-check `ref` input, and the cancellation rules. The first real build request is their first execution.

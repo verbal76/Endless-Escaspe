@@ -70,6 +70,11 @@ for f in ('release.json', 'app.json', 'scripts/native-fingerprint.json'):
 rj = json.load(open('release.json'))
 if not (isinstance(rj.get('publicVersion'), int) and rj['publicVersion'] > 0):
     errors.append('release.json: publicVersion must be a positive integer')
+for f in ('docs/branch-ledger.json',):
+    try:
+        json.load(open(f))
+    except Exception as e:  # noqa: BLE001
+        errors.append(f'{f}: {e}')
 req = '.github/build-request.json'
 if os.path.exists(req):
     r = json.load(open(req))

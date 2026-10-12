@@ -1,76 +1,153 @@
 name: APK Build (GitHub-hosted)
 
-# Replaces the prior EAS-cloud build with a GitHub-hosted Gradle
-# build so the project uses GitHub Actions' free runner minutes
-# instead of EAS build credits. The result is a debug-signed APK
-# uploaded to a GitHub Release that testers can download +
-# sideload directly. Expo's managed workflow means we run
-# `expo prebuild` fresh on each CI run to generate the android/
-# project; nothing native is checked into the repo.
+# Builds ONE release-variant, debug-signed APK from an explicitly approved
+# source commit and publishes it (GitHub Actions' free runner minutes instead
+# of EAS build credits). `expo prebuild` generates android/ fresh each run.
 #
-# OTA updates flow through EAS via eas-update.yml (free Updates
-# tier); it only publishes JS whose native fingerprint matches the APKs.
+# Native build authorization is its own decision (docs/RELEASING.md,
+# docs/ACTIONS-BUDGET.md). A source change, a branch push, a documentation
+# edit, a version bump (release.json), or an OTA never starts this workflow.
+# A build starts only from an explicit request that names the approved
+# source SHA, platform and channel:
+#   1. Run workflow (workflow_dispatch) with those inputs, or
+#   2. commit a change to .github/build-request.json (auditable in git; the
+#      path an agent session uses because it cannot dispatch).
+# The build is made from EXACTLY that source SHA, never from the commit that
+# carries the request, and records its provenance next to the APK. A rebuild
+# of an already-released version produces a workflow artifact only (it never
+# overwrites a public version), so no artificial version bump is needed.
+#
+# OTA updates are independent (eas-update.yml); they only publish JS whose
+# native fingerprint matches the APKs.
 
 on:
   workflow_dispatch:
-  # A build is the delivery of a new public version (docs/RELEASING.md), so
-  # it starts ONLY when release.json changes (the version bump), never on
-  # ordinary native-file edits (GitHub Actions minutes are a scarce, shared
-  # budget: docs/ACTIONS-BUDGET.md). Obsolete branches were removed.
+    inputs:
+      source_sha:
+        description: 'Approved source commit: the full 40-character SHA (not a branch name)'
+        type: string
+        required: true
+      platform:
+        description: 'Target platform'
+        type: choice
+        options: [android]
+        default: android
+      channel:
+        description: 'Release channel baked into the build'
+        type: choice
+        options: [preview]
+        default: preview
+      publish_release:
+        description: 'Publish a GitHub release for this version (forced off if the version already has one)'
+        type: boolean
+        default: true
+      expected_version:
+        description: 'Optional: the public version release.json must have at the source SHA'
+        type: string
+        required: false
   push:
     branches:
       - claude/game-review-suggestions-cjxiqh
       - claude/api36-native-qualification
     paths:
-      - 'release.json'
-    # This file deliberately does NOT list itself: GitHub evaluates the
-    # pushed version of the workflow, so an edit to the pipeline alone
-    # must not cut a new APK + release. Test a workflow change with a
-    # manual run (workflow_dispatch) instead.
+      - '.github/build-request.json'
+    # This file deliberately does NOT list itself: an edit to the pipeline
+    # alone must not cut a build. Test a workflow change with a manual run.
 
 permissions:
   contents: read
 
 concurrency:
-  group: apk-build-${{ github.ref }}
-  cancel-in-progress: true
+  # One release build at a time; a build in progress is never cancelled by a
+  # newer request (it queues).
+  group: apk-build
+  cancel-in-progress: false
 
 jobs:
+  # Cheap (seconds): turn the request into a validated source SHA.
+  resolve:
+    name: Resolve the build request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      source_sha: ${{ steps.req.outputs.source_sha }}
+      platform: ${{ steps.req.outputs.platform }}
+      channel: ${{ steps.req.outputs.channel }}
+      publish_release: ${{ steps.req.outputs.publish_release }}
+      expected_version: ${{ steps.req.outputs.expected_version }}
+      request_commit: ${{ steps.req.outputs.request_commit }}
+      request_ref: ${{ steps.req.outputs.request_ref }}
+    steps:
+      - name: Check out the requesting commit
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate the request
+        id: req
+        env:
+          IN_SOURCE_SHA: ${{ inputs.source_sha }}
+          IN_PLATFORM: ${{ inputs.platform }}
+          IN_CHANNEL: ${{ inputs.channel }}
+          IN_PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          IN_EXPECTED_VERSION: ${{ inputs.expected_version }}
+        run: node scripts/ci/resolve-build-request.mjs
+
   build:
     name: Build Android APK
+    needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
-      # softprops/action-gh-release needs write access to publish the
-      # release + upload the APK as an asset.
-      contents: write
+      contents: read
     outputs:
       name: ${{ steps.apk.outputs.name }}
       product: ${{ steps.apk.outputs.product }}
       pv: ${{ steps.apk.outputs.pv }}
       version: ${{ steps.ver.outputs.version }}
       fingerprint: ${{ steps.fp.outputs.hash }}
+      can_publish: ${{ steps.decide.outputs.can_publish }}
+      sha256: ${{ steps.sum.outputs.sha }}
+      size: ${{ steps.sum.outputs.size }}
     # Release metadata baked into the APK (see app.config.js): the
     # versionCode is this workflow's run number (= the build-N release
-    # tag) and the embedded manifest records the source commit.
+    # tag) and the embedded manifest records the APPROVED source commit.
     env:
       EE_BUILD_NUMBER: ${{ github.run_number }}
-      EE_GIT_SHA: ${{ github.sha }}
+      EE_GIT_SHA: ${{ needs.resolve.outputs.source_sha }}
+      EE_UPDATE_CHANNEL: ${{ needs.resolve.outputs.channel }}
     steps:
-      - name: Check out repo
+      # Exactly the approved source revision, never the requesting commit.
+      - name: Check out the approved source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.source_sha }}
 
-      # A public version identifies exactly one delivered build: refuse to
-      # publish a second binary under a version that already has a release.
-      - name: Refuse to reuse a public version
+      - name: Check the expected version
+        if: needs.resolve.outputs.expected_version != ''
+        run: |
+          GOT=$(node -p "require('./release.json').publicVersion")
+          if [ "$GOT" != "${{ needs.resolve.outputs.expected_version }}" ]; then
+            echo "::error::release.json at ${{ needs.resolve.outputs.source_sha }} says v$GOT, the request expected v${{ needs.resolve.outputs.expected_version }}"
+            exit 1
+          fi
+
+      # A public version identifies exactly one delivered build: a rebuild of a
+      # version that already has a release (or a request that says not to
+      # publish) yields a workflow artifact only, never a second binary under
+      # the same public version, and needs no artificial version bump.
+      - name: Decide whether this build may publish a release
+        id: decide
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TITLE="$(node -p "require('./release.json').productName") v$(node -p "require('./release.json').publicVersion")"
-          if gh release list --repo "${{ github.repository }}" --limit 200 --json name --jq '.[].name' | grep -Fxq "$TITLE"; then
-            echo "::error::A release titled '$TITLE' already exists. Bump publicVersion in release.json (docs/RELEASING.md)."
-            exit 1
+          CAN=true
+          if [ "${{ needs.resolve.outputs.publish_release }}" != "true" ]; then
+            CAN=false; echo "::notice::The request asked for a build artifact only (no release)."
+          elif gh release list --repo "${{ github.repository }}" --limit 200 --json name --jq '.[].name' | grep -Fxq "$TITLE"; then
+            CAN=false; echo "::notice::A release titled '$TITLE' already exists; this rebuild is a workflow artifact only (a public version is never overwritten)."
           fi
+          echo "can_publish=$CAN" >> "$GITHUB_OUTPUT"
 
       # A release build of the new-architecture native code fills most of
       # the runner disk; run 9 died in the post-build cache save with
@@ -183,6 +260,7 @@ jobs:
           echo "name=${SLUG}-v${PV}.apk" >> "$GITHUB_OUTPUT"
           echo "product=$(node -p "require('./release.json').productName")" >> "$GITHUB_OUTPUT"
           echo "pv=$PV" >> "$GITHUB_OUTPUT"
+          echo "provenance=${SLUG}-v${PV}.provenance.json" >> "$GITHUB_OUTPUT"
 
       - name: Read app version
         id: ver
@@ -222,6 +300,28 @@ jobs:
           } | tee -a apk-report.txt
           rm -f build13.apk
 
+      - name: Checksum and provenance record
+        id: sum
+        env:
+          PLATFORM: ${{ needs.resolve.outputs.platform }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
+          ARTIFACT_NAME: ${{ steps.apk.outputs.name }}
+          SOURCE_SHA: ${{ needs.resolve.outputs.source_sha }}
+          REQUEST_COMMIT: ${{ needs.resolve.outputs.request_commit }}
+          REQUEST_REF: ${{ needs.resolve.outputs.request_ref }}
+          VERSION_CODE: ${{ github.run_number }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FINGERPRINT: ${{ steps.fp.outputs.hash }}
+          JAVA_VERSION: 17
+          PROVENANCE_OUT: ${{ steps.apk.outputs.provenance }}
+        run: |
+          SHA=$(sha256sum "${{ steps.apk.outputs.name }}" | cut -d' ' -f1)
+          SIZE=$(stat -c %s "${{ steps.apk.outputs.name }}")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"; echo "size=$SIZE" >> "$GITHUB_OUTPUT"
+          ARTIFACT_SHA256=$SHA ARTIFACT_SIZE=$SIZE node scripts/ci/write-provenance.mjs
+          cat "$PROVENANCE_OUT"
+
       - name: Upload APK report
         uses: actions/upload-artifact@v4
         with:
@@ -233,7 +333,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.apk.outputs.name }}
-          path: ${{ steps.apk.outputs.name }}
+          path: |
+            ${{ steps.apk.outputs.name }}
+            ${{ steps.apk.outputs.provenance }}
           if-no-files-found: error
           # The same file is attached to the GitHub release (publish job).
           retention-days: 30
@@ -244,13 +346,17 @@ jobs:
   # background / resume. The release is published only if it passes.
   smoke-test:
     name: Emulator smoke test
+    needs: resolve
     uses: ./.github/workflows/android-render-check.yml
+    with:
+      ref: ${{ needs.resolve.outputs.source_sha }}
     permissions:
       contents: read
 
   publish:
     name: Publish GitHub Release
-    needs: [build, smoke-test]
+    needs: [resolve, build, smoke-test]
+    if: needs.build.outputs.can_publish == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -261,13 +367,6 @@ jobs:
           name: ${{ needs.build.outputs.name }}
           path: dist
 
-      - name: Checksum
-        id: sum
-        run: |
-          cd dist
-          echo "sha=$(sha256sum "${{ needs.build.outputs.name }}" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "size=$(stat -c %s "${{ needs.build.outputs.name }}")" >> "$GITHUB_OUTPUT"
-
       # The newest delivered playable build is the Latest release (see
       # docs/RELEASING.md). The build-N tag is created at the commit that
       # was built (without target_commitish GitHub tags the default branch).
@@ -276,7 +375,7 @@ jobs:
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65
         with:
           tag_name: build-${{ github.run_number }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ needs.resolve.outputs.source_sha }}
           name: '${{ needs.build.outputs.product }} v${{ needs.build.outputs.pv }}'
           prerelease: false
           make_latest: true
@@ -286,17 +385,19 @@ jobs:
             **Android:** `${{ needs.build.outputs.name }}`
 
             ## Technical details (engineers only)
-            Auto-built from commit `${{ github.sha }}`.
+            Built from approved source commit `${{ needs.resolve.outputs.source_sha }}` (request ref `${{ needs.resolve.outputs.request_ref }}` at `${{ needs.resolve.outputs.request_commit }}`); provenance record attached.
 
             Android versionName ${{ needs.build.outputs.version }} • versionCode ${{ github.run_number }} • tag `build-${{ github.run_number }}` (runtime ${{ needs.build.outputs.version }}, update channel `preview`)
 
             Native fingerprint (android): `${{ needs.build.outputs.fingerprint }}`
 
-            SHA-256: `${{ steps.sum.outputs.sha }}` • ${{ steps.sum.outputs.size }} bytes
+            SHA-256: `${{ needs.build.outputs.sha256 }}` • ${{ needs.build.outputs.size }} bytes
 
             Release-variant APK (debug-keystore signed, same certificate as Build 13) with OTA updates enabled. Install via:
             1. Download the APK below.
             2. On your Android device, allow "install from unknown sources" for your browser / file manager.
             3. Open the downloaded APK to install.
-          files: dist/${{ needs.build.outputs.name }}
+          files: |
+            dist/${{ needs.build.outputs.name }}
+            dist/*.provenance.json
           token: ${{ secrets.GITHUB_TOKEN }}

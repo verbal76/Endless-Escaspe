@@ -45,10 +45,11 @@ releases map to their own build number (v2, v4, v5, v7, v9, v10, v12).
 | v15 | (next) | next run | this branch | first build whose About shows its public version |
 
 ## Per-release checklist
-1. Validate locally (see `docs/ACTIONS-BUDGET.md`). Bump `release.json` `publicVersion`, commit, push: the push that changes `release.json` is what starts the build (nothing else does).
-2. The `APK Build` workflow produces `Endless-Escape-v<N>.apk` and the release
-   `Endless Escape v<N>` (Latest) with technical provenance below the headline.
-3. If a release ever needs retitling or reassigning Latest by hand (sessions
-   without release-write access cannot), do it in GitHub: title `Endless Escape v<N>`,
-   tick "Set as the latest release". Asset renames need `gh release upload` of the
-   renamed file (same bytes, same SHA-256).
+1. Validate locally (`docs/ACTIONS-BUDGET.md`). Bump `release.json` `publicVersion` in the change that delivers a new build. A version bump alone starts nothing.
+2. Authorize the native build explicitly (separate decision): run `APK Build` with the approved full source SHA, or commit `.github/build-request.json`
+   naming it (`{ "sourceSha": "<40 hex>", "platform": "android", "channel": "preview", "expectedVersion": <N> }`).
+3. The workflow builds exactly that SHA, verifies the APK and its packaged content, runs the emulator smoke test, and publishes `Endless Escape v<N>`
+   (Latest) with `Endless-Escape-v<N>.apk` and `Endless-Escape-v<N>.provenance.json`. A rebuild of an already-released version (no version bump needed)
+   produces a workflow artifact only.
+4. If a release ever needs retitling or reassigning Latest by hand (sessions without release-write access cannot), do it in GitHub: title
+   `Endless Escape v<N>`, tick "Set as the latest release".

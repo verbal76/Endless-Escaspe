@@ -20,14 +20,20 @@ on:
   # minutes, and editing scripts/ci/** is exercised by the next release
   # gate (or run this workflow manually). docs/ACTIONS-BUDGET.md.
   workflow_call:
+    inputs:
+      ref:
+        description: 'Exact commit SHA to test (empty = the commit that started the run)'
+        type: string
+        required: false
+        default: ''
 
 concurrency:
   # Under workflow_call github.workflow is the caller's name, so a
-  # standalone run never cancels the gate of an OTA run (and a newer
-  # OTA run does cancel the older one's check: that one would not be
-  # published anyway).
+  # standalone run never cancels the gate of an OTA run. A newer OTA run
+  # cancels an older OTA run's emulator (that one would not be published
+  # anyway); an APK release in progress is never cancelled.
   group: android-render-check-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.workflow == 'EAS Update (OTA)' }}
 
 permissions:
   contents: read
@@ -40,11 +46,13 @@ jobs:
     # Same release metadata stamping as apk-build.yml, so the [release]
     # log line identifies this commit.
     env:
-      EE_GIT_SHA: ${{ github.sha }}
-      EXPECT_SHA: ${{ github.sha }}
+      EE_GIT_SHA: ${{ inputs.ref || github.sha }}
+      EXPECT_SHA: ${{ inputs.ref || github.sha }}
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.sha }}
 
       - name: Set up Node
         uses: actions/setup-node@v4

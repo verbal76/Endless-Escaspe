@@ -20,11 +20,13 @@ release title, the APK filename, About and Copy Diagnostics. See `docs/RELEASING
 reuse a number. Git SHA, versionCode, runtime, OTA ids are technical metadata, not the version.
 
 ## GitHub Actions budget (standing owner directive)
+**Development validation should be cheap, release validation should be thorough, and publishing must be intentional.**
 Actions minutes are shared across the owner's projects with a small monthly budget. Prove things locally first (typecheck, tests,
-native-fingerprint gate, `expo export`, `expo prebuild`); use Actions only for final candidate validation, an APK the owner needs,
-OTA publication and its safety gates, and checks that cannot run locally. Docs-only changes use zero minutes (`[skip ci]`).
-Never push just to "see if CI passes"; never rebuild the same SHA; never build platforms nobody asked for; never weaken a release
-safety gate to save minutes. Details and the workflow trigger table: `docs/ACTIONS-BUDGET.md`.
+native-fingerprint gate, `scripts/ci/check-workflows.py`, `expo export`, `expo prebuild`). `ci.yml` runs once per PR revision (draft and ready; docs-only
+changes do no heavy work; no push trigger). A source change, a branch push, a docs edit or a version bump (`release.json`) must never start a native build
+or an OTA. An APK is built only from an explicit build request naming the approved source SHA (`workflow_dispatch` inputs or `.github/build-request.json`),
+from exactly that SHA, with a provenance record; a rebuild needs no version bump. OTA publishing keeps its own gates and authorization. Never rebuild the same
+SHA needlessly, never build platforms nobody asked for, never weaken a release gate to save minutes. Details: `docs/ACTIONS-BUDGET.md`.
 
 ## Release hold
 The live branch `claude/game-review-suggestions-cjxiqh` (OTA 131, runtime 0.2.1) is frozen until the owner lifts the hold:

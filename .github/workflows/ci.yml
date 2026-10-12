@@ -44,11 +44,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Pull requests only: is this change documentation-only? Any doubt = no.
+      # Pull requests only: is THIS push documentation-only? For a push to an
+      # open PR (synchronize) compare the previous head with the new head (the
+      # PR-wide diff would include the code already validated by earlier
+      # pushes); for opened / reopened / ready_for_review compare the whole PR
+      # against its base. Any doubt (unknown commit, no files) = not docs-only.
       - name: Classify the change
         id: scope
         if: github.event_name == 'pull_request'
-        run: node scripts/ci/classify-changes.mjs "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+        run: node scripts/ci/classify-changes.mjs "${{ github.event.before || github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
 
       - name: Documentation-only change, nothing to build
         if: steps.scope.outputs.docs_only == 'true'

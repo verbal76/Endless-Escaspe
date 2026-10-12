@@ -24,7 +24,7 @@ test('ci.yml: one run per PR revision, drafts get the cheap tier, docs-only neve
   assert.doesNotMatch(s, /^  check:\n(?:    .*\n)*?    if:/m);
   assert.match(s, /name: Typecheck, tests, native fingerprint, Android bundle/, 'stable check name');
   // Docs-only skips the heavy steps; drafts skip only the bundle export.
-  assert.match(s, /classify-changes\.mjs/);
+  assert.match(s, /classify-changes\.mjs "\$\{\{ github\.event\.before \|\| github\.event\.pull_request\.base\.sha \}\}"/, 'classify THIS push (before..head), not the whole PR');
   assert.match(s, /steps\.scope\.outputs\.docs_only != 'true'/);
   assert.match(s, /Android bundle export[\s\S]*github\.event\.pull_request\.draft == false/);
   // Typecheck + tests + fingerprint + config check run for drafts too.

@@ -17,7 +17,7 @@ gates CI runs. The browser harness covers UI. Use them; push when they pass.
 | tier | what runs | when | cost |
 | --- | --- | --- | --- |
 | **Development** (`ci.yml`) | typecheck, unit tests, native-fingerprint gate, workflow/config check | once per push to any pull request, **draft or ready** | ~2 min |
-| &nbsp;&nbsp;docs-only change | nothing heavy (the job still runs and reports success, so a required check never stays pending) | PR touching only `docs/**` / `*.md` | seconds |
+| &nbsp;&nbsp;docs-only push | nothing heavy (the job still runs and reports success, so a required check never stays pending) | a push to a PR that changes only `docs/**` / `*.md` since the previous head (a newly opened / ready PR is classified against its base) | seconds |
 | **Qualification** (`ci.yml`, ready PR) | the above + the Android bundle export | PR marked ready; also the OTA `validate` stage | ~3-4 min |
 | **Release** | `eas-update.yml` (OTA) or `apk-build.yml` (APK): full gates, emulator render / smoke test, verification | only on an explicit authorization (below) | 15-45 min |
 

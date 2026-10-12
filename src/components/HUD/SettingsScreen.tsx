@@ -4,6 +4,7 @@ import {
   BackHandler,
   Image,
   Modal,
+  Platform,
   ScrollView,
   Share,
   StyleSheet,
@@ -32,6 +33,25 @@ import { buttonFill, buttonLabel, buttonPressed, color as ui, type as T, fonts, 
 import { SETTINGS_GEAR } from '../../ui/iconData';
 
 const SLIDER_TRACK_W = 220;
+const SLIDER_KEY_STEP = 0.05;
+
+// Desktop / web only: lets the controller layer (src/desktop) focus and nudge the slider. Spread as nothing on Android,
+// so the native view tree and behaviour are unchanged.
+function webSliderProps(label: string, value: number, onChange: (v: number) => void): Record<string, unknown> {
+  if (Platform.OS !== 'web') return {};
+  return {
+    focusable: true,
+    accessibilityRole: 'adjustable',
+    accessibilityLabel: label,
+    accessibilityValue: { min: 0, max: 100, now: Math.round(value * 100) },
+    onKeyDown: (e: { key?: string; preventDefault?: () => void }) => {
+      const dir = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (dir === 0) return;
+      e.preventDefault?.();
+      onChange(Math.max(0, Math.min(1, Math.round((value + dir * SLIDER_KEY_STEP) * 100) / 100)));
+    },
+  };
+}
 const SLIDER_KNOB_R = 13;
 
 // Pan-gesture-driven slider. The knob position lives on a Reanimated
@@ -43,9 +63,11 @@ const SLIDER_KNOB_R = 13;
 function VolumeSlider({
   value,
   onChange,
+  label,
 }: {
   value: number;
   onChange: (v: number) => void;
+  label: string;
 }) {
   const sv = useSharedValue(value);
 
@@ -82,7 +104,7 @@ function VolumeSlider({
 
   return (
     <GestureDetector gesture={pan}>
-      <View style={styles.sliderHit}>
+      <View style={styles.sliderHit} {...webSliderProps(label, value, onChange)}>
         <View style={styles.sliderTrack} />
         <Animated.View style={[styles.sliderFill, fillStyle]} />
         <Animated.View style={[styles.sliderKnob, knobStyle]} />
@@ -335,11 +357,11 @@ export function SettingsScreen() {
                 <Text style={styles.sectionHeading}>Settings</Text>
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>Volume</Text>
-                  <VolumeSlider value={masterVolume} onChange={setMasterVolume} />
+                  <VolumeSlider value={masterVolume} onChange={setMasterVolume} label="Volume" />
                 </View>
                 <View style={styles.settingRow}>
                   <Text style={styles.settingLabel}>Music</Text>
-                  <VolumeSlider value={musicVolume} onChange={setMusicVolume} />
+                  <VolumeSlider value={musicVolume} onChange={setMusicVolume} label="Music" />
                 </View>
                 <View style={styles.settingRow}>
                   <View style={styles.toggleLabelWrap}>

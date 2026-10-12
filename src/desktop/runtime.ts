@@ -88,6 +88,12 @@ function moveFocus(dir: Dir) {
   if (cands.length === 0) return;
   const active = w.document.activeElement;
   const cur = cands.find((c) => c.el === active || c.el.getAttribute(FOCUS_ATTR) === '1');
+  // A focused slider consumes left / right as value changes (delivered as the arrow keys the control listens for).
+  const focusedEl = cur?.el;
+  if (focusedEl && focusedEl.getAttribute('role') === 'slider' && (dir === 'left' || dir === 'right')) {
+    focusedEl.dispatchEvent(new (w.window as any).KeyboardEvent('keydown', { key: dir === 'left' ? 'ArrowLeft' : 'ArrowRight', bubbles: true, cancelable: true }));
+    return;
+  }
   let idx = -1;
   if (!cur) idx = pickInitial(cands.map((c) => c.rect), { width: w.window.innerWidth, height: w.window.innerHeight });
   else idx = pickNext(cur.rect, cands.map((c) => c.rect), dir);

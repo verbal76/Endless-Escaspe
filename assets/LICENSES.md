@@ -57,3 +57,10 @@ near-silence trimmed and short edge fades added so the loop has no
 dropout or click; `voxelSneakParade.mp3` got a 1.5 s fade-out on its
 last seconds. Both re-encoded as 48 kHz VBR MP3. These are edits only;
 the licence question above still applies.
+
+## Controller / keyboard prompt glyphs (`assets/glyphs/`)
+
+43 PNGs selected from the studio-supplied "Input Prompts" pack by JulioCacko (itch.io / FAB; published Jun 30 2023, updated Feb 03 2025). Licence stated on the
+source page (owner-supplied screenshot): **CC0 1.0 Universal** (asset), MIT (code), "No generative AI was used". Not independently re-verified against the live
+page (no licence file ships in the archive); no attribution is required but the credit is kept here. Imported unmodified except for file selection and
+renaming into family folders; see `docs/GLYPH-LIBRARY.md` and `assets/glyphs/SHA256SUMS`. Used by the Windows / Linux desktop build only.

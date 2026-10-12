@@ -253,6 +253,12 @@ export function StartScreen() {
   const setGameModal = useStore((s) => s.setGameModal);
 
   const [mode, setMode] = useState<Mode>('home');
+  // Tell the OTA applier when the menu is at rest (home step, no run
+  // started): the only moment a downloaded update may be applied.
+  useEffect(() => {
+    useStore.getState().setMenuIdle(runState === 'idle' && mode === 'home');
+    return () => useStore.getState().setMenuIdle(false);
+  }, [runState, mode]);
   const [pickedSkin, setPickedSkin] = useState<PlayerSkin | null>(null);
   const [nameDraft, setNameDraft] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);

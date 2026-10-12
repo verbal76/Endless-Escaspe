@@ -1,7 +1,9 @@
 import { Linking, Platform } from 'react-native';
 import { composeMailtoReport, mailtoUrl } from './bugReport';
 import { formatEntry, getEntries, getPreviousRun, logDebug } from './debug';
-import { getReleaseInfo } from './releaseRuntime';
+import { getAboutSources, getReleaseInfo } from './releaseRuntime';
+import { formatAboutText } from './aboutInfo';
+import { useStore } from '../state/store';
 import { formatDetailRows, formatInfoLines, formatMenuLine, formatVitalsText, type InfoRow } from './releaseInfo';
 import { getTextureStatus } from './textures';
 import { formatTextureRow } from './textureSource';
@@ -19,12 +21,7 @@ import { formatAuditRows, getRenderAudit } from './renderAudit';
 export const SUPPORT_EMAIL = 'hotatticgames@gmail.com';
 
 function infoRows(): InfoRow[] {
-  return [
-    ...formatDetailRows(getReleaseInfo()),
-    formatTextureRow(getTextureStatus()),
-    formatFontRow(getFontStatus()),
-    ...formatAuditRows(getRenderAudit()),
-  ];
+  return [...formatDetailRows(getReleaseInfo()), ...technicalRows()];
 }
 
 const osLabel = () => `${Platform.OS} ${Platform.Version}`;
@@ -37,6 +34,17 @@ function buildInfoMultiline(): string {
 // button (Android share sheet: Copy, or send to any app).
 export function composeVitalsText(): string {
   return formatVitalsText(formatMenuLine(getReleaseInfo()), infoRows(), osLabel(), new Date());
+}
+
+// COPY DIAGNOSTICS (Settings > About): release identity, OTA state, Play
+// readiness and device as plain text, plus the technical rows. Contains
+// no secrets, signing material, save contents or personal data.
+export function technicalRows(): InfoRow[] {
+  return [formatTextureRow(getTextureStatus()), formatFontRow(getFontStatus()), ...formatAuditRows(getRenderAudit())];
+}
+
+export function composeAboutText(): string {
+  return formatAboutText(getAboutSources(useStore.getState().updatePhase), technicalRows());
 }
 
 export function composeBugReportUrl(): string {

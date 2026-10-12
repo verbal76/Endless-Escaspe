@@ -1,12 +1,24 @@
 name: CI
 
-# Fast checks for every pull request and every pushed branch; also the
-# `validate` stage of eas-update.yml (workflow_call), so the commit that
-# gets published passed exactly these checks.
+# Development validation is cheap; release validation is thorough; publishing is
+# intentional (docs/ACTIONS-BUDGET.md). One run per meaningful revision:
+#
+#   pull request (draft OR ready)  -> this workflow, exactly once per push
+#   push                           -> NOT a trigger (a PR branch push used to be
+#                                     validated twice; pushes with no PR are
+#                                     validated locally)
+#   eas-update.yml (workflow_call) -> the `validate` stage of an OTA publish
+#
+# Tiers (the single job below always reports, so a required check can never stay
+# pending because a workflow was skipped):
+#   docs-only change   : no install, no tests (a few seconds)
+#   draft PR           : typecheck + unit tests + native fingerprint + workflow/config check
+#   ready PR / OTA call: the above + the Android bundle export
+# Nothing here starts an emulator, a native compile or an APK.
 
 on:
   pull_request:
-  push:
+    types: [opened, synchronize, reopened, ready_for_review]
   workflow_call:
   workflow_dispatch:
 
@@ -14,44 +26,75 @@ permissions:
   contents: read
 
 concurrency:
-  # github.workflow is the caller's name under workflow_call, so a
-  # standalone run never cancels the validate stage of an OTA run.
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: true
+  # github.workflow is the caller's name under workflow_call, so a standalone
+  # run never cancels the validate stage of an OTA run. Only superseded PR
+  # checks are cancelled, never a release / OTA stage already in progress.
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   check:
+    # Stable name: keep it unchanged if a branch ruleset ever requires this check.
     name: Typecheck, tests, native fingerprint, Android bundle
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - name: Check out repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Pull requests only: is THIS push documentation-only? For a push to an
+      # open PR (synchronize) compare the previous head with the new head (the
+      # PR-wide diff would include the code already validated by earlier
+      # pushes); for opened / reopened / ready_for_review compare the whole PR
+      # against its base. Any doubt (unknown commit, no files) = not docs-only.
+      - name: Classify the change
+        id: scope
+        if: github.event_name == 'pull_request'
+        run: node scripts/ci/classify-changes.mjs "${{ github.event.before || github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}"
+
+      - name: Documentation-only change, nothing to build
+        if: steps.scope.outputs.docs_only == 'true'
+        run: echo "Only docs / markdown changed; heavy checks skipped (this job still reports success)."
 
       - name: Set up Node
+        if: steps.scope.outputs.docs_only != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
+        if: steps.scope.outputs.docs_only != 'true'
         run: npm ci --no-audit --no-fund
 
       - name: Typecheck
+        if: steps.scope.outputs.docs_only != 'true'
         run: npm run typecheck
 
       - name: Unit tests
+        if: steps.scope.outputs.docs_only != 'true'
         run: npm test
 
       # Fails when the native layer changed without a runtime (app.json
       # version) bump; see scripts/check-native-fingerprint.mjs.
       - name: Native fingerprint gate
+        if: steps.scope.outputs.docs_only != 'true'
         run: node scripts/check-native-fingerprint.mjs
 
-      # The same Metro export `eas update` runs, without publishing:
-      # catches resolution / transform / asset errors before any
-      # publish or APK build.
+      # Workflow / config integrity (cheap): reusable-workflow references,
+      # needs: targets, release.json / build-request.json shape.
+      - name: Workflow and config check
+        if: steps.scope.outputs.docs_only != 'true'
+        run: python3 scripts/ci/check-workflows.py
+
+      # The same Metro export `eas update` runs, without publishing: catches
+      # resolution / transform / asset errors before any publish or APK build.
+      # Skipped for draft PRs (the draft tier stays minimal); it runs when the
+      # PR is marked ready and in the OTA validate stage.
       - name: Android bundle export (smoke)
+        if: steps.scope.outputs.docs_only != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.draft == false)
         env:
           EXPO_NO_TELEMETRY: '1'
           CI: '1'

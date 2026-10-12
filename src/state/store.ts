@@ -10,6 +10,7 @@ import { snapVolume } from '../util/musicIntensity';
 const volumeUnchanged = (prev: number, next: number) =>
   next === prev || (next !== 0 && next !== 1 && Math.abs(prev - next) < 0.005);
 import type { OutfitId } from '../util/outfits';
+import type { UpdatePhase } from '../util/updateFlow';
 
 // How many of each pickup the player is currently carrying. Counts
 // reset to zero on each segment start. The HUD's PickupBag reads
@@ -99,6 +100,14 @@ type Store = {
   // screen, or the pause panel - which is its own native modal, so the
   // reference renders inside it there), or null when closed.
   howToPlay: 'home' | 'pause' | null;
+  // Settings > About view open (rendered inside the settings panel).
+  aboutOpen: boolean;
+  // OTA activation state (util/updateFlow.ts), written by the
+  // UpdateApplier; read by the applying overlay and About.
+  updatePhase: UpdatePhase;
+  // True while the start screen is on its home step with a run not
+  // started: the only place an OTA may be applied (util/updateFlow.ts).
+  menuIdle: boolean;
   // Persisted: the intro tutorial was watched or skipped once already.
   tutorialSeen: boolean;
   // Branded confirm / alert modal config. Any component can set
@@ -218,6 +227,9 @@ type Store = {
   setHapticsEnabled: (b: boolean) => void;
   setShowTutorial: (b: boolean) => void;
   setHowToPlay: (v: 'home' | 'pause' | null) => void;
+  setAboutOpen: (b: boolean) => void;
+  setUpdatePhase: (p: UpdatePhase) => void;
+  setMenuIdle: (b: boolean) => void;
   setTutorialSeen: (b: boolean) => void;
   setGameModal: (m: GameModalConfig | null) => void;
   setBossModeUnlocked: (b: boolean) => void;
@@ -267,6 +279,9 @@ export const useStore = create<Store>((set) => ({
   hapticsEnabled: true,
   showTutorial: false,
   howToPlay: null,
+  aboutOpen: false,
+  updatePhase: 'idle',
+  menuIdle: false,
   tutorialSeen: false,
   gameModal: null,
   bossModeUnlocked: false,
@@ -371,6 +386,9 @@ export const useStore = create<Store>((set) => ({
   setShowTutorial: (b) =>
     set((st) => (st.showTutorial === b ? st : { showTutorial: b })),
   setHowToPlay: (v) => set((st) => (st.howToPlay === v ? st : { howToPlay: v })),
+  setAboutOpen: (b) => set((st) => (st.aboutOpen === b ? st : { aboutOpen: b })),
+  setUpdatePhase: (p) => set((st) => (st.updatePhase === p ? st : { updatePhase: p })),
+  setMenuIdle: (b) => set((st) => (st.menuIdle === b ? st : { menuIdle: b })),
   setGameModal: (m) => set({ gameModal: m }),
   setBossModeUnlocked: (b) =>
     set((st) => (st.bossModeUnlocked === b ? st : { bossModeUnlocked: b })),

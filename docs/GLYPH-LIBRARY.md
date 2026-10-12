@@ -1,8 +1,9 @@
-# Controller glyph library: provenance record (not bundled)
+# Controller glyph library: provenance record
 
-Studio-provided archive received 2026-10-12 as `Source.zip` (owner upload). **Not added to this repository or the APK**: Endless Escape is touch-only
-(virtual joystick and on-screen buttons, no gamepad or keyboard input in `src/`), so there are no controller prompts to map. Importing 17.6 MB of unused
-art would be a new feature, not a correction. This file preserves what was verified so any future controller work starts from facts.
+Studio-provided archive received 2026-10-12 as `Source.zip` (owner upload). **The archive itself is not committed.** Since the desktop work (owner directive "Desktop expansion") a
+43-file subset (220 KB, 128 px PNG) is imported into `assets/glyphs/{xbox,playstation,switch,keyboard}` by `scripts/desktop/import-glyphs.mjs`
+(checksums in `assets/glyphs/SHA256SUMS`, mapping in `src/desktop/glyphManifest.ts`). The glyphs are only referenced by the desktop shell
+(`src/desktop/DesktopLayer.tsx`); the Android bundle was checked to contain none of them. This file preserves what was verified about the source.
 
 | Item | Verified value |
 | --- | --- |
@@ -21,6 +22,7 @@ art would be a new feature, not a correction. This file preserves what was verif
 - Status: **licence identified, not independently verified.** The page itself was not fetched (network restricted) and the archive carries no licence text.
   Before commercial use: keep the page URL, save a dated copy of the licence statement alongside the assets, and confirm the archive matches the published pack.
 
-## If controller support is ever added
-Use the Xbox family for ABXY / Steam Deck prompts, switch families by last-used input device, keep a manual override, and add the licence statement to
-`assets/LICENSES.md` in the same change. That is new product scope and needs the owner's decision.
+## Use in the game
+Prompt families: Xbox (also Steam Deck / Steam Input), PlayStation, Switch, Keyboard. Automatic selection follows the last device used (1.2 s hysteresis);
+F2 or the on-screen "Prompts" chip cycles an override stored device-locally. The Xbox set has no Menu/View glyph, so those two prompts are a text chip.
+Licence statement for the imported subset: `assets/LICENSES.md`.

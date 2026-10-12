@@ -7,6 +7,8 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { setAudioModeAsync } from 'expo-audio';
 import { Game } from './src/game/Game';
 import { UpdateApplier, UpdateApplyingOverlay } from './src/components/HUD/UpdateApplying';
+// Desktop (web) only: keyboard / gamepad layer. Android resolves this to a no-op (DesktopLayer.native.tsx).
+import { DesktopLayer } from './src/desktop/DesktopLayer';
 import { StudioSplash } from './src/ui/StudioSplash';
 import { STUDIO_SPLASH_SOURCE } from './src/ui/studioSplashSource';
 import { splashPlan } from './src/util/studioSplash';
@@ -156,6 +158,7 @@ export default function App() {
         )}
         {updatesEnabled ? <UpdateApplier /> : null}
         <UpdateApplyingOverlay />
+        <DesktopLayer />
       </GestureHandlerRootView>
     </SafeAreaProvider>
   );
